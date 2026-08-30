@@ -5,6 +5,7 @@ import metamodel.conformance.pipeline.adapter.SourceObserver;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
@@ -22,6 +23,8 @@ import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.declaration.CtTypeMember;
+import spoon.reflect.declaration.ModifierKind;
+import spoon.reflect.reference.CtFieldReference;
 import spoon.reflect.reference.CtTypeReference;
 
 import java.io.IOException;
@@ -40,7 +43,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.2.0";
+    public static final String ADAPTER_VERSION = "0.3.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -88,6 +91,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
             List<MemberObservation> members = new ArrayList<>();
             Map<String, List<String>> memberKeysByOwner = new HashMap<>();
+            Map<String, List<String>> memberKeysByDeclaration = new HashMap<>();
             boolean localSignaturesComplete = true;
             for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 List<String> memberKeys = new ArrayList<>();
@@ -107,18 +111,65 @@ public final class SpoonJavaObserver implements SourceObserver {
                         }
                         MemberObservation member = memberObservation(
                                 root, draft, MemberKind.METHOD, method.getSimpleName(),
+                                inheritability(method.hasModifier(ModifierKind.PRIVATE)),
                                 method.getPosition(), parameterTypes);
                         members.add(member);
                         memberKeys.add(member.technicalKey());
+                        memberKeysByDeclaration.computeIfAbsent(declarationKey(
+                                draft.type().getQualifiedName(), MemberKind.METHOD,
+                                method.getSimpleName(), parameterTypes), ignored -> new ArrayList<>())
+                                .add(member.technicalKey());
                     } else if (typeMember instanceof CtField<?> field) {
                         MemberObservation member = memberObservation(
                                 root, draft, MemberKind.ATTRIBUTE, field.getSimpleName(),
+                                inheritability(field.hasModifier(ModifierKind.PRIVATE)),
                                 field.getPosition(), List.of());
                         members.add(member);
                         memberKeys.add(member.technicalKey());
+                        memberKeysByDeclaration.computeIfAbsent(declarationKey(
+                                draft.type().getQualifiedName(), MemberKind.ATTRIBUTE,
+                                field.getSimpleName(), List.of()), ignored -> new ArrayList<>())
+                                .add(member.technicalKey());
                     }
                 }
                 memberKeysByOwner.put(draft.type().getQualifiedName(), memberKeys);
+            }
+
+            Map<String, List<String>> inheritedMemberKeysByOwner = new HashMap<>();
+            boolean inheritedMembersComplete = true;
+            for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
+                LinkedHashSet<String> inheritedKeys = new LinkedHashSet<>();
+                try {
+                    for (CtMethod<?> method : draft.type().getAllMethods()) {
+                        CtType<?> declaringType = method.getDeclaringType();
+                        if (declaringType == null
+                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())
+                                || !drafts.containsKey(declaringType.getQualifiedName())) {
+                            continue;
+                        }
+                        List<String> parameterTypes = method.getParameters().stream()
+                                .map(parameter -> parameter.getType().getQualifiedName()).toList();
+                        String key = declarationKey(declaringType.getQualifiedName(), MemberKind.METHOD,
+                                method.getSimpleName(), parameterTypes);
+                        inheritedMembersComplete &= addResolvedMember(
+                                inheritedKeys, memberKeysByDeclaration.get(key));
+                    }
+                    for (CtFieldReference<?> field : draft.type().getAllFields()) {
+                        CtTypeReference<?> declaringType = field.getDeclaringType();
+                        if (declaringType == null
+                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())
+                                || !drafts.containsKey(declaringType.getQualifiedName())) {
+                            continue;
+                        }
+                        String key = declarationKey(declaringType.getQualifiedName(), MemberKind.ATTRIBUTE,
+                                field.getSimpleName(), List.of());
+                        inheritedMembersComplete &= addResolvedMember(
+                                inheritedKeys, memberKeysByDeclaration.get(key));
+                    }
+                } catch (RuntimeException failure) {
+                    inheritedMembersComplete = false;
+                }
+                inheritedMemberKeysByOwner.put(draft.type().getQualifiedName(), List.copyOf(inheritedKeys));
             }
 
             List<ClassifierObservation> classifiers = new ArrayList<>();
@@ -138,17 +189,22 @@ public final class SpoonJavaObserver implements SourceObserver {
                 classifiers.add(new ClassifierObservation(
                         draft.id(), draft.type().getQualifiedName(), draft.kind(), draft.path(),
                         draft.startLine(), draft.endLine(), List.copyOf(parentIds),
-                        memberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
+                        memberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of()),
+                        inheritedMemberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
             }
-            EnumSet<EvidenceKind> completeEvidence = EnumSet.of(EvidenceKind.DECLARATION_OWNERSHIP);
+            EnumSet<EvidenceKind> completeEvidence = EnumSet.of(
+                    EvidenceKind.DECLARATION_OWNERSHIP, EvidenceKind.INHERITABILITY);
             if (unresolved.isEmpty()) {
                 completeEvidence.add(EvidenceKind.HIERARCHY);
             }
             if (localSignaturesComplete) {
                 completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
             }
+            if (inheritedMembersComplete && unresolved.isEmpty() && localSignaturesComplete) {
+                completeEvidence.add(EvidenceKind.INHERITED_MEMBERS);
+            }
             return new Observation(
-                    "2", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    "3", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
                     units, classifiers, members, unresolved);
         } catch (ObservationException exception) {
             throw exception;
@@ -236,6 +292,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             TypeDraft owner,
             MemberKind kind,
             String memberName,
+            Inheritability inheritability,
             SourcePosition position,
             List<String> parameterTypes) throws IOException, ObservationException {
         Path source = position.getFile().toPath().toRealPath(LinkOption.NOFOLLOW_LINKS);
@@ -250,11 +307,30 @@ public final class SpoonJavaObserver implements SourceObserver {
                 "mem_" + Hashing.sha256(canonical),
                 null,
                 kind,
+                inheritability,
                 memberName,
                 path,
                 position.getLine(),
                 position.getEndLine(),
                 parameterTypes);
+    }
+
+    private static Inheritability inheritability(boolean isPrivate) {
+        return isPrivate ? Inheritability.NOT_INHERITABLE : Inheritability.INHERITABLE;
+    }
+
+    private static String declarationKey(
+            String ownerQualifiedName, MemberKind kind, String memberName, List<String> parameterTypes) {
+        return ownerQualifiedName + "\0" + kind + "\0" + memberName + "\0"
+                + String.join("\0", parameterTypes);
+    }
+
+    private static boolean addResolvedMember(Set<String> inheritedKeys, List<String> candidates) {
+        if (candidates == null || candidates.size() != 1) {
+            return false;
+        }
+        inheritedKeys.add(candidates.get(0));
+        return true;
     }
 
     private record TypeDraft(

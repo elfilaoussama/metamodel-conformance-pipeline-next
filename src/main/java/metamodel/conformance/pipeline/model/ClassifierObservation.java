@@ -11,7 +11,8 @@ public record ClassifierObservation(
         int startLine,
         int endLine,
         List<String> parentIds,
-        List<String> declaredMemberKeys) {
+        List<String> declaredMemberKeys,
+        List<String> inheritedMemberKeys) {
 
     public ClassifierObservation {
         id = requireText(id, "id");
@@ -24,6 +25,21 @@ public record ClassifierObservation(
         parentIds = parentIds == null ? List.of() : parentIds.stream().sorted().distinct().toList();
         declaredMemberKeys = declaredMemberKeys == null
                 ? List.of() : declaredMemberKeys.stream().sorted().distinct().toList();
+        inheritedMemberKeys = inheritedMemberKeys == null
+                ? List.of() : inheritedMemberKeys.stream().sorted().distinct().toList();
+    }
+
+    public ClassifierObservation(
+            String id,
+            String qualifiedName,
+            ClassifierKind kind,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parentIds,
+            List<String> declaredMemberKeys) {
+        this(id, qualifiedName, kind, sourcePath, startLine, endLine,
+                parentIds, declaredMemberKeys, List.of());
     }
 
     public ClassifierObservation(
@@ -34,7 +50,8 @@ public record ClassifierObservation(
             int startLine,
             int endLine,
             List<String> parentIds) {
-        this(id, qualifiedName, kind, sourcePath, startLine, endLine, parentIds, List.of());
+        this(id, qualifiedName, kind, sourcePath, startLine, endLine,
+                parentIds, List.of(), List.of());
     }
 
     private static String requireText(String value, String name) {

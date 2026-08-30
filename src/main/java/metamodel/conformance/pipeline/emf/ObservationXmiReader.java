@@ -3,6 +3,7 @@ package metamodel.conformance.pipeline.emf;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
@@ -70,6 +71,7 @@ public final class ObservationXmiReader {
                     string(member, "technicalKey"),
                     observedIdentifier instanceof String text && !text.isBlank() ? text : null,
                     MemberKind.valueOf(value(member, "kind").toString()),
+                    Inheritability.valueOf(value(member, "inheritability").toString()),
                     string(member, "memberName"),
                     string(member, "sourcePath"),
                     integer(member, "startLine"),
@@ -86,6 +88,10 @@ public final class ObservationXmiReader {
             for (EObject member : (EList<EObject>) value(classifier, "declaredMembers")) {
                 declaredMemberKeys.add(string(member, "technicalKey"));
             }
+            List<String> inheritedMemberKeys = new ArrayList<>();
+            for (EObject member : (EList<EObject>) value(classifier, "inheritedMembers")) {
+                inheritedMemberKeys.add(string(member, "technicalKey"));
+            }
             classifiers.add(new ClassifierObservation(
                     string(classifier, "id"),
                     string(classifier, "qualifiedName"),
@@ -94,7 +100,8 @@ public final class ObservationXmiReader {
                     integer(classifier, "startLine"),
                     integer(classifier, "endLine"),
                     parentIds,
-                    declaredMemberKeys));
+                    declaredMemberKeys,
+                    inheritedMemberKeys));
         }
         List<UnresolvedParent> unresolved = new ArrayList<>();
         for (EObject item : (EList<EObject>) value(root, "unresolvedParents")) {

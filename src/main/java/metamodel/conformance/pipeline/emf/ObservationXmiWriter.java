@@ -69,6 +69,7 @@ public final class ObservationXmiWriter {
         Map<String, EObject> membersByKey = new LinkedHashMap<>();
         EList<EObject> members = (EList<EObject>) root.eGet(feature(root, "members"));
         EEnum memberKind = (EEnum) ePackage.getEClassifier("MemberKind");
+        EEnum inheritability = (EEnum) ePackage.getEClassifier("Inheritability");
         for (MemberObservation source : observation.members()) {
             EObject member = ePackage.getEFactoryInstance().create(schema.classifier("Member"));
             set(member, "technicalKey", source.technicalKey());
@@ -76,6 +77,8 @@ public final class ObservationXmiWriter {
                 set(member, "observedIdentifier", source.observedIdentifier());
             }
             set(member, "kind", memberKind.getEEnumLiteral(source.kind().name()).getInstance());
+            set(member, "inheritability",
+                    inheritability.getEEnumLiteral(source.inheritability().name()).getInstance());
             set(member, "memberName", source.memberName());
             set(member, "sourcePath", source.sourcePath());
             set(member, "startLine", source.startLine());
@@ -105,6 +108,8 @@ public final class ObservationXmiWriter {
             source.parentIds().forEach(parentId -> parents.add(classifiersById.get(parentId)));
             EList<EObject> declaredMembers = (EList<EObject>) classifier.eGet(feature(classifier, "declaredMembers"));
             source.declaredMemberKeys().forEach(memberKey -> declaredMembers.add(membersByKey.get(memberKey)));
+            EList<EObject> inheritedMembers = (EList<EObject>) classifier.eGet(feature(classifier, "inheritedMembers"));
+            source.inheritedMemberKeys().forEach(memberKey -> inheritedMembers.add(membersByKey.get(memberKey)));
         }
 
         EList<EObject> unresolved = (EList<EObject>) root.eGet(feature(root, "unresolvedParents"));

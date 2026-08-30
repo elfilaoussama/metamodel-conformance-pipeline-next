@@ -6,6 +6,10 @@ evidence:
     description: Every parsed member declaration and declaring classifier association was observed.
   LOCAL_SIGNATURES:
     description: Member names and ordered method parameter types were observed canonically.
+  INHERITABILITY:
+    description: The frontend classified whether each declaration participates in inheritance.
+  INHERITED_MEMBERS:
+    description: The frontend independently resolved inherited member memberships within the configured source boundary.
 
 conditions:
   O-01:
@@ -20,11 +24,13 @@ conditions:
     requires: [HIERARCHY]
     witness: CLASSIFIER
   O-04:
-    status: DEFERRED
-    reason: Requires an independently observed inherited-member view.
+    status: EVALUABLE
+    requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, INHERITED_MEMBERS]
+    witness: CLASSIFIER_MEMBER_PAIR
   O-05:
-    status: DEFERRED
-    reason: Requires independently observed local and inherited views.
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP, INHERITED_MEMBERS]
+    witness: CLASSIFIER_MEMBER_PAIR
   O-06:
     status: DEFERRED
     reason: Requires independently observed bodies and implementation bindings.

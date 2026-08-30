@@ -94,6 +94,11 @@ public record Observation(
                     throw new IllegalArgumentException("unknown declared member key: " + memberKey);
                 }
             }
+            for (String memberKey : classifier.inheritedMemberKeys()) {
+                if (!memberKeys.contains(memberKey)) {
+                    throw new IllegalArgumentException("unknown inherited member key: " + memberKey);
+                }
+            }
         }
         for (UnresolvedParent unresolved : unresolvedParents) {
             if (!ids.contains(unresolved.ownerId())) {

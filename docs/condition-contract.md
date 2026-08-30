@@ -8,8 +8,8 @@ implemented. Ecore stores observations; Alloy alone defines violations.
 | O-01 | Independent identity | Distinct carriers have distinct observed identifiers | Carrier pair | Deferred: source-observed identity is not yet justified |
 | O-02 | Exclusive declaration ownership | Every method and attribute occurs in exactly one classifier's local-member relation | Member | Implemented |
 | O-03 | Acyclic generalization | `no c : Classifier \| c in c.^parents` | Classifier | Implemented |
-| O-04 | Inherited view derivation | Observed inherited view equals the policy-derived ancestor view | Classifier/member pair | Deferred pending independent frontend evidence |
-| O-05 | Local/inherited separation | Local and inherited member relations are disjoint | Classifier/member pair | Deferred with O-04 |
+| O-04 | Inherited view derivation | Frontend-observed inherited view equals the Alloy-derived ancestor view | Classifier/member pair | Implemented when inherited-view evidence is complete |
+| O-05 | Local/inherited separation | Local and frontend-observed inherited member relations are atom-disjoint | Classifier/member pair | Implemented when inherited-view evidence is complete |
 | O-06 | Implementation binding | Bindings connect available declarations to independently observed bodies | Binding/body | Deferred pending defensible body evidence |
 | O-07 | Abstraction and instantiation | Abstractness, direct instances, and unresolved implementations agree | Classifier/member/object | Deferred pending instantiation and binding evidence |
 | O-08 | Namespace and conflict | Method key is name plus ordered parameter types; attribute key is name | Conflicting member pair | Local part implemented; inherited part deferred with O-04 |
@@ -25,5 +25,8 @@ implemented. Ecore stores observations; Alloy alone defines violations.
   structures remain representable.
 - Parameter types remain an ordered multi-valued structure. They are never
   flattened into a delimiter-separated signature.
+- `inheritedMembers` is populated only from frontend semantic resolution. Alloy
+  independently derives its expected view from parents, local declarations,
+  inheritability, local hiding, and nearer-ancestor priority.
 - Each condition is an independent Alloy predicate and violation function, not
   a global fact. One violation cannot prevent evaluation of another condition.

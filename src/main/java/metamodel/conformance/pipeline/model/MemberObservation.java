@@ -7,6 +7,7 @@ public record MemberObservation(
         String technicalKey,
         String observedIdentifier,
         MemberKind kind,
+        Inheritability inheritability,
         String memberName,
         String sourcePath,
         int startLine,
@@ -18,6 +19,7 @@ public record MemberObservation(
         observedIdentifier = observedIdentifier == null || observedIdentifier.isBlank()
                 ? null : observedIdentifier;
         kind = Objects.requireNonNull(kind, "kind");
+        inheritability = Objects.requireNonNull(inheritability, "inheritability");
         memberName = requireText(memberName, "memberName");
         sourcePath = requireText(sourcePath, "sourcePath");
         if (startLine < 1 || endLine < startLine) {
@@ -30,6 +32,19 @@ public record MemberObservation(
         if (parameterTypes.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new IllegalArgumentException("parameter types must not be blank");
         }
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes) {
+        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, memberName,
+                sourcePath, startLine, endLine, parameterTypes);
     }
 
     private static String requireText(String value, String name) {

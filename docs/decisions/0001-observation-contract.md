@@ -10,6 +10,7 @@ domain metamodel from arbitrary source code. The first schema records:
 - source units and SHA-256 digests;
 - declared classifiers and stable identifiers;
 - inheritance edges between declared classifiers;
+- frontend-resolved inherited-member memberships, kept separate from declaration ownership;
 - unresolved parent references with source locations; and
 - adapter identity and version.
 
