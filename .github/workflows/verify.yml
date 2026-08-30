@@ -21,3 +21,5 @@ jobs:
           cache: maven
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress verify
+      - name: Verify pinned real repository
+        run: ./scripts/verify-real-repository.sh
