@@ -1,0 +1,43 @@
+schemaVersion: "1"
+evidence:
+  HIERARCHY:
+    description: Direct parent edges are complete for the declared source boundary.
+  DECLARATION_OWNERSHIP:
+    description: Every parsed member declaration and declaring classifier association was observed.
+  LOCAL_SIGNATURES:
+    description: Member names and ordered method parameter types were observed canonically.
+
+conditions:
+  O-01:
+    status: DEFERRED
+    reason: Extractor-generated technical keys are not independent source identities.
+  O-02:
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP]
+    witness: MEMBER
+  O-03:
+    status: EVALUABLE
+    requires: [HIERARCHY]
+    witness: CLASSIFIER
+  O-04:
+    status: DEFERRED
+    reason: Requires an independently observed inherited-member view.
+  O-05:
+    status: DEFERRED
+    reason: Requires independently observed local and inherited views.
+  O-06:
+    status: DEFERRED
+    reason: Requires independently observed bodies and implementation bindings.
+  O-07:
+    status: DEFERRED
+    reason: Requires direct-instance and implementation-completeness evidence.
+  O-08-local:
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP, LOCAL_SIGNATURES]
+    witness: MEMBER
+  O-08-inherited:
+    status: DEFERRED
+    reason: Requires the O-04 inherited view.
+  O-09:
+    status: DEFERRED
+    reason: Requires frontend-resolved override evidence.
