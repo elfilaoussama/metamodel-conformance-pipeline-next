@@ -3,15 +3,17 @@
 A deterministic, fail-closed pipeline that observes source code as a small EMF
 model and evaluates structural constraints with the official Alloy engine.
 
-The pipeline currently evaluates three independent catalog entries:
+The pipeline currently evaluates five independent catalog entries:
 
 - **O-02:** every observed member has exactly one declaring classifier;
-- **O-03:** inheritance must be acyclic; and
+- **O-03:** inheritance must be acyclic;
+- **O-04:** the frontend-observed inherited view must equal Alloy's formal derivation;
+- **O-05:** local and inherited member atoms must be disjoint; and
 - **O-08-local:** method keys and attribute names are locally unique.
 
 ```text
 Java source -> Spoon adapter -> observation.xmi -> exact Alloy instance
-            -> official Alloy command -> verification-capsule.json
+            -> official Alloy solution -> verification-capsule.json
 ```
 
 This is deliberately not a general source-code-to-Ecore reverse engineer. The
@@ -22,8 +24,8 @@ adapter records only evidence required by the constraints.
 
 | Result | Meaning |
 |---|---|
-| `CONFORMANT` | The exact observed graph contains no O-03 witness. |
-| `NON_CONFORMANT` | Alloy found a cycle in the exact observed graph. |
+| `CONFORMANT` | The condition's Alloy witness relation is empty. |
+| `NON_CONFORMANT` | The condition's Alloy witness relation contains one or more tuples. |
 | `INDETERMINATE` | Required evidence is missing or the tool failed; no conformance claim is made. |
 
 Unresolved parent types therefore cannot silently disappear from the graph.
@@ -35,9 +37,9 @@ Requirements: JDK 17 and Maven 3.9+.
 ```bash
 mvn verify
 mvn -q -DskipTests package
-java -jar target/metamodel-conformance-pipeline-next-0.2.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.3.0-SNAPSHOT.jar \
   analyze --source examples/acyclic --output build/acyclic
-java -jar target/metamodel-conformance-pipeline-next-0.2.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.3.0-SNAPSHOT.jar \
   verify-capsule --capsule build/acyclic/verification-capsule.json
 ```
 
@@ -49,6 +51,11 @@ satisfiable, and evaluates every Alloy-defined witness function on that same exa
 solution. Java only checks declared evidence prerequisites and maps Alloy witness
 atoms back to source locations. An inconsistent encoding is `INDETERMINATE`, never
 `CONFORMANT`.
+
+For O-04, Spoon supplies the observed inherited memberships while Alloy derives
+the expected memberships independently from ancestry, inheritability, member
+keys, local hiding, and nearer-ancestor priority. If the frontend cannot resolve
+that view completely, only inheritance-dependent conditions are `INDETERMINATE`.
 
 ## Scope
 

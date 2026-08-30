@@ -1,11 +1,12 @@
 {
-  "schemaVersion": "1",
+  "schemaVersion": "2",
   "obligations": [
     {
       "id": "O-02",
       "title": "Exclusive declaration ownership",
       "command": "O02Violation",
       "witnessFunction": "O02Violations",
+      "witnessArity": 1,
       "requiredEvidence": ["DECLARATION_OWNERSHIP"],
       "conformanceMessage": "Every observed member has exactly one declaring classifier.",
       "violationMessage": "At least one observed member has zero or multiple declaring classifiers."
@@ -15,15 +16,37 @@
       "title": "Acyclic generalization",
       "command": "O03Violation",
       "witnessFunction": "O03Violations",
+      "witnessArity": 1,
       "requiredEvidence": ["HIERARCHY"],
       "conformanceMessage": "No inheritance cycle exists in the exact observed graph.",
       "violationMessage": "An inheritance cycle exists in the exact observed graph."
+    },
+    {
+      "id": "O-04",
+      "title": "Inherited view derivation",
+      "command": "O04Violation",
+      "witnessFunction": "O04Violations",
+      "witnessArity": 2,
+      "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "INHERITED_MEMBERS"],
+      "conformanceMessage": "The frontend-observed inherited view equals the Alloy-derived view.",
+      "violationMessage": "At least one frontend-observed inherited membership differs from the Alloy-derived view."
+    },
+    {
+      "id": "O-05",
+      "title": "Local and inherited separation",
+      "command": "O05Violation",
+      "witnessFunction": "O05Violations",
+      "witnessArity": 2,
+      "requiredEvidence": ["DECLARATION_OWNERSHIP", "INHERITED_MEMBERS"],
+      "conformanceMessage": "Local and frontend-observed inherited memberships are atom-disjoint.",
+      "violationMessage": "At least one member atom is both local and inherited in the same classifier."
     },
     {
       "id": "O-08-local",
       "title": "Local namespace uniqueness",
       "command": "O08LocalViolation",
       "witnessFunction": "O08LocalViolations",
+      "witnessArity": 1,
       "requiredEvidence": ["DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES"],
       "conformanceMessage": "Local method keys and attribute names are unique within each classifier.",
       "violationMessage": "At least one classifier contains a duplicate method key or attribute name."

@@ -16,6 +16,53 @@ pred O03Violation {
   some O03Violations
 }
 
+pred sameMemberKey[m1, m2 : Member] {
+  sameMethodKey[m1, m2] or sameAttributeName[m1, m2]
+}
+
+pred localMemberHides[c : Classifier, inherited : Member] {
+  some local : c.declaredMembers | sameMemberKey[local, inherited]
+}
+
+pred nearerAncestorMemberHides[c, owner : Classifier, inherited : Member] {
+  some nearer : c.^parents - owner |
+    owner in nearer.^parents and
+    some replacement : nearer.declaredMembers |
+      replacement.inheritability = INHERITABLE and
+      sameMemberKey[replacement, inherited]
+}
+
+fun formalInheritedMembers[c : Classifier] : set Member {
+  { inherited : Member |
+    some owner : c.^parents |
+      inherited in owner.declaredMembers and
+      inherited.inheritability = INHERITABLE and
+      not localMemberHides[c, inherited] and
+      not nearerAncestorMemberHides[c, owner, inherited]
+  }
+}
+
+fun O04Violations : Classifier -> Member {
+  { c : Classifier, m : Member |
+    (m in c.observedInheritedMembers and m not in formalInheritedMembers[c]) or
+    (m not in c.observedInheritedMembers and m in formalInheritedMembers[c])
+  }
+}
+
+pred O04Violation {
+  some O04Violations
+}
+
+fun O05Violations : Classifier -> Member {
+  { c : Classifier, m : Member |
+    m in c.declaredMembers and m in c.observedInheritedMembers
+  }
+}
+
+pred O05Violation {
+  some O05Violations
+}
+
 pred sameMethodKey[m1, m2 : Member] {
   m1.kind = METHOD
   m2.kind = METHOD

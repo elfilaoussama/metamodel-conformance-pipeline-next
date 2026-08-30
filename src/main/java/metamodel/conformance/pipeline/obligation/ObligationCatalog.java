@@ -20,7 +20,7 @@ public final class ObligationCatalog {
                 throw new IllegalStateException("bundled obligation catalog is missing");
             }
             CatalogFile file = new ObjectMapper().readValue(input, CatalogFile.class);
-            if (!"1".equals(file.schemaVersion()) || file.obligations() == null || file.obligations().isEmpty()) {
+            if (!"2".equals(file.schemaVersion()) || file.obligations() == null || file.obligations().isEmpty()) {
                 throw new IllegalStateException("unsupported or empty obligation catalog");
             }
             return new ObligationCatalog(file.obligations());

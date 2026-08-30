@@ -166,7 +166,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         inheritedMembersComplete &= addResolvedMember(
                                 inheritedKeys, memberKeysByDeclaration.get(key));
                     }
-                } catch (RuntimeException failure) {
+                } catch (RuntimeException | StackOverflowError failure) {
                     inheritedMembersComplete = false;
                 }
                 inheritedMemberKeysByOwner.put(draft.type().getQualifiedName(), List.copyOf(inheritedKeys));

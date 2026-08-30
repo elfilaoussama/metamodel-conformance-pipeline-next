@@ -20,4 +20,17 @@ class ExactAlloyEncoderTest {
         assertTrue(alloy.contains("run O03Violation for exactly 2 Classifier"));
         assertFalse(alloy.contains("example.A"));
     }
+
+    @Test
+    void encodesObservedInheritedMembershipSeparatelyFromFormalDerivation() {
+        var observation = TestObservations.inheritedViewConformant();
+        String alloy = new ExactAlloyEncoder().encode(observation);
+
+        assertTrue(alloy.contains("observedInheritedMembers = "
+                + ExactAlloyEncoder.classifierAtom(TestObservations.B) + "->"
+                + ExactAlloyEncoder.memberAtom(observation.members().get(0).technicalKey())));
+        assertTrue(alloy.contains("fun formalInheritedMembers[c : Classifier]"));
+        assertTrue(alloy.contains("fun O04Violations : Classifier -> Member"));
+        assertTrue(alloy.contains("fun O05Violations : Classifier -> Member"));
+    }
 }

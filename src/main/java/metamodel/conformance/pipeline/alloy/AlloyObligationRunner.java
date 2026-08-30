@@ -12,6 +12,7 @@ import edu.mit.csail.sdg.translator.A4TupleSet;
 import edu.mit.csail.sdg.translator.TranslateAlloyToKodkod;
 import metamodel.conformance.pipeline.decision.Decision;
 import metamodel.conformance.pipeline.decision.DecisionStatus;
+import metamodel.conformance.pipeline.decision.WitnessTuple;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.obligation.ObligationCatalog;
@@ -76,19 +77,25 @@ public final class AlloyObligationRunner {
             if (!(evaluated instanceof A4TupleSet tuples)) {
                 throw new IllegalStateException("witness function did not return a relation");
             }
-            List<String> witnesses = new ArrayList<>();
+            List<WitnessTuple> witnesses = new ArrayList<>();
             for (A4Tuple tuple : tuples) {
-                if (tuple.arity() != 1) {
-                    throw new IllegalStateException("witness relation must be unary");
+                if (tuple.arity() != definition.witnessArity()) {
+                    throw new IllegalStateException("witness relation arity does not match the catalog");
                 }
-                String atom = normalizeAtom(tuple.atom(0));
-                String technicalKey = atomKeys.get(atom);
-                if (technicalKey == null) {
-                    throw new IllegalStateException("witness atom has no observation mapping: " + atom);
+                List<String> technicalKeys = new ArrayList<>();
+                for (int index = 0; index < tuple.arity(); index++) {
+                    String atom = normalizeAtom(tuple.atom(index));
+                    String technicalKey = atomKeys.get(atom);
+                    if (technicalKey == null) {
+                        throw new IllegalStateException("witness atom has no observation mapping: " + atom);
+                    }
+                    technicalKeys.add(technicalKey);
                 }
-                witnesses.add(technicalKey);
+                witnesses.add(new WitnessTuple(technicalKeys));
             }
-            witnesses = witnesses.stream().distinct().sorted(Comparator.naturalOrder()).toList();
+            witnesses = witnesses.stream().distinct()
+                    .sorted(Comparator.comparing(witness -> String.join("\0", witness.technicalKeys())))
+                    .toList();
             if (witnesses.isEmpty()) {
                 return new Decision(
                         DecisionStatus.CONFORMANT,

@@ -1,4 +1,4 @@
-schemaVersion: "1"
+schemaVersion: "2"
 evidence:
   HIERARCHY:
     description: Direct parent edges are complete for the declared source boundary.

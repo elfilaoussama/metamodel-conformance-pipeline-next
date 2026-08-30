@@ -6,6 +6,7 @@ import metamodel.conformance.pipeline.decision.DecisionStatus;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.decision.WitnessTuple;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -24,6 +25,8 @@ class AlloyObligationRunnerTest {
 
         assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-02").status());
         assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-03").status());
+        assertEquals(DecisionStatus.INDETERMINATE, decision(decisions, "O-04").status());
+        assertEquals(DecisionStatus.INDETERMINATE, decision(decisions, "O-05").status());
         assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-08-local").status());
     }
 
@@ -99,6 +102,33 @@ class AlloyObligationRunnerTest {
     }
 
     @Test
+    void comparesFrontendInheritedViewWithAlloyDerivation() {
+        Observation conformant = TestObservations.inheritedViewConformant();
+        Observation missing = TestObservations.missingInheritedMember();
+
+        Decision conformantDecision = decision(
+                runner.evaluateAll(conformant, encoder.encode(conformant)), "O-04");
+        Decision missingDecision = decision(
+                runner.evaluateAll(missing, encoder.encode(missing)), "O-04");
+
+        assertEquals(DecisionStatus.CONFORMANT, conformantDecision.status());
+        assertEquals(DecisionStatus.NON_CONFORMANT, missingDecision.status());
+        assertEquals(List.of(new WitnessTuple(List.of(
+                TestObservations.B, missing.members().get(0).technicalKey()))), missingDecision.witnesses());
+    }
+
+    @Test
+    void detectsAtomLevelLocalInheritedOverlap() {
+        Observation observation = TestObservations.localInheritedOverlap();
+        Decision decision = decision(
+                runner.evaluateAll(observation, encoder.encode(observation)), "O-05");
+
+        assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
+        assertEquals(List.of(new WitnessTuple(List.of(
+                TestObservations.A, observation.members().get(0).technicalKey()))), decision.witnesses());
+    }
+
+    @Test
     void inconsistentExactObservationCannotProduceConformance() {
         Observation observation = TestObservations.membersConformant();
         String inconsistentModel = encoder.encode(observation)
@@ -106,7 +136,7 @@ class AlloyObligationRunnerTest {
 
         List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
 
-        assertEquals(3, decisions.size());
+        assertEquals(5, decisions.size());
         decisions.forEach(decision -> assertEquals(DecisionStatus.INDETERMINATE, decision.status()));
     }
 

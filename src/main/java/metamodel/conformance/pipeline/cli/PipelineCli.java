@@ -67,22 +67,27 @@ public final class PipelineCli {
             result.observation().unresolvedParents().forEach(item -> System.out.println(
                     "  " + item.targetName() + " (" + item.sourcePath() + ":" + item.line() + ")"));
         }
-        if (result.decisions().stream().anyMatch(item -> !item.witnessTechnicalKeys().isEmpty())) {
+        if (result.decisions().stream().anyMatch(item -> !item.witnesses().isEmpty())) {
             Map<String, ClassifierObservation> byId = new HashMap<>();
             result.observation().classifiers().forEach(item -> byId.put(item.id(), item));
             Map<String, MemberObservation> membersByKey = new HashMap<>();
             result.observation().members().forEach(item -> membersByKey.put(item.technicalKey(), item));
             System.out.println("Witness:");
-            result.decisions().forEach(decision -> decision.witnessTechnicalKeys().forEach(key -> {
-                ClassifierObservation classifier = byId.get(key);
-                MemberObservation member = membersByKey.get(key);
-                if (classifier != null) {
-                    System.out.println("  " + decision.constraint() + ": " + classifier.qualifiedName()
-                            + " (" + classifier.sourcePath() + ":" + classifier.startLine() + ")");
-                } else if (member != null) {
-                    System.out.println("  " + decision.constraint() + ": " + member.memberName()
-                            + " (" + member.sourcePath() + ":" + member.startLine() + ")");
-                }
+            result.decisions().forEach(decision -> decision.witnesses().forEach(witness -> {
+                List<String> descriptions = witness.technicalKeys().stream().map(key -> {
+                    ClassifierObservation classifier = byId.get(key);
+                    MemberObservation member = membersByKey.get(key);
+                    if (classifier != null) {
+                        return classifier.qualifiedName() + " (" + classifier.sourcePath()
+                                + ":" + classifier.startLine() + ")";
+                    }
+                    if (member != null) {
+                        return member.memberName() + " (" + member.sourcePath()
+                                + ":" + member.startLine() + ")";
+                    }
+                    return key;
+                }).toList();
+                System.out.println("  " + decision.constraint() + ": " + String.join(" -> ", descriptions));
             }));
         }
         System.out.println("Capsule: " + result.capsulePath());

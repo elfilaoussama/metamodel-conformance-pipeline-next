@@ -17,7 +17,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void roundTripsAndSerializesDeterministically() throws Exception {
-        Observation observation = TestObservations.cyclic();
+        Observation observation = TestObservations.inheritedViewConformant();
         Path first = temporary.resolve("first.xmi");
         Path second = temporary.resolve("second.xmi");
 

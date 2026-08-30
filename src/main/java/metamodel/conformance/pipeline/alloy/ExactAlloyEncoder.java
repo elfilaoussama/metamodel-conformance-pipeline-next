@@ -28,14 +28,18 @@ public final class ExactAlloyEncoder {
         alloy.append("module repository_instance\n\n");
         alloy.append("abstract sig Classifier {\n")
                 .append("  parents: set Classifier,\n")
-                .append("  declaredMembers: set Member\n")
+                .append("  declaredMembers: set Member,\n")
+                .append("  observedInheritedMembers: set Member\n")
                 .append("}\n");
         alloy.append("abstract sig MemberKind {}\n")
                 .append("one sig METHOD, ATTRIBUTE extends MemberKind {}\n")
+                .append("abstract sig Inheritability {}\n")
+                .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
                 .append("abstract sig NameToken {}\n")
                 .append("abstract sig TypeToken {}\n")
                 .append("abstract sig Member {\n")
                 .append("  kind: one MemberKind,\n")
+                .append("  inheritability: one Inheritability,\n")
                 .append("  memberName: one NameToken,\n")
                 .append("  parameterTypes: Int -> lone TypeToken\n")
                 .append("}\n\n");
@@ -52,7 +56,9 @@ public final class ExactAlloyEncoder {
         alloy.append("\nfact ExactObservation {\n");
         relation(alloy, "parents", parentEdges(observation));
         relation(alloy, "declaredMembers", declarationEdges(observation));
+        relation(alloy, "observedInheritedMembers", inheritedMembershipEdges(observation));
         relation(alloy, "kind", kindEdges(observation));
+        relation(alloy, "inheritability", inheritabilityEdges(observation));
         relation(alloy, "memberName", nameEdges(observation, nameAtoms));
         relation(alloy, "parameterTypes", parameterEdges(observation, typeAtoms));
         alloy.append("}\n\n");
@@ -114,6 +120,20 @@ public final class ExactAlloyEncoder {
     private static List<String> kindEdges(Observation observation) {
         return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
                 + (member.kind() == MemberKind.METHOD ? "METHOD" : "ATTRIBUTE")).toList();
+    }
+
+    private static List<String> inheritedMembershipEdges(Observation observation) {
+        List<String> edges = new ArrayList<>();
+        for (ClassifierObservation classifier : observation.classifiers()) {
+            classifier.inheritedMemberKeys().forEach(member -> edges.add(
+                    classifierAtom(classifier.id()) + "->" + memberAtom(member)));
+        }
+        return edges;
+    }
+
+    private static List<String> inheritabilityEdges(Observation observation) {
+        return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
+                + member.inheritability().name()).toList();
     }
 
     private static List<String> nameEdges(Observation observation, Map<String, String> nameAtoms) {

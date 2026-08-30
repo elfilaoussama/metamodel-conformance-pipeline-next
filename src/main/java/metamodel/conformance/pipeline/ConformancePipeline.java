@@ -52,7 +52,7 @@ public final class ConformancePipeline {
 
         List<Decision> decisions = runner.evaluateAll(observation, alloy);
         VerificationCapsule capsule = new VerificationCapsule(
-                "2",
+                "3",
                 PipelineVersion.TOOL_ID,
                 PipelineVersion.VERSION,
                 observation.schemaVersion(),
