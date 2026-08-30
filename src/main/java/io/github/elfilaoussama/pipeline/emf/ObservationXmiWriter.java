@@ -1,6 +1,8 @@
 package io.github.elfilaoussama.pipeline.emf;
 
 import io.github.elfilaoussama.pipeline.model.ClassifierObservation;
+import io.github.elfilaoussama.pipeline.model.EvidenceKind;
+import io.github.elfilaoussama.pipeline.model.MemberObservation;
 import io.github.elfilaoussama.pipeline.model.Observation;
 import io.github.elfilaoussama.pipeline.model.SourceUnit;
 import io.github.elfilaoussama.pipeline.model.UnresolvedParent;
@@ -49,6 +51,10 @@ public final class ObservationXmiWriter {
         set(root, "adapterId", observation.adapterId());
         set(root, "adapterVersion", observation.adapterVersion());
         ((EList<String>) root.eGet(feature(root, "externalParents"))).addAll(observation.externalParents());
+        EEnum evidenceKind = (EEnum) ePackage.getEClassifier("EvidenceKind");
+        EList<Object> completeEvidence = (EList<Object>) root.eGet(feature(root, "completeEvidence"));
+        observation.completeEvidence().stream().map(EvidenceKind::name).sorted()
+                .forEach(name -> completeEvidence.add(evidenceKind.getEEnumLiteral(name).getInstance()));
 
         EList<EObject> units = (EList<EObject>) root.eGet(feature(root, "units"));
         for (SourceUnit source : observation.units()) {
@@ -58,6 +64,25 @@ public final class ObservationXmiWriter {
             set(unit, "path", source.path());
             set(unit, "sha256", source.sha256());
             units.add(unit);
+        }
+
+        Map<String, EObject> membersByKey = new LinkedHashMap<>();
+        EList<EObject> members = (EList<EObject>) root.eGet(feature(root, "members"));
+        EEnum memberKind = (EEnum) ePackage.getEClassifier("MemberKind");
+        for (MemberObservation source : observation.members()) {
+            EObject member = ePackage.getEFactoryInstance().create(schema.classifier("Member"));
+            set(member, "technicalKey", source.technicalKey());
+            if (source.observedIdentifier() != null) {
+                set(member, "observedIdentifier", source.observedIdentifier());
+            }
+            set(member, "kind", memberKind.getEEnumLiteral(source.kind().name()).getInstance());
+            set(member, "memberName", source.memberName());
+            set(member, "sourcePath", source.sourcePath());
+            set(member, "startLine", source.startLine());
+            set(member, "endLine", source.endLine());
+            ((EList<String>) member.eGet(feature(member, "parameterTypes"))).addAll(source.parameterTypes());
+            members.add(member);
+            membersByKey.put(source.technicalKey(), member);
         }
 
         Map<String, EObject> classifiersById = new LinkedHashMap<>();
@@ -75,9 +100,11 @@ public final class ObservationXmiWriter {
             classifiersById.put(source.id(), classifier);
         }
         for (ClassifierObservation source : observation.classifiers()) {
-            EList<EObject> parents = (EList<EObject>) classifiersById.get(source.id())
-                    .eGet(feature(classifiersById.get(source.id()), "parents"));
+            EObject classifier = classifiersById.get(source.id());
+            EList<EObject> parents = (EList<EObject>) classifier.eGet(feature(classifier, "parents"));
             source.parentIds().forEach(parentId -> parents.add(classifiersById.get(parentId)));
+            EList<EObject> declaredMembers = (EList<EObject>) classifier.eGet(feature(classifier, "declaredMembers"));
+            source.declaredMemberKeys().forEach(memberKey -> declaredMembers.add(membersByKey.get(memberKey)));
         }
 
         EList<EObject> unresolved = (EList<EObject>) root.eGet(feature(root, "unresolvedParents"));

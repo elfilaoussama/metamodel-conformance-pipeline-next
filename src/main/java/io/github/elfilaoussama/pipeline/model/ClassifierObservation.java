@@ -10,7 +10,8 @@ public record ClassifierObservation(
         String sourcePath,
         int startLine,
         int endLine,
-        List<String> parentIds) {
+        List<String> parentIds,
+        List<String> declaredMemberKeys) {
 
     public ClassifierObservation {
         id = requireText(id, "id");
@@ -21,6 +22,19 @@ public record ClassifierObservation(
             throw new IllegalArgumentException("invalid source line range");
         }
         parentIds = parentIds == null ? List.of() : parentIds.stream().sorted().distinct().toList();
+        declaredMemberKeys = declaredMemberKeys == null
+                ? List.of() : declaredMemberKeys.stream().sorted().distinct().toList();
+    }
+
+    public ClassifierObservation(
+            String id,
+            String qualifiedName,
+            ClassifierKind kind,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parentIds) {
+        this(id, qualifiedName, kind, sourcePath, startLine, endLine, parentIds, List.of());
     }
 
     private static String requireText(String value, String name) {

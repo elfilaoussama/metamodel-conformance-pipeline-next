@@ -22,6 +22,10 @@ class SpoonJavaObserverTest {
 
         assertEquals(2, join.parentIds().size());
         assertTrue(observation.unresolvedParents().isEmpty());
+        assertTrue(observation.completeEvidence().containsAll(Set.of(
+                io.github.elfilaoussama.pipeline.model.EvidenceKind.HIERARCHY,
+                io.github.elfilaoussama.pipeline.model.EvidenceKind.DECLARATION_OWNERSHIP,
+                io.github.elfilaoussama.pipeline.model.EvidenceKind.LOCAL_SIGNATURES)));
     }
 
     @Test

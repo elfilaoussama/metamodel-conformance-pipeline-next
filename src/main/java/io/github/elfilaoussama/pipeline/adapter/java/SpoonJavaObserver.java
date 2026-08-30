@@ -4,6 +4,9 @@ import io.github.elfilaoussama.pipeline.adapter.ObservationException;
 import io.github.elfilaoussama.pipeline.adapter.SourceObserver;
 import io.github.elfilaoussama.pipeline.model.ClassifierKind;
 import io.github.elfilaoussama.pipeline.model.ClassifierObservation;
+import io.github.elfilaoussama.pipeline.model.EvidenceKind;
+import io.github.elfilaoussama.pipeline.model.MemberKind;
+import io.github.elfilaoussama.pipeline.model.MemberObservation;
 import io.github.elfilaoussama.pipeline.model.Observation;
 import io.github.elfilaoussama.pipeline.model.SourceUnit;
 import io.github.elfilaoussama.pipeline.model.UnresolvedParent;
@@ -15,7 +18,10 @@ import spoon.reflect.declaration.CtAnnotationType;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtEnum;
 import spoon.reflect.declaration.CtInterface;
+import spoon.reflect.declaration.CtField;
+import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtType;
+import spoon.reflect.declaration.CtTypeMember;
 import spoon.reflect.reference.CtTypeReference;
 
 import java.io.IOException;
@@ -25,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +40,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.1.0";
+    public static final String ADAPTER_VERSION = "0.2.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -79,6 +86,41 @@ public final class SpoonJavaObserver implements SourceObserver {
             }
 
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
+            List<MemberObservation> members = new ArrayList<>();
+            Map<String, List<String>> memberKeysByOwner = new HashMap<>();
+            boolean localSignaturesComplete = true;
+            for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
+                List<String> memberKeys = new ArrayList<>();
+                for (CtTypeMember typeMember : draft.type().getTypeMembers()) {
+                    if (!typeMember.getPosition().isValidPosition()) {
+                        continue;
+                    }
+                    if (typeMember instanceof CtMethod<?> method) {
+                        List<String> parameterTypes = new ArrayList<>();
+                        for (var parameter : method.getParameters()) {
+                            String parameterType = parameter.getType().getQualifiedName();
+                            if (parameterType == null || parameterType.isBlank()) {
+                                parameterType = "<unknown>";
+                                localSignaturesComplete = false;
+                            }
+                            parameterTypes.add(parameterType);
+                        }
+                        MemberObservation member = memberObservation(
+                                root, draft, MemberKind.METHOD, method.getSimpleName(),
+                                method.getPosition(), parameterTypes);
+                        members.add(member);
+                        memberKeys.add(member.technicalKey());
+                    } else if (typeMember instanceof CtField<?> field) {
+                        MemberObservation member = memberObservation(
+                                root, draft, MemberKind.ATTRIBUTE, field.getSimpleName(),
+                                field.getPosition(), List.of());
+                        members.add(member);
+                        memberKeys.add(member.technicalKey());
+                    }
+                }
+                memberKeysByOwner.put(draft.type().getQualifiedName(), memberKeys);
+            }
+
             List<ClassifierObservation> classifiers = new ArrayList<>();
             List<UnresolvedParent> unresolved = new ArrayList<>();
             for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
@@ -95,10 +137,19 @@ public final class SpoonJavaObserver implements SourceObserver {
                 }
                 classifiers.add(new ClassifierObservation(
                         draft.id(), draft.type().getQualifiedName(), draft.kind(), draft.path(),
-                        draft.startLine(), draft.endLine(), List.copyOf(parentIds)));
+                        draft.startLine(), draft.endLine(), List.copyOf(parentIds),
+                        memberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
+            }
+            EnumSet<EvidenceKind> completeEvidence = EnumSet.of(EvidenceKind.DECLARATION_OWNERSHIP);
+            if (unresolved.isEmpty()) {
+                completeEvidence.add(EvidenceKind.HIERARCHY);
+            }
+            if (localSignaturesComplete) {
+                completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
             }
             return new Observation(
-                    "1", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), units, classifiers, unresolved);
+                    "2", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    units, classifiers, members, unresolved);
         } catch (ObservationException exception) {
             throw exception;
         } catch (RuntimeException | IOException exception) {
@@ -178,6 +229,32 @@ public final class SpoonJavaObserver implements SourceObserver {
 
     private static String stableId(String path, ClassifierKind kind, String qualifiedName) {
         return "cls_" + Hashing.sha256("java\0" + path + "\0" + kind + "\0" + qualifiedName);
+    }
+
+    private static MemberObservation memberObservation(
+            Path root,
+            TypeDraft owner,
+            MemberKind kind,
+            String memberName,
+            SourcePosition position,
+            List<String> parameterTypes) throws IOException, ObservationException {
+        Path source = position.getFile().toPath().toRealPath(LinkOption.NOFOLLOW_LINKS);
+        if (!source.startsWith(root)) {
+            throw new ObservationException("Spoon reported a member outside the declared root: " + source);
+        }
+        String path = relativePath(root, source);
+        String canonical = "java\0" + path + "\0" + owner.type().getQualifiedName() + "\0"
+                + kind + "\0" + memberName + "\0" + String.join("\0", parameterTypes)
+                + "\0" + position.getLine();
+        return new MemberObservation(
+                "mem_" + Hashing.sha256(canonical),
+                null,
+                kind,
+                memberName,
+                path,
+                position.getLine(),
+                position.getEndLine(),
+                parameterTypes);
     }
 
     private record TypeDraft(

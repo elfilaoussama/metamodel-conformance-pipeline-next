@@ -2,6 +2,9 @@ package io.github.elfilaoussama.pipeline.emf;
 
 import io.github.elfilaoussama.pipeline.model.ClassifierKind;
 import io.github.elfilaoussama.pipeline.model.ClassifierObservation;
+import io.github.elfilaoussama.pipeline.model.EvidenceKind;
+import io.github.elfilaoussama.pipeline.model.MemberKind;
+import io.github.elfilaoussama.pipeline.model.MemberObservation;
 import io.github.elfilaoussama.pipeline.model.Observation;
 import io.github.elfilaoussama.pipeline.model.SourceUnit;
 import io.github.elfilaoussama.pipeline.model.UnresolvedParent;
@@ -20,6 +23,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class ObservationXmiReader {
     private static final long MAX_XMI_BYTES = 32L * 1024L * 1024L;
@@ -58,11 +63,28 @@ public final class ObservationXmiReader {
         for (EObject unit : (EList<EObject>) value(root, "units")) {
             units.add(new SourceUnit(string(unit, "path"), string(unit, "sha256")));
         }
+        List<MemberObservation> members = new ArrayList<>();
+        for (EObject member : (EList<EObject>) value(root, "members")) {
+            Object observedIdentifier = value(member, "observedIdentifier");
+            members.add(new MemberObservation(
+                    string(member, "technicalKey"),
+                    observedIdentifier instanceof String text && !text.isBlank() ? text : null,
+                    MemberKind.valueOf(value(member, "kind").toString()),
+                    string(member, "memberName"),
+                    string(member, "sourcePath"),
+                    integer(member, "startLine"),
+                    integer(member, "endLine"),
+                    new ArrayList<>((EList<String>) value(member, "parameterTypes"))));
+        }
         List<ClassifierObservation> classifiers = new ArrayList<>();
         for (EObject classifier : (EList<EObject>) value(root, "classifiers")) {
             List<String> parentIds = new ArrayList<>();
             for (EObject parent : (EList<EObject>) value(classifier, "parents")) {
                 parentIds.add(string(parent, "id"));
+            }
+            List<String> declaredMemberKeys = new ArrayList<>();
+            for (EObject member : (EList<EObject>) value(classifier, "declaredMembers")) {
+                declaredMemberKeys.add(string(member, "technicalKey"));
             }
             classifiers.add(new ClassifierObservation(
                     string(classifier, "id"),
@@ -71,7 +93,8 @@ public final class ObservationXmiReader {
                     string(classifier, "sourcePath"),
                     integer(classifier, "startLine"),
                     integer(classifier, "endLine"),
-                    parentIds));
+                    parentIds,
+                    declaredMemberKeys));
         }
         List<UnresolvedParent> unresolved = new ArrayList<>();
         for (EObject item : (EList<EObject>) value(root, "unresolvedParents")) {
@@ -82,13 +105,19 @@ public final class ObservationXmiReader {
                     integer(item, "line")));
         }
         List<String> externalParents = new ArrayList<>((EList<String>) value(root, "externalParents"));
+        Set<EvidenceKind> completeEvidence = ((EList<Object>) value(root, "completeEvidence")).stream()
+                .map(Object::toString)
+                .map(EvidenceKind::valueOf)
+                .collect(Collectors.toUnmodifiableSet());
         return new Observation(
                 string(root, "schemaVersion"),
                 string(root, "adapterId"),
                 string(root, "adapterVersion"),
                 externalParents,
+                completeEvidence,
                 units,
                 classifiers,
+                members,
                 unresolved);
     }
 

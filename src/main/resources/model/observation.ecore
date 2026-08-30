@@ -4,7 +4,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="https://elfilaoussama.github.io/metamodel-conformance/observation/1"
+    nsURI="https://elfilaoussama.github.io/metamodel-conformance/observation/2"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
@@ -17,6 +17,15 @@
     <eLiterals name="ENUM" value="2"/>
     <eLiterals name="ANNOTATION" value="3"/>
   </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="MemberKind">
+    <eLiterals name="METHOD"/>
+    <eLiterals name="ATTRIBUTE" value="1"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="EvidenceKind">
+    <eLiterals name="HIERARCHY"/>
+    <eLiterals name="DECLARATION_OWNERSHIP" value="1"/>
+    <eLiterals name="LOCAL_SIGNATURES" value="2"/>
+  </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="ObservationSet">
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="schemaVersion" lowerBound="1"
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
@@ -26,10 +35,14 @@
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="externalParents" upperBound="-1"
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="completeEvidence" upperBound="-1"
+        eType="#//EvidenceKind"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="units" upperBound="-1"
         containment="true" eType="#//SourceUnit"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="classifiers" upperBound="-1"
         containment="true" eType="#//Classifier"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="members" upperBound="-1"
+        containment="true" eType="#//Member"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="unresolvedParents" upperBound="-1"
         containment="true" eType="#//UnresolvedParent"/>
   </eClassifiers>
@@ -56,6 +69,26 @@
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="parents" upperBound="-1"
         eType="#//Classifier"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="declaredMembers" upperBound="-1"
+        eType="#//Member"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Member">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="technicalKey" lowerBound="1" iD="true"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="observedIdentifier"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="kind" lowerBound="1"
+        eType="#//MemberKind"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="memberName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePath" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="startLine" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="endLine" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="parameterTypes" upperBound="-1" ordered="true"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="UnresolvedParent">
     <eStructuralFeatures xsi:type="ecore:EReference" name="owner" lowerBound="1"
