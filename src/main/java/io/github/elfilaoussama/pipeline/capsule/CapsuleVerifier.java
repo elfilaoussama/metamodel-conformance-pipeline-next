@@ -1,7 +1,6 @@
 package io.github.elfilaoussama.pipeline.capsule;
 
-import io.github.elfilaoussama.pipeline.alloy.O03AlloyRunner;
-import io.github.elfilaoussama.pipeline.decision.Decision;
+import io.github.elfilaoussama.pipeline.alloy.AlloyObligationRunner;
 import io.github.elfilaoussama.pipeline.emf.ObservationXmiReader;
 import io.github.elfilaoussama.pipeline.model.Observation;
 import io.github.elfilaoussama.pipeline.util.Hashing;
@@ -26,8 +25,8 @@ public final class CapsuleVerifier {
                 return invalid("capsule is not a regular file or exceeds the size limit");
             }
             VerificationCapsule capsule = CapsuleJson.MAPPER.readValue(capsuleFile.toFile(), VerificationCapsule.class);
-            if (!"1".equals(capsule.formatVersion()) || !"O-03".equals(capsule.constraint())) {
-                return invalid("unsupported capsule format or constraint");
+            if (!"2".equals(capsule.formatVersion()) || capsule.decisions().isEmpty()) {
+                return invalid("unsupported or empty capsule format");
             }
             Path root = capsuleFile.getParent().toRealPath(LinkOption.NOFOLLOW_LINKS);
             Path observationPath = resolveArtifact(root, capsule.observationPath());
@@ -52,12 +51,11 @@ public final class CapsuleVerifier {
                 return invalid("source-set digest mismatch");
             }
             String alloy = Files.readString(alloyPath, StandardCharsets.UTF_8);
-            Decision repeated = new O03AlloyRunner().evaluate(observation, alloy);
-            if (repeated.status() != capsule.decision()
-                    || !repeated.witnessClassifierIds().equals(capsule.witnessClassifierIds())) {
-                return invalid("repeated Alloy decision does not match capsule");
+            var repeated = new AlloyObligationRunner().evaluateAll(observation, alloy);
+            if (!repeated.equals(capsule.decisions())) {
+                return invalid("repeated Alloy decisions do not match capsule");
             }
-            return new CapsuleVerification(true, "Capsule artifacts and repeated O-03 decision are valid.");
+            return new CapsuleVerification(true, "Capsule artifacts and repeated Alloy decisions are valid.");
         } catch (Exception | LinkageError failure) {
             String message = failure.getMessage();
             return invalid(message == null ? failure.getClass().getSimpleName() : message);

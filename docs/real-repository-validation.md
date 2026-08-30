@@ -12,8 +12,8 @@ the JDK, Swing, and JGit rather than silently omitting those edges.
 The gate succeeds only when:
 
 1. source observation completes without unresolved parents;
-2. the official Alloy O-03 command returns `CONFORMANT`;
-3. a fresh capsule verification repeats the same decision; and
+2. the official Alloy O-02, O-03, and local O-08 commands return `CONFORMANT`;
+3. a fresh capsule verification repeats all three decisions; and
 4. every recorded artifact digest remains valid.
 
 The pinned commit makes the test reproducible. Updating the repository under

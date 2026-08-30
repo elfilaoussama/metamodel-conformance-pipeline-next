@@ -3,7 +3,7 @@ package io.github.elfilaoussama.pipeline;
 import io.github.elfilaoussama.pipeline.adapter.ObservationException;
 import io.github.elfilaoussama.pipeline.adapter.SourceObserver;
 import io.github.elfilaoussama.pipeline.alloy.ExactAlloyEncoder;
-import io.github.elfilaoussama.pipeline.alloy.O03AlloyRunner;
+import io.github.elfilaoussama.pipeline.alloy.AlloyObligationRunner;
 import io.github.elfilaoussama.pipeline.capsule.CapsuleWriter;
 import io.github.elfilaoussama.pipeline.capsule.VerificationCapsule;
 import io.github.elfilaoussama.pipeline.decision.Decision;
@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.List;
 
 public final class ConformancePipeline {
     private static final String OBSERVATION_FILE = "observation.xmi";
@@ -25,13 +26,13 @@ public final class ConformancePipeline {
 
     private final SourceObserver observer;
     private final ExactAlloyEncoder encoder;
-    private final O03AlloyRunner runner;
+    private final AlloyObligationRunner runner;
 
     public ConformancePipeline(SourceObserver observer) {
-        this(observer, new ExactAlloyEncoder(), new O03AlloyRunner());
+        this(observer, new ExactAlloyEncoder(), new AlloyObligationRunner());
     }
 
-    ConformancePipeline(SourceObserver observer, ExactAlloyEncoder encoder, O03AlloyRunner runner) {
+    ConformancePipeline(SourceObserver observer, ExactAlloyEncoder encoder, AlloyObligationRunner runner) {
         this.observer = observer;
         this.encoder = encoder;
         this.runner = runner;
@@ -49,9 +50,9 @@ public final class ConformancePipeline {
         Path alloyPath = output.resolve(ALLOY_FILE);
         AtomicFiles.writeUtf8(alloyPath, alloy);
 
-        Decision decision = runner.evaluate(observation, alloy);
+        List<Decision> decisions = runner.evaluateAll(observation, alloy);
         VerificationCapsule capsule = new VerificationCapsule(
-                "1",
+                "2",
                 PipelineVersion.TOOL_ID,
                 PipelineVersion.VERSION,
                 observation.schemaVersion(),
@@ -62,14 +63,10 @@ public final class ConformancePipeline {
                 Hashing.sha256(observationPath),
                 ALLOY_FILE,
                 Hashing.sha256(alloyPath),
-                decision.constraint(),
-                ExactAlloyEncoder.COMMAND,
-                decision.status(),
-                decision.message(),
-                decision.witnessClassifierIds());
+                decisions);
         Path capsulePath = output.resolve(CAPSULE_FILE);
         new CapsuleWriter().write(capsule, capsulePath);
-        return new PipelineResult(observation, decision, observationPath, alloyPath, capsulePath);
+        return new PipelineResult(observation, decisions, observationPath, alloyPath, capsulePath);
     }
 
     private static Path prepareOutputDirectory(Path outputDirectory) throws IOException {

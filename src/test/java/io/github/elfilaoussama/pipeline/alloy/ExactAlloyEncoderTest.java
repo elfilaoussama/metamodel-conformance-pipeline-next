@@ -13,8 +13,8 @@ class ExactAlloyEncoderTest {
         String alloy = new ExactAlloyEncoder().encode(TestObservations.acyclic());
 
         assertEquals(2, alloy.lines().filter(line -> line.startsWith("one sig C_")).count());
-        assertTrue(alloy.contains("parent = " + ExactAlloyEncoder.atom(TestObservations.B)
-                + "->" + ExactAlloyEncoder.atom(TestObservations.A)));
+        assertTrue(alloy.contains("parents = " + ExactAlloyEncoder.classifierAtom(TestObservations.B)
+                + "->" + ExactAlloyEncoder.classifierAtom(TestObservations.A)));
         assertTrue(alloy.contains("run O03Violation for exactly 2 Classifier"));
         assertFalse(alloy.contains("example.A"));
     }

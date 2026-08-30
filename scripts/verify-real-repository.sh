@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly REPOSITORY_URL="https://github.com/elfilaoussama/metamodel-conformance-pipeline.git"
 readonly REPOSITORY_COMMIT="25a80241f7514aa0a9e9a5ad2c5ec3fa90277527"
-readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.1.0-SNAPSHOT.jar"
+readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.2.0-SNAPSHOT.jar"
 
 integration_root="$(mktemp -d)"
 readonly integration_root
@@ -25,5 +25,11 @@ java -jar "${PIPELINE_JAR}" analyze \
 java -jar "${PIPELINE_JAR}" verify-capsule \
   --capsule "${integration_root}/result/verification-capsule.json"
 
-grep --quiet '"decision" : "CONFORMANT"' \
+grep --quiet '"status" : "CONFORMANT"' \
   "${integration_root}/result/verification-capsule.json"
+
+if grep --extended-regexp --quiet '"status" : "(NON_CONFORMANT|INDETERMINATE)"' \
+  "${integration_root}/result/verification-capsule.json"; then
+  echo "Real-repository capsule contains a non-conformant or indeterminate decision" >&2
+  exit 1
+fi

@@ -6,6 +6,8 @@ import io.github.elfilaoussama.pipeline.adapter.java.SpoonJavaObserver;
 import io.github.elfilaoussama.pipeline.capsule.CapsuleVerification;
 import io.github.elfilaoussama.pipeline.capsule.CapsuleVerifier;
 import io.github.elfilaoussama.pipeline.model.ClassifierObservation;
+import io.github.elfilaoussama.pipeline.model.MemberObservation;
+import io.github.elfilaoussama.pipeline.decision.DecisionStatus;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -58,28 +60,37 @@ public final class PipelineCli {
         Path output = Path.of(options.one("output"));
         PipelineResult result = new ConformancePipeline(new SpoonJavaObserver())
                 .analyze(source, output, new HashSet<>(options.many("external-parent")));
-        System.out.println(result.decision().status() + ": " + result.decision().message());
+        result.decisions().forEach(decision ->
+                System.out.println(decision.constraint() + " " + decision.status() + ": " + decision.message()));
         if (!result.observation().unresolvedParents().isEmpty()) {
             System.out.println("Unresolved parents:");
             result.observation().unresolvedParents().forEach(item -> System.out.println(
                     "  " + item.targetName() + " (" + item.sourcePath() + ":" + item.line() + ")"));
         }
-        if (!result.decision().witnessClassifierIds().isEmpty()) {
+        if (result.decisions().stream().anyMatch(item -> !item.witnessTechnicalKeys().isEmpty())) {
             Map<String, ClassifierObservation> byId = new HashMap<>();
             result.observation().classifiers().forEach(item -> byId.put(item.id(), item));
+            Map<String, MemberObservation> membersByKey = new HashMap<>();
+            result.observation().members().forEach(item -> membersByKey.put(item.technicalKey(), item));
             System.out.println("Witness:");
-            for (String id : result.decision().witnessClassifierIds()) {
-                ClassifierObservation item = byId.get(id);
-                System.out.println("  " + item.qualifiedName() + " (" + item.sourcePath()
-                        + ":" + item.startLine() + ")");
-            }
+            result.decisions().forEach(decision -> decision.witnessTechnicalKeys().forEach(key -> {
+                ClassifierObservation classifier = byId.get(key);
+                MemberObservation member = membersByKey.get(key);
+                if (classifier != null) {
+                    System.out.println("  " + decision.constraint() + ": " + classifier.qualifiedName()
+                            + " (" + classifier.sourcePath() + ":" + classifier.startLine() + ")");
+                } else if (member != null) {
+                    System.out.println("  " + decision.constraint() + ": " + member.memberName()
+                            + " (" + member.sourcePath() + ":" + member.startLine() + ")");
+                }
+            }));
         }
         System.out.println("Capsule: " + result.capsulePath());
-        return switch (result.decision().status()) {
-            case CONFORMANT -> 0;
-            case NON_CONFORMANT -> 2;
-            case INDETERMINATE -> 3;
-        };
+        if (result.decisions().stream().anyMatch(item -> item.status() == DecisionStatus.NON_CONFORMANT)) {
+            return 2;
+        }
+        return result.decisions().stream().anyMatch(item -> item.status() == DecisionStatus.INDETERMINATE)
+                ? 3 : 0;
     }
 
     private static int verifyCapsule(String[] args) {

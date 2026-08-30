@@ -1,6 +1,6 @@
 package io.github.elfilaoussama.pipeline.capsule;
 
-import io.github.elfilaoussama.pipeline.decision.DecisionStatus;
+import io.github.elfilaoussama.pipeline.decision.Decision;
 
 import java.util.List;
 
@@ -16,13 +16,9 @@ public record VerificationCapsule(
         String observationSha256,
         String alloyPath,
         String alloySha256,
-        String constraint,
-        String alloyCommand,
-        DecisionStatus decision,
-        String message,
-        List<String> witnessClassifierIds) {
+        List<Decision> decisions) {
 
     public VerificationCapsule {
-        witnessClassifierIds = witnessClassifierIds == null ? List.of() : List.copyOf(witnessClassifierIds);
+        decisions = decisions == null ? List.of() : List.copyOf(decisions);
     }
 }

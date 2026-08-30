@@ -27,6 +27,7 @@ class ConformancePipelineTest {
         PipelineResult second = pipeline.analyze(fixture("acyclic"), temporary.resolve("two"), Set.of());
 
         assertEquals(DecisionStatus.CONFORMANT, first.decision().status());
+        assertTrue(first.decisions().stream().allMatch(item -> item.status() == DecisionStatus.CONFORMANT));
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
         assertArrayEquals(Files.readAllBytes(first.capsulePath()), Files.readAllBytes(second.capsulePath()));
@@ -41,6 +42,10 @@ class ConformancePipelineTest {
 
         assertEquals(DecisionStatus.NON_CONFORMANT, cyclic.decision().status());
         assertEquals(DecisionStatus.INDETERMINATE, unresolved.decision().status());
+        assertEquals(DecisionStatus.CONFORMANT, unresolved.decisions().stream()
+                .filter(item -> "O-02".equals(item.constraint())).findFirst().orElseThrow().status());
+        assertEquals(DecisionStatus.CONFORMANT, unresolved.decisions().stream()
+                .filter(item -> "O-08-local".equals(item.constraint())).findFirst().orElseThrow().status());
     }
 
     @Test

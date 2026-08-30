@@ -23,9 +23,8 @@ class O03AlloyRunnerTest {
         Observation observation = TestObservations.cyclic();
         var decision = runner.evaluate(observation, encoder.encode(observation));
         assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
-        assertFalse(decision.witnessClassifierIds().isEmpty());
-        assertEquals(decision.witnessClassifierIds().get(0),
-                decision.witnessClassifierIds().get(decision.witnessClassifierIds().size() - 1));
+        assertFalse(decision.witnessTechnicalKeys().isEmpty());
+        assertEquals(2, decision.witnessTechnicalKeys().size());
     }
 
     @Test

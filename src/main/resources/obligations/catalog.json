@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1",
+  "obligations": [
+    {
+      "id": "O-02",
+      "title": "Exclusive declaration ownership",
+      "command": "O02Violation",
+      "witnessFunction": "O02Violations",
+      "requiredEvidence": ["DECLARATION_OWNERSHIP"],
+      "conformanceMessage": "Every observed member has exactly one declaring classifier.",
+      "violationMessage": "At least one observed member has zero or multiple declaring classifiers."
+    },
+    {
+      "id": "O-03",
+      "title": "Acyclic generalization",
+      "command": "O03Violation",
+      "witnessFunction": "O03Violations",
+      "requiredEvidence": ["HIERARCHY"],
+      "conformanceMessage": "No inheritance cycle exists in the exact observed graph.",
+      "violationMessage": "An inheritance cycle exists in the exact observed graph."
+    },
+    {
+      "id": "O-08-local",
+      "title": "Local namespace uniqueness",
+      "command": "O08LocalViolation",
+      "witnessFunction": "O08LocalViolations",
+      "requiredEvidence": ["DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES"],
+      "conformanceMessage": "Local method keys and attribute names are unique within each classifier.",
+      "violationMessage": "At least one classifier contains a duplicate method key or attribute name."
+    }
+  ]
+}
