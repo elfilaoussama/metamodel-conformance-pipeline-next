@@ -37,7 +37,7 @@ public final class ExactAlloyEncoder {
                 .append("abstract sig Member {\n")
                 .append("  kind: one MemberKind,\n")
                 .append("  memberName: one NameToken,\n")
-                .append("  parameterTypes: seq TypeToken\n")
+                .append("  parameterTypes: Int -> lone TypeToken\n")
                 .append("}\n\n");
 
         observation.classifiers().forEach(item -> alloy.append("one sig ")
@@ -59,6 +59,7 @@ public final class ExactAlloyEncoder {
         alloy.append(loadRules()).append('\n');
 
         String scope = scope(observation, nameAtoms.size(), typeAtoms.size());
+        alloy.append("run ObservationConsistency ").append(scope).append('\n');
         for (ObligationDefinition definition : ObligationCatalog.load().all()) {
             alloy.append("run ").append(definition.command()).append(' ').append(scope).append('\n');
         }

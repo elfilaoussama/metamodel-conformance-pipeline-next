@@ -1,3 +1,5 @@
+pred ObservationConsistency {}
+
 fun O02Violations : set Member {
   { m : Member | not one c : Classifier | m in c.declaredMembers }
 }

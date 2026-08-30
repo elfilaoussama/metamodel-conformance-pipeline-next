@@ -35,6 +35,19 @@ public final class AlloyObligationRunner {
                     definition, "Alloy model parsing failed: " + safeMessage(failure))).toList();
         }
 
+        try {
+            Command consistencyCommand = findCommand(module, "ObservationConsistency");
+            A4Solution consistency = TranslateAlloyToKodkod.execute_command(
+                    new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
+            if (!consistency.satisfiable()) {
+                return catalog.all().stream().map(definition -> indeterminate(
+                        definition, "The exact Alloy observation is inconsistent.")).toList();
+            }
+        } catch (Exception | LinkageError failure) {
+            return catalog.all().stream().map(definition -> indeterminate(
+                    definition, "Alloy consistency evaluation failed: " + safeMessage(failure))).toList();
+        }
+
         Map<String, String> atomKeys = new ExactAlloyEncoder().atomTechnicalKeys(observation);
         List<Decision> decisions = new ArrayList<>();
         for (ObligationDefinition definition : catalog.all()) {
@@ -54,11 +67,7 @@ public final class AlloyObligationRunner {
     private static Decision evaluate(
             CompModule module, ObligationDefinition definition, Map<String, String> atomKeys) {
         try {
-            Command command = module.getAllCommands().stream()
-                    .filter(item -> definition.command().equals(item.label))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "generated Alloy model has no " + definition.command() + " command"));
+            Command command = findCommand(module, definition.command());
             A4Solution solution = TranslateAlloyToKodkod.execute_command(
                     new A4Reporter(), module.getAllReachableSigs(), command, new A4Options());
             if (!solution.satisfiable()) {
@@ -97,6 +106,14 @@ public final class AlloyObligationRunner {
         } catch (Exception | LinkageError failure) {
             return indeterminate(definition, "Alloy evaluation failed: " + safeMessage(failure));
         }
+    }
+
+    private static Command findCommand(CompModule module, String commandName) {
+        return module.getAllCommands().stream()
+                .filter(command -> commandName.equals(command.label))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "generated Alloy model has no " + commandName + " command"));
     }
 
     private static Func findFunction(CompModule module, String functionName) {

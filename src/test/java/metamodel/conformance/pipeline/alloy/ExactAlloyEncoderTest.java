@@ -15,6 +15,8 @@ class ExactAlloyEncoderTest {
         assertEquals(2, alloy.lines().filter(line -> line.startsWith("one sig C_")).count());
         assertTrue(alloy.contains("parents = " + ExactAlloyEncoder.classifierAtom(TestObservations.B)
                 + "->" + ExactAlloyEncoder.classifierAtom(TestObservations.A)));
+        assertTrue(alloy.contains("parameterTypes: Int -> lone TypeToken"));
+        assertTrue(alloy.contains("run ObservationConsistency for exactly 2 Classifier"));
         assertTrue(alloy.contains("run O03Violation for exactly 2 Classifier"));
         assertFalse(alloy.contains("example.A"));
     }

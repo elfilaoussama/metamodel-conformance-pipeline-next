@@ -98,6 +98,18 @@ class AlloyObligationRunnerTest {
         assertFalse(decision(decisions, "O-08-local").message().isBlank());
     }
 
+    @Test
+    void inconsistentExactObservationCannotProduceConformance() {
+        Observation observation = TestObservations.membersConformant();
+        String inconsistentModel = encoder.encode(observation)
+                .replaceFirst("(?m)^  kind = .*$", "  no kind");
+
+        List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
+
+        assertEquals(3, decisions.size());
+        decisions.forEach(decision -> assertEquals(DecisionStatus.INDETERMINATE, decision.status()));
+    }
+
     private static Decision decision(List<Decision> decisions, String id) {
         return decisions.stream().filter(item -> id.equals(item.constraint())).findFirst().orElseThrow();
     }

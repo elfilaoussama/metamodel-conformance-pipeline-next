@@ -45,7 +45,9 @@ The same input and tool version produce byte-identical `observation.xmi`, Alloy
 model, and capsule. Wall-clock timestamps are intentionally excluded. Obligation
 metadata comes from one catalog and all formal semantics come from one Alloy
 resource; Java only checks declared evidence prerequisites and maps Alloy witness
-atoms back to source locations.
+atoms back to source locations. Before evaluating any obligation, the runner also
+proves that the exact encoded observation is satisfiable; an inconsistent encoding
+is `INDETERMINATE`, never `CONFORMANT`.
 
 ## Scope
 
