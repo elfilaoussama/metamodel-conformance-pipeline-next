@@ -35,11 +35,12 @@ public final class AlloyObligationRunner {
                     definition, "Alloy model parsing failed: " + safeMessage(failure))).toList();
         }
 
+        A4Solution exactSolution;
         try {
             Command consistencyCommand = findCommand(module, "ObservationConsistency");
-            A4Solution consistency = TranslateAlloyToKodkod.execute_command(
+            exactSolution = TranslateAlloyToKodkod.execute_command(
                     new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
-            if (!consistency.satisfiable()) {
+            if (!exactSolution.satisfiable()) {
                 return catalog.all().stream().map(definition -> indeterminate(
                         definition, "The exact Alloy observation is inconsistent.")).toList();
             }
@@ -59,26 +60,19 @@ public final class AlloyObligationRunner {
                 decisions.add(indeterminate(definition, "Required evidence is incomplete: " + names));
                 continue;
             }
-            decisions.add(evaluate(module, definition, atomKeys));
+            decisions.add(evaluate(exactSolution, module, definition, atomKeys));
         }
         return List.copyOf(decisions);
     }
 
     private static Decision evaluate(
-            CompModule module, ObligationDefinition definition, Map<String, String> atomKeys) {
+            A4Solution exactSolution,
+            CompModule module,
+            ObligationDefinition definition,
+            Map<String, String> atomKeys) {
         try {
-            Command command = findCommand(module, definition.command());
-            A4Solution solution = TranslateAlloyToKodkod.execute_command(
-                    new A4Reporter(), module.getAllReachableSigs(), command, new A4Options());
-            if (!solution.satisfiable()) {
-                return new Decision(
-                        DecisionStatus.CONFORMANT,
-                        definition.id(),
-                        definition.conformanceMessage(),
-                        List.of());
-            }
             Func witnessFunction = findFunction(module, definition.witnessFunction());
-            Object evaluated = solution.eval(witnessFunction.call());
+            Object evaluated = exactSolution.eval(witnessFunction.call());
             if (!(evaluated instanceof A4TupleSet tuples)) {
                 throw new IllegalStateException("witness function did not return a relation");
             }
@@ -96,7 +90,11 @@ public final class AlloyObligationRunner {
             }
             witnesses = witnesses.stream().distinct().sorted(Comparator.naturalOrder()).toList();
             if (witnesses.isEmpty()) {
-                throw new IllegalStateException("satisfiable violation command returned no witness atoms");
+                return new Decision(
+                        DecisionStatus.CONFORMANT,
+                        definition.id(),
+                        definition.conformanceMessage(),
+                        List.of());
             }
             return new Decision(
                     DecisionStatus.NON_CONFORMANT,

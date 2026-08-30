@@ -44,10 +44,11 @@ java -jar target/metamodel-conformance-pipeline-next-0.2.0-SNAPSHOT.jar \
 The same input and tool version produce byte-identical `observation.xmi`, Alloy
 model, and capsule. Wall-clock timestamps are intentionally excluded. Obligation
 metadata comes from one catalog and all formal semantics come from one Alloy
-resource; Java only checks declared evidence prerequisites and maps Alloy witness
-atoms back to source locations. Before evaluating any obligation, the runner also
-proves that the exact encoded observation is satisfiable; an inconsistent encoding
-is `INDETERMINATE`, never `CONFORMANT`.
+resource. The runner solves the exact observation once, checks that it is
+satisfiable, and evaluates every Alloy-defined witness function on that same exact
+solution. Java only checks declared evidence prerequisites and maps Alloy witness
+atoms back to source locations. An inconsistent encoding is `INDETERMINATE`, never
+`CONFORMANT`.
 
 ## Scope
 
