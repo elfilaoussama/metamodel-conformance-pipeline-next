@@ -31,6 +31,14 @@ class SpoonJavaObserverTest {
         assertEquals("example.MissingParent", observation.unresolvedParents().get(0).targetName());
     }
 
+    @Test
+    void treatsLanguageDefinedRootsAsResolvedPlatformEvidence() throws Exception {
+        Observation observation = observer.observe(fixture("platform-roots"), Set.of());
+
+        assertEquals(3, observation.classifiers().size());
+        assertTrue(observation.unresolvedParents().isEmpty());
+    }
+
     private static Path fixture(String name) throws URISyntaxException {
         return Path.of(SpoonJavaObserverTest.class.getResource("/fixtures/" + name).toURI());
     }

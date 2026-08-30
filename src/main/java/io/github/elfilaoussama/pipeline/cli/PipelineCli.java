@@ -59,6 +59,11 @@ public final class PipelineCli {
         PipelineResult result = new ConformancePipeline(new SpoonJavaObserver())
                 .analyze(source, output, new HashSet<>(options.many("external-parent")));
         System.out.println(result.decision().status() + ": " + result.decision().message());
+        if (!result.observation().unresolvedParents().isEmpty()) {
+            System.out.println("Unresolved parents:");
+            result.observation().unresolvedParents().forEach(item -> System.out.println(
+                    "  " + item.targetName() + " (" + item.sourcePath() + ":" + item.line() + ")"));
+        }
         if (!result.decision().witnessClassifierIds().isEmpty()) {
             Map<String, ClassifierObservation> byId = new HashMap<>();
             result.observation().classifiers().forEach(item -> byId.put(item.id(), item));

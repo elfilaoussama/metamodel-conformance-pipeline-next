@@ -34,7 +34,11 @@ import java.util.stream.Stream;
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
     public static final String ADAPTER_VERSION = "0.1.0";
-    private static final Set<String> PLATFORM_ROOTS = Set.of("java.lang.Object");
+    private static final Set<String> PLATFORM_ROOTS = Set.of(
+            "java.lang.Object",
+            "java.lang.Record",
+            "java.lang.Enum",
+            "java.lang.annotation.Annotation");
 
     @Override
     public Observation observe(Path sourceRoot, Set<String> externalParents) throws ObservationException {
