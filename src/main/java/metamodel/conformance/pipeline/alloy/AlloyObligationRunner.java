@@ -68,12 +68,7 @@ public final class AlloyObligationRunner {
                         definition.conformanceMessage(),
                         List.of());
             }
-            Func witnessFunction = module.getAllFunc().stream()
-                    .filter(function -> function.label.equals(definition.witnessFunction())
-                            || function.label.endsWith("/" + definition.witnessFunction()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "generated Alloy model has no " + definition.witnessFunction() + " function"));
+            Func witnessFunction = findFunction(module, definition.witnessFunction());
             Object evaluated = solution.eval(witnessFunction.call());
             if (!(evaluated instanceof A4TupleSet tuples)) {
                 throw new IllegalStateException("witness function did not return a relation");
@@ -102,6 +97,15 @@ public final class AlloyObligationRunner {
         } catch (Exception | LinkageError failure) {
             return indeterminate(definition, "Alloy evaluation failed: " + safeMessage(failure));
         }
+    }
+
+    private static Func findFunction(CompModule module, String functionName) {
+        for (Func function : module.getAllFunc()) {
+            if (function.label.equals(functionName) || function.label.endsWith("/" + functionName)) {
+                return function;
+            }
+        }
+        throw new IllegalArgumentException("generated Alloy model has no " + functionName + " function");
     }
 
     private static String normalizeAtom(String label) {
