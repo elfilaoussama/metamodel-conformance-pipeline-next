@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.github.elfilaoussama</groupId>
+  <groupId>metamodel.conformance</groupId>
   <artifactId>metamodel-conformance-pipeline-next</artifactId>
   <version>0.2.0-SNAPSHOT</version>
   <name>Metamodel Conformance Pipeline Next</name>
@@ -89,7 +89,7 @@
               </filters>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>io.github.elfilaoussama.pipeline.cli.PipelineCli</mainClass>
+                  <mainClass>metamodel.conformance.pipeline.cli.PipelineCli</mainClass>
                 </transformer>
               </transformers>
             </configuration>
