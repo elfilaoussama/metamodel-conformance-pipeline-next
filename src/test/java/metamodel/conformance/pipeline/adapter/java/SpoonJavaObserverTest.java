@@ -60,6 +60,8 @@ class SpoonJavaObserverTest {
                 EvidenceKind.INHERITABILITY, EvidenceKind.INHERITED_MEMBERS)));
         assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("work")
                 && member.sourcePath().endsWith("Middle.java")));
+        assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("work")
+                && member.sourcePath().endsWith("Base.java")));
         assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("baseOnly")));
         assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("value")));
         assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("hidden")));

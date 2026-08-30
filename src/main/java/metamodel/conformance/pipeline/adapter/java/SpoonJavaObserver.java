@@ -135,6 +135,9 @@ public final class SpoonJavaObserver implements SourceObserver {
                 memberKeysByOwner.put(draft.type().getQualifiedName(), memberKeys);
             }
 
+            Map<String, MemberObservation> membersByKey = members.stream()
+                    .collect(java.util.stream.Collectors.toUnmodifiableMap(
+                            MemberObservation::technicalKey, member -> member));
             Map<String, List<String>> inheritedMemberKeysByOwner = new HashMap<>();
             boolean inheritedMembersComplete = true;
             for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
@@ -152,7 +155,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         String key = declarationKey(declaringType.getQualifiedName(), MemberKind.METHOD,
                                 method.getSimpleName(), parameterTypes);
                         inheritedMembersComplete &= addResolvedMember(
-                                inheritedKeys, memberKeysByDeclaration.get(key));
+                                inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
                     }
                     for (CtFieldReference<?> field : draft.type().getAllFields()) {
                         CtTypeReference<?> declaringType = field.getDeclaringType();
@@ -164,7 +167,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         String key = declarationKey(declaringType.getQualifiedName(), MemberKind.ATTRIBUTE,
                                 field.getSimpleName(), List.of());
                         inheritedMembersComplete &= addResolvedMember(
-                                inheritedKeys, memberKeysByDeclaration.get(key));
+                                inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
                     }
                 } catch (RuntimeException | StackOverflowError failure) {
                     inheritedMembersComplete = false;
@@ -325,11 +328,20 @@ public final class SpoonJavaObserver implements SourceObserver {
                 + String.join("\0", parameterTypes);
     }
 
-    private static boolean addResolvedMember(Set<String> inheritedKeys, List<String> candidates) {
+    private static boolean addResolvedMember(
+            Set<String> inheritedKeys,
+            List<String> candidates,
+            Map<String, MemberObservation> membersByKey) {
         if (candidates == null || candidates.size() != 1) {
             return false;
         }
-        inheritedKeys.add(candidates.get(0));
+        MemberObservation declaration = membersByKey.get(candidates.get(0));
+        if (declaration == null) {
+            return false;
+        }
+        if (declaration.inheritability() == Inheritability.INHERITABLE) {
+            inheritedKeys.add(declaration.technicalKey());
+        }
         return true;
     }
 
