@@ -9,6 +9,10 @@ public record SourceUnit(Language language, String path, String sha256) {
         sha256 = requireText(sha256, "sha256");
     }
 
+    public SourceUnit(String path, String sha256) {
+        this(Language.JAVA, path, sha256);
+    }
+
     private static String requireText(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must not be blank");
