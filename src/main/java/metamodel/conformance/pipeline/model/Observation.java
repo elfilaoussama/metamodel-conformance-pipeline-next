@@ -246,11 +246,12 @@ public record Observation(
     private static void validateUnresolvedProjection(
             List<UnresolvedParent> unresolvedParents,
             List<GeneralizationObservation> generalizations) {
-        Set<String> legacy = unresolvedParents.stream().map(Observation::unresolvedKey).collect(Collectors.toSet());
-        Set<String> projected = generalizations.stream()
+        Map<String, Long> legacy = unresolvedParents.stream()
+                .collect(Collectors.groupingBy(Observation::unresolvedKey, Collectors.counting()));
+        Map<String, Long> projected = generalizations.stream()
                 .filter(item -> item.resolutionStatus() == GeneralizationResolutionStatus.UNRESOLVED)
                 .map(item -> unresolvedKey(item.childId(), item.targetName(), item.sourcePath(), item.line()))
-                .collect(Collectors.toSet());
+                .collect(Collectors.groupingBy(value -> value, Collectors.counting()));
         if (!legacy.equals(projected)) {
             throw new IllegalArgumentException("unresolved generalization view differs from legacy unresolved-parent view");
         }
