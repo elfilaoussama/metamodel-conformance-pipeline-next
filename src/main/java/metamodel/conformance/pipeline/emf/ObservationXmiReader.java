@@ -6,6 +6,7 @@ import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.GeneralizationKind;
 import metamodel.conformance.pipeline.model.GeneralizationObservation;
+import metamodel.conformance.pipeline.model.GeneralizationResolutionStatus;
 import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
@@ -113,11 +114,14 @@ public final class ObservationXmiReader {
         }
         List<GeneralizationObservation> generalizations = new ArrayList<>();
         for (EObject edge : (EList<EObject>) value(root, "generalizations")) {
+            EObject parent = (EObject) value(edge, "parent");
             generalizations.add(new GeneralizationObservation(
                     string((EObject) value(edge, "child"), "id"),
-                    string((EObject) value(edge, "parent"), "id"),
+                    parent == null ? null : string(parent, "id"),
+                    string(edge, "targetName"),
                     GeneralizationKind.valueOf(value(edge, "kind").toString()),
                     integer(edge, "declaredOrder"),
+                    GeneralizationResolutionStatus.valueOf(value(edge, "resolutionStatus").toString()),
                     string(edge, "sourcePath"),
                     integer(edge, "line")));
         }
