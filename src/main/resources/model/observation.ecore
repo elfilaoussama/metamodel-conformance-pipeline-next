@@ -27,6 +27,11 @@
     <eLiterals name="BASE" value="2"/>
     <eLiterals name="OTHER" value="3"/>
   </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="GeneralizationResolutionStatus">
+    <eLiterals name="RESOLVED_INTERNAL"/>
+    <eLiterals name="EXTERNAL_BOUNDARY" value="1"/>
+    <eLiterals name="UNRESOLVED" value="2"/>
+  </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="EvidenceKind">
     <eLiterals name="HIERARCHY"/>
     <eLiterals name="DECLARATION_OWNERSHIP" value="1"/>
@@ -97,12 +102,16 @@
   <eClassifiers xsi:type="ecore:EClass" name="Generalization">
     <eStructuralFeatures xsi:type="ecore:EReference" name="child" lowerBound="1"
         eType="#//Classifier"/>
-    <eStructuralFeatures xsi:type="ecore:EReference" name="parent" lowerBound="1"
+    <eStructuralFeatures xsi:type="ecore:EReference" name="parent"
         eType="#//Classifier"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="targetName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="kind" lowerBound="1"
         eType="#//GeneralizationKind"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="declaredOrder" lowerBound="1"
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="resolutionStatus" lowerBound="1"
+        eType="#//GeneralizationResolutionStatus"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePath" lowerBound="1"
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="line" lowerBound="1"
