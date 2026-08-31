@@ -21,9 +21,7 @@ public final class ExactAlloyEncoder {
     public String encode(Observation observation) {
         Map<String, String> nameAtoms = tokens(observation.members().stream()
                 .map(MemberObservation::memberName).toList(), "N_");
-        Map<String, String> typeAtoms = tokens(observation.members().stream()
-                .flatMap(member -> member.parameterTypes().stream()).toList(), "T_");
-        Map<List<String>, String> sequenceAtoms = parameterSequences(observation);
+        Map<List<String>, String> signatureAtoms = signatureTokens(observation);
 
         StringBuilder alloy = new StringBuilder();
         alloy.append("module repository_instance\n\n");
@@ -37,16 +35,12 @@ public final class ExactAlloyEncoder {
                 .append("abstract sig Inheritability {}\n")
                 .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
                 .append("abstract sig NameToken {}\n")
-                .append("abstract sig TypeToken {}\n")
-                .append("abstract sig ParameterSequence {\n")
-                .append("  firstType: one TypeToken,\n")
-                .append("  remainingTypes: lone ParameterSequence\n")
-                .append("}\n")
+                .append("abstract sig SignatureToken {}\n")
                 .append("abstract sig Member {\n")
                 .append("  kind: one MemberKind,\n")
                 .append("  inheritability: one Inheritability,\n")
                 .append("  memberName: one NameToken,\n")
-                .append("  parameterSignature: lone ParameterSequence\n")
+                .append("  parameterSignature: one SignatureToken\n")
                 .append("}\n\n");
 
         observation.classifiers().forEach(item -> alloy.append("one sig ")
@@ -55,10 +49,8 @@ public final class ExactAlloyEncoder {
                 .append(memberAtom(item.technicalKey())).append(" extends Member {}\n"));
         nameAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
                 .append(" extends NameToken {}\n"));
-        typeAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
-                .append(" extends TypeToken {}\n"));
-        sequenceAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
-                .append(" extends ParameterSequence {}\n"));
+        signatureAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
+                .append(" extends SignatureToken {}\n"));
 
         alloy.append("\nfact ExactObservation {\n");
         relation(alloy, "parents", parentEdges(observation));
@@ -67,13 +59,11 @@ public final class ExactAlloyEncoder {
         relation(alloy, "kind", kindEdges(observation));
         relation(alloy, "inheritability", inheritabilityEdges(observation));
         relation(alloy, "memberName", nameEdges(observation, nameAtoms));
-        relation(alloy, "parameterSignature", parameterSignatureEdges(observation, sequenceAtoms));
-        relation(alloy, "firstType", firstTypeEdges(sequenceAtoms, typeAtoms));
-        relation(alloy, "remainingTypes", remainingTypeEdges(sequenceAtoms));
+        relation(alloy, "parameterSignature", parameterSignatureEdges(observation, signatureAtoms));
         alloy.append("}\n\n");
         alloy.append(loadRules()).append('\n');
 
-        String scope = scope(observation, nameAtoms.size(), typeAtoms.size(), sequenceAtoms.size());
+        String scope = scope(observation, nameAtoms.size(), signatureAtoms.size());
         alloy.append("run ObservationConsistency ").append(scope).append('\n');
         return alloy.toString();
     }
@@ -99,35 +89,28 @@ public final class ExactAlloyEncoder {
         return "M_" + technicalKey.substring(4);
     }
 
-    static String sequenceAtom(List<String> parameterTypes) {
-        if (parameterTypes == null || parameterTypes.isEmpty()) {
-            throw new IllegalArgumentException("parameter sequence must not be empty");
-        }
-        return "S_" + Hashing.sha256(sequenceKey(parameterTypes));
-    }
-
     private static Map<String, String> tokens(List<String> values, String prefix) {
         Map<String, String> result = new LinkedHashMap<>();
         values.stream().distinct().sorted().forEach(value -> result.put(value, prefix + Hashing.sha256(value)));
         return result;
     }
 
-    private static Map<List<String>, String> parameterSequences(Observation observation) {
-        List<List<String>> suffixes = new ArrayList<>();
-        for (MemberObservation member : observation.members()) {
-            for (int index = 0; index < member.parameterTypes().size(); index++) {
-                suffixes.add(List.copyOf(member.parameterTypes().subList(
-                        index, member.parameterTypes().size())));
-            }
-        }
+    private static Map<List<String>, String> signatureTokens(Observation observation) {
         Map<List<String>, String> result = new LinkedHashMap<>();
-        suffixes.stream().distinct().sorted(Comparator.comparing(ExactAlloyEncoder::sequenceKey))
-                .forEach(sequence -> result.put(sequence, sequenceAtom(sequence)));
+        List<List<String>> signatures = observation.members().stream()
+                .map(MemberObservation::parameterTypes)
+                .distinct()
+                .sorted(Comparator.comparing(ExactAlloyEncoder::signatureKey))
+                .toList();
+        for (int index = 0; index < signatures.size(); index++) {
+            result.put(signatures.get(index), "S_" + index);
+        }
         return result;
     }
 
-    private static String sequenceKey(List<String> parameterTypes) {
+    private static String signatureKey(List<String> parameterTypes) {
         StringBuilder key = new StringBuilder();
+        key.append(parameterTypes.size()).append('|');
         for (String type : parameterTypes) {
             key.append(type.length()).append(':').append(type);
         }
@@ -178,34 +161,11 @@ public final class ExactAlloyEncoder {
 
     private static List<String> parameterSignatureEdges(
             Observation observation,
-            Map<List<String>, String> sequenceAtoms) {
+            Map<List<String>, String> signatureAtoms) {
         List<String> edges = new ArrayList<>();
         for (MemberObservation member : observation.members()) {
-            if (!member.parameterTypes().isEmpty()) {
-                edges.add(memberAtom(member.technicalKey()) + "->"
-                        + sequenceAtoms.get(member.parameterTypes()));
-            }
-        }
-        return edges;
-    }
-
-    private static List<String> firstTypeEdges(
-            Map<List<String>, String> sequenceAtoms,
-            Map<String, String> typeAtoms) {
-        List<String> edges = new ArrayList<>();
-        for (Map.Entry<List<String>, String> entry : sequenceAtoms.entrySet()) {
-            edges.add(entry.getValue() + "->" + typeAtoms.get(entry.getKey().get(0)));
-        }
-        return edges;
-    }
-
-    private static List<String> remainingTypeEdges(Map<List<String>, String> sequenceAtoms) {
-        List<String> edges = new ArrayList<>();
-        for (Map.Entry<List<String>, String> entry : sequenceAtoms.entrySet()) {
-            if (entry.getKey().size() > 1) {
-                List<String> tail = List.copyOf(entry.getKey().subList(1, entry.getKey().size()));
-                edges.add(entry.getValue() + "->" + sequenceAtoms.get(tail));
-            }
+            edges.add(memberAtom(member.technicalKey()) + "->"
+                    + signatureAtoms.get(member.parameterTypes()));
         }
         return edges;
     }
@@ -230,12 +190,10 @@ public final class ExactAlloyEncoder {
     private static String scope(
             Observation observation,
             int nameCount,
-            int typeCount,
-            int sequenceCount) {
+            int signatureCount) {
         return "for exactly " + observation.classifiers().size() + " Classifier, exactly "
                 + observation.members().size() + " Member, exactly " + nameCount
-                + " NameToken, exactly " + typeCount + " TypeToken, exactly " + sequenceCount
-                + " ParameterSequence";
+                + " NameToken, exactly " + signatureCount + " SignatureToken";
     }
 
     private static String loadRules() {

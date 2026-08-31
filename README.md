@@ -72,6 +72,13 @@ its evidence, evaluates its Alloy function, maps its tuples to provenance, and
 records the result. Java changes are needed only when a genuinely new kind of
 source evidence must be observed—not when an invariant formula changes.
 
+The canonical EMF model retains complete ordered parameter-type lists. The
+current Alloy profile maps each distinct complete list to an injective compact
+token because the active namespace invariant only compares whole signatures.
+Future invariants that inspect individual parameter positions must declare and
+add that richer Alloy projection; without it they are `NOT_EVALUATED` rather
+than evaluated from invented evidence.
+
 ## Scope
 
 The current adapter accepts a closed Java source root. Parent types declared

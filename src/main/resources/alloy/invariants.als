@@ -1,12 +1,5 @@
 pred ObservationConsistency {}
 
-fact CanonicalParameterSequences {
-  no sequence : ParameterSequence | sequence in sequence.^remainingTypes
-  all disj left, right : ParameterSequence |
-    left.firstType != right.firstType or
-    left.remainingTypes != right.remainingTypes
-}
-
 fun ExclusiveDeclarationOwnershipViolations : set Member {
   { m : Member | not one c : Classifier | m in c.declaredMembers }
 }

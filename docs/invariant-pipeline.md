@@ -41,3 +41,19 @@ invariant. A non-empty Alloy witness relation produces `NON_CONFORMANT`; an empt
 relation over a satisfiable exact observation produces `CONFORMANT`. Parsing,
 encoding, solving, witness-arity, or provenance failures can never produce
 `CONFORMANT`.
+
+## Evidence projections
+
+The canonical EMF observation is the durable evidence boundary. It preserves
+complete ordered method-parameter type lists. The active Alloy profile projects
+each distinct complete list to one deterministic `SignatureToken`, because the
+current namespace invariant needs equality of whole signatures, not access to
+individual positions. This projection is injective within the exact observation:
+different ordered lists receive different atoms, including lists containing the
+same types in a different order.
+
+An invariant that inspects parameter positions or individual types must declare
+that richer evidence/projection in its registry contract. The encoder may then
+add the required Alloy relation without changing existing invariant-control flow.
+Until that projection is available, the invariant is `NOT_EVALUATED`; the
+pipeline must never infer element-level evidence from the compact token.
