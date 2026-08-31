@@ -116,12 +116,18 @@ public final class ObservationXmiWriter {
 
         EList<EObject> generalizations = (EList<EObject>) root.eGet(feature(root, "generalizations"));
         EEnum generalizationKind = (EEnum) ePackage.getEClassifier("GeneralizationKind");
+        EEnum resolutionStatus = (EEnum) ePackage.getEClassifier("GeneralizationResolutionStatus");
         for (GeneralizationObservation source : observation.generalizations()) {
             EObject edge = ePackage.getEFactoryInstance().create(schema.classifier("Generalization"));
             set(edge, "child", classifiersById.get(source.childId()));
-            set(edge, "parent", classifiersById.get(source.parentId()));
+            if (source.isResolvedInternal()) {
+                set(edge, "parent", classifiersById.get(source.parentId()));
+            }
+            set(edge, "targetName", source.targetName());
             set(edge, "kind", generalizationKind.getEEnumLiteral(source.kind().name()).getInstance());
             set(edge, "declaredOrder", source.declaredOrder());
+            set(edge, "resolutionStatus",
+                    resolutionStatus.getEEnumLiteral(source.resolutionStatus().name()).getInstance());
             set(edge, "sourcePath", source.sourcePath());
             set(edge, "line", source.line());
             generalizations.add(edge);
