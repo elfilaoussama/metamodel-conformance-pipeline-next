@@ -4,7 +4,6 @@ import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
-import metamodel.conformance.pipeline.util.Hashing;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,10 +18,6 @@ public final class ExactAlloyEncoder {
     private static final int RELATION_CHUNK_SIZE = 64;
 
     public String encode(Observation observation) {
-        Map<String, String> nameAtoms = tokens(observation.members().stream()
-                .map(MemberObservation::memberName).toList(), "N_");
-        Map<List<String>, String> signatureAtoms = signatureTokens(observation);
-
         StringBuilder alloy = new StringBuilder();
         alloy.append("module repository_instance\n\n");
         alloy.append("abstract sig Classifier {\n")
@@ -30,40 +25,26 @@ public final class ExactAlloyEncoder {
                 .append("  declaredMembers: set Member,\n")
                 .append("  observedInheritedMembers: set Member\n")
                 .append("}\n");
-        alloy.append("abstract sig MemberKind {}\n")
-                .append("one sig METHOD, ATTRIBUTE extends MemberKind {}\n")
-                .append("abstract sig Inheritability {}\n")
-                .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
-                .append("abstract sig NameToken {}\n")
-                .append("abstract sig SignatureToken {}\n")
-                .append("abstract sig Member {\n")
-                .append("  kind: one MemberKind,\n")
-                .append("  inheritability: one Inheritability,\n")
-                .append("  memberName: one NameToken,\n")
-                .append("  parameterSignature: one SignatureToken\n")
-                .append("}\n\n");
+        alloy.append("abstract sig Member {\n")
+                .append("  namespaceKeyRepresentative: one Member\n")
+                .append("}\n")
+                .append("sig InheritableMember in Member {}\n\n");
 
         observation.classifiers().forEach(item -> alloy.append("one sig ")
                 .append(classifierAtom(item.id())).append(" extends Classifier {}\n"));
         observation.members().forEach(item -> alloy.append("one sig ")
                 .append(memberAtom(item.technicalKey())).append(" extends Member {}\n"));
-        nameAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
-                .append(" extends NameToken {}\n"));
-        signatureAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
-                .append(" extends SignatureToken {}\n"));
 
         alloy.append("\nfact ExactObservation {\n");
         relation(alloy, "parents", parentEdges(observation));
         relation(alloy, "declaredMembers", declarationEdges(observation));
         relation(alloy, "observedInheritedMembers", inheritedMembershipEdges(observation));
-        relation(alloy, "kind", kindEdges(observation));
-        relation(alloy, "inheritability", inheritabilityEdges(observation));
-        relation(alloy, "memberName", nameEdges(observation, nameAtoms));
-        relation(alloy, "parameterSignature", parameterSignatureEdges(observation, signatureAtoms));
+        relation(alloy, "namespaceKeyRepresentative", namespaceKeyEdges(observation));
+        relation(alloy, "InheritableMember", inheritableMemberAtoms(observation));
         alloy.append("}\n\n");
         alloy.append(loadRules()).append('\n');
 
-        String scope = scope(observation, nameAtoms.size(), signatureAtoms.size());
+        String scope = scope(observation);
         alloy.append("run ObservationConsistency ").append(scope).append('\n');
         return alloy.toString();
     }
@@ -89,39 +70,6 @@ public final class ExactAlloyEncoder {
         return "M_" + technicalKey.substring(4);
     }
 
-    private static Map<String, String> tokens(List<String> values, String prefix) {
-        Map<String, String> result = new LinkedHashMap<>();
-        values.stream().distinct().sorted().forEach(value -> result.put(value, prefix + Hashing.sha256(value)));
-        return result;
-    }
-
-    /**
-     * Projects complete ordered signatures to injective atoms for the active
-     * equality-only Alloy profile. The canonical EMF observation remains the
-     * source of element-level parameter evidence for richer future profiles.
-     */
-    private static Map<List<String>, String> signatureTokens(Observation observation) {
-        Map<List<String>, String> result = new LinkedHashMap<>();
-        List<List<String>> signatures = observation.members().stream()
-                .map(MemberObservation::parameterTypes)
-                .distinct()
-                .sorted(Comparator.comparing(ExactAlloyEncoder::signatureKey))
-                .toList();
-        for (int index = 0; index < signatures.size(); index++) {
-            result.put(signatures.get(index), "S_" + index);
-        }
-        return result;
-    }
-
-    private static String signatureKey(List<String> parameterTypes) {
-        StringBuilder key = new StringBuilder();
-        key.append(parameterTypes.size()).append('|');
-        for (String type : parameterTypes) {
-            key.append(type.length()).append(':').append(type);
-        }
-        return key.toString();
-    }
-
     private static List<String> parentEdges(Observation observation) {
         List<String> edges = new ArrayList<>();
         for (ClassifierObservation classifier : observation.classifiers()) {
@@ -140,11 +88,6 @@ public final class ExactAlloyEncoder {
         return edges;
     }
 
-    private static List<String> kindEdges(Observation observation) {
-        return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
-                + (member.kind() == MemberKind.METHOD ? "METHOD" : "ATTRIBUTE")).toList();
-    }
-
     private static List<String> inheritedMembershipEdges(Observation observation) {
         List<String> edges = new ArrayList<>();
         for (ClassifierObservation classifier : observation.classifiers()) {
@@ -154,25 +97,33 @@ public final class ExactAlloyEncoder {
         return edges;
     }
 
-    private static List<String> inheritabilityEdges(Observation observation) {
-        return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
-                + member.inheritability().name()).toList();
-    }
-
-    private static List<String> nameEdges(Observation observation, Map<String, String> nameAtoms) {
-        return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
-                + nameAtoms.get(member.memberName())).toList();
-    }
-
-    private static List<String> parameterSignatureEdges(
-            Observation observation,
-            Map<List<String>, String> signatureAtoms) {
-        List<String> edges = new ArrayList<>();
+    private static List<String> namespaceKeyEdges(Observation observation) {
+        Map<NamespaceKey, List<MemberObservation>> groups = new LinkedHashMap<>();
         for (MemberObservation member : observation.members()) {
-            edges.add(memberAtom(member.technicalKey()) + "->"
-                    + signatureAtoms.get(member.parameterTypes()));
+            NamespaceKey key = new NamespaceKey(
+                    member.kind(), member.memberName(), member.parameterTypes());
+            groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(member);
+        }
+        List<String> edges = new ArrayList<>();
+        for (List<MemberObservation> group : groups.values()) {
+            String representative = group.stream()
+                    .map(MemberObservation::technicalKey)
+                    .min(Comparator.naturalOrder())
+                    .orElseThrow();
+            for (MemberObservation member : group) {
+                edges.add(memberAtom(member.technicalKey()) + "->"
+                        + memberAtom(representative));
+            }
         }
         return edges;
+    }
+
+    private static List<String> inheritableMemberAtoms(Observation observation) {
+        return observation.members().stream()
+                .filter(member -> member.inheritability()
+                        == metamodel.conformance.pipeline.model.Inheritability.INHERITABLE)
+                .map(member -> memberAtom(member.technicalKey()))
+                .toList();
     }
 
     private static void relation(StringBuilder alloy, String name, List<String> edges) {
@@ -192,13 +143,15 @@ public final class ExactAlloyEncoder {
         }
     }
 
-    private static String scope(
-            Observation observation,
-            int nameCount,
-            int signatureCount) {
+    private static String scope(Observation observation) {
         return "for exactly " + observation.classifiers().size() + " Classifier, exactly "
-                + observation.members().size() + " Member, exactly " + nameCount
-                + " NameToken, exactly " + signatureCount + " SignatureToken";
+                + observation.members().size() + " Member";
+    }
+
+    private record NamespaceKey(MemberKind kind, String name, List<String> parameterTypes) {
+        private NamespaceKey {
+            parameterTypes = List.copyOf(parameterTypes);
+        }
     }
 
     private static String loadRules() {

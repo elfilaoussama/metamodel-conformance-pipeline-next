@@ -15,8 +15,10 @@ class ExactAlloyEncoderTest {
         assertEquals(2, alloy.lines().filter(line -> line.startsWith("one sig C_")).count());
         assertTrue(alloy.contains("parents = (" + ExactAlloyEncoder.classifierAtom(TestObservations.B)
                 + "->" + ExactAlloyEncoder.classifierAtom(TestObservations.A)));
-        assertTrue(alloy.contains("abstract sig SignatureToken"));
-        assertTrue(alloy.contains("parameterSignature: one SignatureToken"));
+        assertTrue(alloy.contains("namespaceKeyRepresentative: one Member"));
+        assertTrue(alloy.contains("sig InheritableMember in Member"));
+        assertFalse(alloy.contains("abstract sig SignatureToken"));
+        assertFalse(alloy.contains("abstract sig NameToken"));
         assertFalse(alloy.contains("Int -> lone TypeToken"));
         assertFalse(alloy.contains("abstract sig Parameter {"));
         assertTrue(alloy.contains("parents = ("));
@@ -40,14 +42,22 @@ class ExactAlloyEncoderTest {
     }
 
     @Test
-    void canonicalizesCompleteOrderedSignaturesWithoutLosingOrder() {
-        String duplicate = new ExactAlloyEncoder().encode(TestObservations.duplicateLocalMethods());
-        String overloaded = new ExactAlloyEncoder().encode(TestObservations.overloadedMethods());
+    void projectsCompleteOrderedNamespaceKeysWithoutAuxiliaryAtoms() {
+        var duplicateObservation = TestObservations.duplicateLocalMethods();
+        var overloadedObservation = TestObservations.overloadedMethods();
+        String duplicate = new ExactAlloyEncoder().encode(duplicateObservation);
+        String overloaded = new ExactAlloyEncoder().encode(overloadedObservation);
 
-        assertEquals(1, duplicate.lines().filter(line -> line.startsWith("one sig S_")).count());
-        assertEquals(2, duplicate.split("->S_0", -1).length - 1);
-        assertEquals(2, overloaded.lines().filter(line -> line.startsWith("one sig S_")).count());
-        assertTrue(overloaded.contains("->S_0"));
-        assertTrue(overloaded.contains("->S_1"));
+        String duplicateRepresentative = duplicateObservation.members().stream()
+                .map(member -> ExactAlloyEncoder.memberAtom(member.technicalKey()))
+                .min(String::compareTo).orElseThrow();
+        assertEquals(2, duplicate.split("->" + duplicateRepresentative, -1).length - 1);
+
+        for (var member : overloadedObservation.members()) {
+            String atom = ExactAlloyEncoder.memberAtom(member.technicalKey());
+            assertTrue(overloaded.contains(atom + "->" + atom));
+        }
+        assertFalse(overloaded.contains("NameToken"));
+        assertFalse(overloaded.contains("SignatureToken"));
     }
 }

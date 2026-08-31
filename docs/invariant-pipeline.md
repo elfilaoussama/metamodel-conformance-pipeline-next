@@ -45,18 +45,19 @@ encoding, solving, witness-arity, or provenance failures can never produce
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves
-complete ordered method-parameter type lists. The active Alloy profile projects
-each distinct complete list to one deterministic `SignatureToken`, because the
-current namespace invariant needs equality of whole signatures, not access to
-individual positions. This projection is injective within the exact observation:
-different ordered lists receive different atoms, including lists containing the
-same types in a different order.
+member kind, name, inheritability, and complete ordered method-parameter type
+lists. The active Alloy profile needs only equality of whole namespace keys, so
+the mechanical encoder maps every member to an existing representative member
+for its `(kind, name, ordered parameter types)` equivalence class. This adds no
+auxiliary atoms and is injective at the equivalence-class level: different keys
+have different representatives, including signatures containing the same types
+in a different order.
 
 An invariant that inspects parameter positions or individual types must declare
 that richer evidence/projection in its registry contract. The encoder may then
 add the required Alloy relation without changing existing invariant-control flow.
 Until that projection is available, the invariant is `NOT_EVALUATED`; the
-pipeline must never infer element-level evidence from the compact token.
+pipeline must never infer element-level evidence from the equality projection.
 
 ## Parse diagnostics
 
