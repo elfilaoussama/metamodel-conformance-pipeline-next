@@ -6,7 +6,9 @@ on:
     paths:
       - ".github/workflows/random-java-corpus-20.yml"
       - "corpus/**"
+      - "pom.xml"
       - "scripts/run-corpus-entry.sh"
+      - "src/main/**"
 
 permissions:
   contents: read
