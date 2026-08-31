@@ -4,13 +4,17 @@ import metamodel.conformance.pipeline.adapter.ObservationException;
 import metamodel.conformance.pipeline.adapter.SourceObserver;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.GeneralizationKind;
+import metamodel.conformance.pipeline.model.GeneralizationObservation;
+import metamodel.conformance.pipeline.model.GeneralizationResolutionStatus;
 import metamodel.conformance.pipeline.model.Inheritability;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
-import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -21,8 +25,8 @@ import spoon.reflect.cu.SourcePosition;
 import spoon.reflect.declaration.CtAnnotationType;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtEnum;
-import spoon.reflect.declaration.CtInterface;
 import spoon.reflect.declaration.CtField;
+import spoon.reflect.declaration.CtInterface;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.declaration.CtTypeMember;
@@ -36,8 +40,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +52,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.5.0";
+    public static final String ADAPTER_VERSION = "0.6.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -68,7 +72,7 @@ public final class SpoonJavaObserver implements SourceObserver {
 
             List<SourceUnit> units = new ArrayList<>();
             for (Path file : files) {
-                units.add(new SourceUnit(relativePath(root, file), Hashing.sha256(file)));
+                units.add(new SourceUnit(Language.JAVA, relativePath(root, file), Hashing.sha256(file)));
             }
 
             BuildResult build = buildTypes(root, files);
@@ -138,7 +142,6 @@ public final class SpoonJavaObserver implements SourceObserver {
                     .collect(java.util.stream.Collectors.toUnmodifiableMap(
                             MemberObservation::technicalKey, member -> member));
             Map<String, List<String>> inheritedMemberKeysByOwner = new HashMap<>();
-            boolean inheritedMembersComplete = true;
             for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 LinkedHashSet<String> inheritedKeys = new LinkedHashSet<>();
                 try {
@@ -151,15 +154,13 @@ public final class SpoonJavaObserver implements SourceObserver {
                         TypeDraft declarationOwner = uniqueDraft(
                                 draftsByQualifiedName, declaringType.getQualifiedName());
                         if (declarationOwner == null) {
-                            inheritedMembersComplete = false;
                             continue;
                         }
                         List<String> parameterTypes = method.getParameters().stream()
                                 .map(parameter -> parameter.getType().getQualifiedName()).toList();
                         String key = declarationKey(declarationOwner.id(), MemberKind.METHOD,
                                 method.getSimpleName(), parameterTypes);
-                        inheritedMembersComplete &= addResolvedMember(
-                                inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
+                        addResolvedMember(inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
                     }
                     for (CtFieldReference<?> field : draft.type().getAllFields()) {
                         CtTypeReference<?> declaringType = field.getDeclaringType();
@@ -170,37 +171,52 @@ public final class SpoonJavaObserver implements SourceObserver {
                         TypeDraft declarationOwner = uniqueDraft(
                                 draftsByQualifiedName, declaringType.getQualifiedName());
                         if (declarationOwner == null) {
-                            inheritedMembersComplete = false;
                             continue;
                         }
                         String key = declarationKey(declarationOwner.id(), MemberKind.ATTRIBUTE,
                                 field.getSimpleName(), List.of());
-                        inheritedMembersComplete &= addResolvedMember(
-                                inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
+                        addResolvedMember(inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
                     }
                 } catch (RuntimeException | StackOverflowError failure) {
-                    inheritedMembersComplete = false;
+                    // Provisional inherited-member observations are intentionally fail-soft.
+                    // INHERITED_MEMBERS is never advertised as complete evidence below.
                 }
                 inheritedMemberKeysByOwner.put(draft.type().getQualifiedName(), List.copyOf(inheritedKeys));
             }
 
             List<ClassifierObservation> classifiers = new ArrayList<>();
+            List<GeneralizationObservation> generalizations = new ArrayList<>();
             List<UnresolvedParent> unresolved = new ArrayList<>();
             for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 LinkedHashSet<String> parentIds = new LinkedHashSet<>();
-                for (CtTypeReference<?> parent : directParents(draft.type())) {
-                    String parentName = parent.getQualifiedName();
+                List<GeneralizationCandidate> direct = directGeneralizations(draft.type());
+                for (int declaredOrder = 0; declaredOrder < direct.size(); declaredOrder++) {
+                    GeneralizationCandidate candidate = direct.get(declaredOrder);
+                    CtTypeReference<?> parent = candidate.reference();
+                    String parentName = observedTargetName(parent);
+                    int line = referenceLine(parent, draft.startLine());
+                    String resolvedParentId = null;
+                    GeneralizationResolutionStatus resolutionStatus;
+
                     List<TypeDraft> internalCandidates = draftsByQualifiedName.get(parentName);
                     if (internalCandidates != null && internalCandidates.size() == 1) {
-                        parentIds.add(internalCandidates.get(0).id());
+                        resolvedParentId = internalCandidates.get(0).id();
+                        parentIds.add(resolvedParentId);
+                        resolutionStatus = GeneralizationResolutionStatus.RESOLVED_INTERNAL;
                     } else if (internalCandidates != null && !internalCandidates.isEmpty()) {
                         // An external allowlist must never hide an ambiguous internal identity.
-                        unresolved.add(new UnresolvedParent(
-                                draft.id(), parentName, draft.path(), referenceLine(parent, draft.startLine())));
-                    } else if (!PLATFORM_ROOTS.contains(parentName) && !allowed.contains(parentName)) {
-                        unresolved.add(new UnresolvedParent(
-                                draft.id(), parentName, draft.path(), referenceLine(parent, draft.startLine())));
+                        resolutionStatus = GeneralizationResolutionStatus.UNRESOLVED;
+                        unresolved.add(new UnresolvedParent(draft.id(), parentName, draft.path(), line));
+                    } else if (PLATFORM_ROOTS.contains(parentName) || allowed.contains(parentName)) {
+                        resolutionStatus = GeneralizationResolutionStatus.EXTERNAL_BOUNDARY;
+                    } else {
+                        resolutionStatus = GeneralizationResolutionStatus.UNRESOLVED;
+                        unresolved.add(new UnresolvedParent(draft.id(), parentName, draft.path(), line));
                     }
+
+                    generalizations.add(new GeneralizationObservation(
+                            draft.id(), resolvedParentId, parentName, candidate.kind(), declaredOrder,
+                            resolutionStatus, draft.path(), line));
                 }
                 classifiers.add(new ClassifierObservation(
                         draft.id(), draft.type().getQualifiedName(), draft.kind(), draft.path(),
@@ -208,6 +224,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         memberKeysByOwner.getOrDefault(draft.id(), List.of()),
                         inheritedMemberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
             }
+
             EnumSet<EvidenceKind> completeEvidence = EnumSet.noneOf(EvidenceKind.class);
             if (build.diagnostics().isEmpty()) {
                 completeEvidence.add(EvidenceKind.DECLARATION_OWNERSHIP);
@@ -224,8 +241,8 @@ public final class SpoonJavaObserver implements SourceObserver {
             // Never advertise it as complete evidence until an independent frontend
             // observer has been validated against overriding and interface precedence.
             return new Observation(
-                    "4", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
-                    units, classifiers, members, unresolved, build.diagnostics());
+                    "5", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    units, classifiers, members, generalizations, unresolved, build.diagnostics());
         } catch (ObservationException exception) {
             throw exception;
         } catch (RuntimeException | IOException exception) {
@@ -329,13 +346,43 @@ public final class SpoonJavaObserver implements SourceObserver {
         return files;
     }
 
-    private static List<CtTypeReference<?>> directParents(CtType<?> type) {
-        List<CtTypeReference<?>> parents = new ArrayList<>();
-        if (type instanceof CtClass<?> ctClass && ctClass.getSuperclass() != null) {
-            parents.add(ctClass.getSuperclass());
+    private static List<GeneralizationCandidate> directGeneralizations(CtType<?> type) {
+        List<GeneralizationCandidate> candidates = new ArrayList<>();
+        int fallbackOrder = 0;
+        if (type instanceof CtClass<?> ctClass && ctClass.getSuperclass() != null
+                && !ctClass.getSuperclass().isImplicit()) {
+            CtTypeReference<?> parent = ctClass.getSuperclass();
+            candidates.add(new GeneralizationCandidate(
+                    parent, GeneralizationKind.EXTENDS, sourceStart(parent), fallbackOrder++));
         }
-        parents.addAll(type.getSuperInterfaces());
-        return parents.stream().sorted(Comparator.comparing(CtTypeReference::getQualifiedName)).toList();
+        GeneralizationKind interfaceKind = type instanceof CtInterface<?>
+                ? GeneralizationKind.EXTENDS : GeneralizationKind.IMPLEMENTS;
+        for (CtTypeReference<?> parent : type.getSuperInterfaces()) {
+            if (!parent.isImplicit()) {
+                candidates.add(new GeneralizationCandidate(
+                        parent, interfaceKind, sourceStart(parent), fallbackOrder++));
+            }
+        }
+        return candidates.stream()
+                .sorted(Comparator.comparingInt(GeneralizationCandidate::sourceStart)
+                        .thenComparingInt(GeneralizationCandidate::fallbackOrder))
+                .toList();
+    }
+
+    private static int sourceStart(CtTypeReference<?> reference) {
+        return reference.getPosition().isValidPosition()
+                ? reference.getPosition().getSourceStart() : Integer.MAX_VALUE;
+    }
+
+    private static String observedTargetName(CtTypeReference<?> reference) {
+        String target = reference.getQualifiedName();
+        if (target == null || target.isBlank()) {
+            target = reference.getSimpleName();
+        }
+        if (target == null || target.isBlank()) {
+            target = reference.toString();
+        }
+        return target == null || target.isBlank() ? "<unresolved-type-reference>" : target;
     }
 
     private static ClassifierKind kindOf(CtType<?> type) throws ObservationException {
@@ -434,6 +481,13 @@ public final class SpoonJavaObserver implements SourceObserver {
             inheritedKeys.add(declaration.technicalKey());
         }
         return true;
+    }
+
+    private record GeneralizationCandidate(
+            CtTypeReference<?> reference,
+            GeneralizationKind kind,
+            int sourceStart,
+            int fallbackOrder) {
     }
 
     private record TypeDraft(
