@@ -25,5 +25,4 @@ jobs:
 
   frozen-java-corpus:
     needs: build
-    if: github.event_name == 'push'
     uses: ./.github/workflows/random-java-corpus-20.yml
