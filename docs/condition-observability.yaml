@@ -1,7 +1,7 @@
 schemaVersion: "2"
 evidence:
   HIERARCHY:
-    description: Direct parent edges are complete for the declared source boundary.
+    description: Every direct generalization in the declared source boundary is observed and classified as resolved internal or recognized external boundary; no unresolved target remains.
   DECLARATION_OWNERSHIP:
     description: Every parsed member declaration and declaring classifier association was observed.
   LOCAL_SIGNATURES:
