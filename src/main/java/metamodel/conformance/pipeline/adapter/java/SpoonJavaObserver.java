@@ -190,8 +190,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 LinkedHashSet<String> parentIds = new LinkedHashSet<>();
                 List<GeneralizationCandidate> direct = directGeneralizations(draft.type());
-                for (int declaredOrder = 0; declaredOrder < direct.size(); declaredOrder++) {
-                    GeneralizationCandidate candidate = direct.get(declaredOrder);
+                for (GeneralizationCandidate candidate : direct) {
                     CtTypeReference<?> parent = candidate.reference();
                     String parentName = observedTargetName(parent);
                     int line = referenceLine(parent, draft.startLine());
@@ -215,7 +214,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                     }
 
                     generalizations.add(new GeneralizationObservation(
-                            draft.id(), resolvedParentId, parentName, candidate.kind(), declaredOrder,
+                            draft.id(), resolvedParentId, parentName, candidate.kind(), candidate.declaredOrder(),
                             resolutionStatus, draft.path(), line));
                 }
                 classifiers.add(new ClassifierObservation(
@@ -348,25 +347,38 @@ public final class SpoonJavaObserver implements SourceObserver {
 
     private static List<GeneralizationCandidate> directGeneralizations(CtType<?> type) {
         List<GeneralizationCandidate> candidates = new ArrayList<>();
-        int fallbackOrder = 0;
         if (type instanceof CtClass<?> ctClass && ctClass.getSuperclass() != null
                 && !ctClass.getSuperclass().isImplicit()) {
             CtTypeReference<?> parent = ctClass.getSuperclass();
             candidates.add(new GeneralizationCandidate(
-                    parent, GeneralizationKind.EXTENDS, sourceStart(parent), fallbackOrder++));
+                    parent, GeneralizationKind.EXTENDS, sourceStart(parent), null));
         }
         GeneralizationKind interfaceKind = type instanceof CtInterface<?>
                 ? GeneralizationKind.EXTENDS : GeneralizationKind.IMPLEMENTS;
         for (CtTypeReference<?> parent : type.getSuperInterfaces()) {
             if (!parent.isImplicit()) {
                 candidates.add(new GeneralizationCandidate(
-                        parent, interfaceKind, sourceStart(parent), fallbackOrder++));
+                        parent, interfaceKind, sourceStart(parent), null));
             }
         }
-        return candidates.stream()
+        List<GeneralizationCandidate> sorted = candidates.stream()
                 .sorted(Comparator.comparingInt(GeneralizationCandidate::sourceStart)
-                        .thenComparingInt(GeneralizationCandidate::fallbackOrder))
+                        .thenComparing(candidate -> candidate.kind().name())
+                        .thenComparing(candidate -> observedTargetName(candidate.reference())))
                 .toList();
+        boolean completeSourceOrder = sorted.stream()
+                .allMatch(candidate -> candidate.sourceStart() != Integer.MAX_VALUE)
+                && sorted.stream().map(GeneralizationCandidate::sourceStart).distinct().count() == sorted.size();
+        if (!completeSourceOrder) {
+            return sorted;
+        }
+        List<GeneralizationCandidate> ordered = new ArrayList<>(sorted.size());
+        for (int index = 0; index < sorted.size(); index++) {
+            GeneralizationCandidate candidate = sorted.get(index);
+            ordered.add(new GeneralizationCandidate(
+                    candidate.reference(), candidate.kind(), candidate.sourceStart(), index));
+        }
+        return List.copyOf(ordered);
     }
 
     private static int sourceStart(CtTypeReference<?> reference) {
@@ -487,7 +499,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             CtTypeReference<?> reference,
             GeneralizationKind kind,
             int sourceStart,
-            int fallbackOrder) {
+            Integer declaredOrder) {
     }
 
     private record TypeDraft(
