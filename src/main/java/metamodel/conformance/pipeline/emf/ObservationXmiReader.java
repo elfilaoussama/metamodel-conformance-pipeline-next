@@ -65,6 +65,10 @@ public final class ObservationXmiReader {
         if (!"ObservationSet".equals(root.eClass().getName())) {
             throw new IOException("unexpected observation root: " + root.eClass().getName());
         }
+        String schemaVersion = string(root, "schemaVersion");
+        if (!ObservationSchema.VERSION.equals(schemaVersion)) {
+            throw new IOException("unsupported observation schema: " + schemaVersion);
+        }
 
         List<SourceUnit> units = new ArrayList<>();
         for (EObject unit : (EList<EObject>) value(root, "units")) {
@@ -147,7 +151,7 @@ public final class ObservationXmiReader {
                 .map(EvidenceKind::valueOf)
                 .collect(Collectors.toUnmodifiableSet());
         return new Observation(
-                string(root, "schemaVersion"),
+                schemaVersion,
                 string(root, "adapterId"),
                 string(root, "adapterVersion"),
                 externalParents,
