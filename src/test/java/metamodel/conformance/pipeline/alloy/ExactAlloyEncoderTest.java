@@ -19,6 +19,7 @@ class ExactAlloyEncoderTest {
         assertTrue(alloy.contains("parameterOwner: one Member"));
         assertTrue(alloy.contains("parameterPosition: one PositionToken"));
         assertFalse(alloy.contains("Int -> lone TypeToken"));
+        assertTrue(alloy.contains("parents = ("));
         assertTrue(alloy.contains("run ObservationConsistency for exactly 2 Classifier"));
         assertFalse(alloy.contains("run AcyclicGeneralizationViolation"));
         assertTrue(alloy.contains("fun AcyclicGeneralizationViolations : set Classifier"));

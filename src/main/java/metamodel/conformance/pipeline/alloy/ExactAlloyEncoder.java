@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class ExactAlloyEncoder {
+    private static final int RELATION_CHUNK_SIZE = 64;
+
     public String encode(Observation observation) {
         Map<String, String> nameAtoms = tokens(observation.members().stream()
                 .map(MemberObservation::memberName).toList(), "N_");
@@ -210,7 +212,15 @@ public final class ExactAlloyEncoder {
         if (sorted.isEmpty()) {
             alloy.append("  no ").append(name).append('\n');
         } else {
-            alloy.append("  ").append(name).append(" = ").append(String.join(" + ", sorted)).append('\n');
+            alloy.append("  ").append(name).append(" = ");
+            for (int start = 0; start < sorted.size(); start += RELATION_CHUNK_SIZE) {
+                if (start > 0) {
+                    alloy.append(" +\n    ");
+                }
+                int end = Math.min(start + RELATION_CHUNK_SIZE, sorted.size());
+                alloy.append('(').append(String.join(" + ", sorted.subList(start, end))).append(')');
+            }
+            alloy.append('\n');
         }
     }
 
