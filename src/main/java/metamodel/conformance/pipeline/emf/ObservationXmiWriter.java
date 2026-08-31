@@ -2,6 +2,7 @@ package metamodel.conformance.pipeline.emf;
 
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.GeneralizationObservation;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
@@ -111,6 +112,19 @@ public final class ObservationXmiWriter {
             source.declaredMemberKeys().forEach(memberKey -> declaredMembers.add(membersByKey.get(memberKey)));
             EList<EObject> inheritedMembers = (EList<EObject>) classifier.eGet(feature(classifier, "inheritedMembers"));
             source.inheritedMemberKeys().forEach(memberKey -> inheritedMembers.add(membersByKey.get(memberKey)));
+        }
+
+        EList<EObject> generalizations = (EList<EObject>) root.eGet(feature(root, "generalizations"));
+        EEnum generalizationKind = (EEnum) ePackage.getEClassifier("GeneralizationKind");
+        for (GeneralizationObservation source : observation.generalizations()) {
+            EObject edge = ePackage.getEFactoryInstance().create(schema.classifier("Generalization"));
+            set(edge, "child", classifiersById.get(source.childId()));
+            set(edge, "parent", classifiersById.get(source.parentId()));
+            set(edge, "kind", generalizationKind.getEEnumLiteral(source.kind().name()).getInstance());
+            set(edge, "declaredOrder", source.declaredOrder());
+            set(edge, "sourcePath", source.sourcePath());
+            set(edge, "line", source.line());
+            generalizations.add(edge);
         }
 
         EList<EObject> unresolved = (EList<EObject>) root.eGet(feature(root, "unresolvedParents"));
