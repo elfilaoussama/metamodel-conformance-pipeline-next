@@ -25,7 +25,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: pipeline-jar
-          path: target/metamodel-conformance-pipeline-next-0.3.0-SNAPSHOT.jar
+          path: target/metamodel-conformance-pipeline-next-*-SNAPSHOT.jar
           if-no-files-found: error
 
   analyze:
