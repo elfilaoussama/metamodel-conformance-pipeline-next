@@ -61,7 +61,7 @@ public final class ObservationXmiWriter {
         for (SourceUnit source : observation.units()) {
             EObject unit = ePackage.getEFactoryInstance().create(schema.classifier("SourceUnit"));
             EEnum language = (EEnum) ePackage.getEClassifier("Language");
-            set(unit, "language", language.getEEnumLiteral("JAVA").getInstance());
+            set(unit, "language", language.getEEnumLiteral(source.language().name()).getInstance());
             set(unit, "path", source.path());
             set(unit, "sha256", source.sha256());
             units.add(unit);
