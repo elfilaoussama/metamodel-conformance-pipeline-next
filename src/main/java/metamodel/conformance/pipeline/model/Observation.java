@@ -72,21 +72,6 @@ public record Observation(
             List<SourceUnit> units,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<GeneralizationObservation> generalizations,
-            List<UnresolvedParent> unresolvedParents) {
-        this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
-                units, classifiers, members, generalizations, unresolvedParents, List.of());
-    }
-
-    public Observation(
-            String schemaVersion,
-            String adapterId,
-            String adapterVersion,
-            List<String> externalParents,
-            Set<EvidenceKind> completeEvidence,
-            List<SourceUnit> units,
-            List<ClassifierObservation> classifiers,
-            List<MemberObservation> members,
             List<UnresolvedParent> unresolvedParents,
             List<ObservationDiagnostic> diagnostics) {
         this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence, units,
