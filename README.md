@@ -54,10 +54,12 @@ solution. Java only checks declared evidence prerequisites and maps Alloy witnes
 atoms back to source locations. An inconsistent encoding is `NOT_EVALUATED`, never
 `CONFORMANT`.
 
-For `inherited-view-consistency`, Spoon supplies the observed inherited memberships while Alloy derives
-the expected memberships independently from ancestry, inheritability, member
-keys, local hiding, and nearer-ancestor priority. If the frontend cannot resolve
-that view completely, only invariants requiring that evidence are `NOT_EVALUATED`.
+Spoon's aggregate inherited-member APIs are currently preserved only as provisional
+diagnostic observations: corpus validation showed that they do not implement the
+Java inheritance view accurately for all interface and overriding cases. The Java
+adapter therefore does not declare `INHERITED_MEMBERS` complete. Invariants requiring
+that evidence return `NOT_EVALUATED` until an independently validated frontend view
+is available; Alloy still derives the expected memberships from the observed structure.
 
 ## Invariant extensibility
 

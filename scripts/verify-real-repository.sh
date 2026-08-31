@@ -12,6 +12,7 @@ trap 'rm -rf -- "${integration_root}"' EXIT
 git clone --quiet --no-checkout --filter=blob:none "${REPOSITORY_URL}" "${integration_root}/source"
 git -C "${integration_root}/source" checkout --quiet --detach "${REPOSITORY_COMMIT}"
 
+analysis_exit=0
 java -jar "${PIPELINE_JAR}" analyze \
   --source "${integration_root}/source" \
   --output "${integration_root}/result" \
@@ -20,16 +21,21 @@ java -jar "${PIPELINE_JAR}" analyze \
   --external-parent javax.swing.JDialog \
   --external-parent javax.swing.SwingWorker \
   --external-parent javax.swing.table.AbstractTableModel \
-  --external-parent org.eclipse.jgit.lib.ProgressMonitor
+  --external-parent org.eclipse.jgit.lib.ProgressMonitor || analysis_exit=$?
+
+if [[ ${analysis_exit} -ne 3 ]]; then
+  echo "Expected exit 3 while inherited-member evidence is deliberately not evaluated; got ${analysis_exit}" >&2
+  exit 1
+fi
 
 java -jar "${PIPELINE_JAR}" verify-capsule \
   --capsule "${integration_root}/result/verification-capsule.json"
 
-grep --quiet '"status" : "CONFORMANT"' \
-  "${integration_root}/result/verification-capsule.json"
-
-if grep --extended-regexp --quiet '"status" : "(NON_CONFORMANT|NOT_EVALUATED)"' \
-  "${integration_root}/result/verification-capsule.json"; then
-  echo "Real-repository capsule contains a non-conformant or not-evaluated invariant" >&2
-  exit 1
-fi
+jq --exit-status '
+  (.decisions | map({key: .invariantId, value: .status}) | from_entries) as $status |
+  $status["exclusive-declaration-ownership"] == "CONFORMANT" and
+  $status["acyclic-generalization"] == "CONFORMANT" and
+  $status["local-namespace-uniqueness"] == "CONFORMANT" and
+  $status["inherited-view-consistency"] == "NOT_EVALUATED" and
+  $status["local-inherited-separation"] == "NOT_EVALUATED"
+' "${integration_root}/result/verification-capsule.json" >/dev/null

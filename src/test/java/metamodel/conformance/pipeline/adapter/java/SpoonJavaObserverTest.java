@@ -47,7 +47,7 @@ class SpoonJavaObserverTest {
     }
 
     @Test
-    void preservesFrontendResolvedInheritedMemberships() throws Exception {
+    void preservesProvisionalInheritedMembershipsWithoutClaimingCompleteEvidence() throws Exception {
         Observation observation = observer.observe(fixture("inherited-view"), Set.of());
         var child = observation.classifiers().stream()
                 .filter(item -> item.qualifiedName().equals("example.Child"))
@@ -56,8 +56,8 @@ class SpoonJavaObserverTest {
                 .filter(member -> child.inheritedMemberKeys().contains(member.technicalKey()))
                 .toList();
 
-        assertTrue(observation.completeEvidence().containsAll(Set.of(
-                EvidenceKind.INHERITABILITY, EvidenceKind.INHERITED_MEMBERS)));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITABILITY));
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
         assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("work")
                 && member.sourcePath().endsWith("Middle.java")));
         assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("work")

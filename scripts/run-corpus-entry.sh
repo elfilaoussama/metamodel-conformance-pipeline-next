@@ -101,7 +101,7 @@ if [[ -f "${result_root}/verification-capsule.json" ]]; then
       verificationExit: $verificationExit,
       toolOutcome: (if $verificationExit == 0 then "ANALYZED" else "CAPSULE_INVALID" end),
       decisions: [.decisions[] | {
-        constraint,
+        invariantId,
         status,
         witnessCount: (.witnesses | length)
       }]

@@ -27,7 +27,10 @@ class ConformancePipelineTest {
         PipelineResult second = pipeline.analyze(fixture("acyclic"), temporary.resolve("two"), Set.of());
 
         assertEquals(DecisionStatus.CONFORMANT, first.invariant("acyclic-generalization").status());
-        assertTrue(first.decisions().stream().allMatch(item -> item.status() == DecisionStatus.CONFORMANT));
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                first.invariant("inherited-view-consistency").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                first.invariant("local-inherited-separation").status());
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
         assertArrayEquals(Files.readAllBytes(first.capsulePath()), Files.readAllBytes(second.capsulePath()));

@@ -203,9 +203,10 @@ public final class SpoonJavaObserver implements SourceObserver {
             if (localSignaturesComplete) {
                 completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
             }
-            if (inheritedMembersComplete && unresolved.isEmpty() && localSignaturesComplete) {
-                completeEvidence.add(EvidenceKind.INHERITED_MEMBERS);
-            }
+            // Spoon's getAllMethods/getAllFields aggregation is retained as provisional
+            // diagnostic data, but it is not a Java-language-accurate inherited view.
+            // Never advertise it as complete evidence until an independent frontend
+            // observer has been validated against overriding and interface precedence.
             return new Observation(
                     "3", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
                     units, classifiers, members, unresolved);
