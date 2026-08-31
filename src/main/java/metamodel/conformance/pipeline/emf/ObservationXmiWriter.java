@@ -125,7 +125,9 @@ public final class ObservationXmiWriter {
             }
             set(edge, "targetName", source.targetName());
             set(edge, "kind", generalizationKind.getEEnumLiteral(source.kind().name()).getInstance());
-            set(edge, "declaredOrder", source.declaredOrder());
+            if (source.hasObservedDeclaredOrder()) {
+                set(edge, "declaredOrder", source.declaredOrder());
+            }
             set(edge, "resolutionStatus",
                     resolutionStatus.getEEnumLiteral(source.resolutionStatus().name()).getInstance());
             set(edge, "sourcePath", source.sourcePath());
