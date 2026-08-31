@@ -1,6 +1,7 @@
 package metamodel.conformance.pipeline.capsule;
 
 import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
+import metamodel.conformance.pipeline.alloy.ExactAlloyEncoder;
 import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -53,12 +54,21 @@ public final class CapsuleVerifier {
             if (!capsule.observationDiagnostics().equals(observation.diagnostics())) {
                 return invalid("observation diagnostics do not match capsule");
             }
-            String alloy = Files.readString(alloyPath, StandardCharsets.UTF_8);
-            var repeated = new AlloyInvariantEvaluator().evaluateAll(observation, alloy);
+
+            String archivedAlloy = Files.readString(alloyPath, StandardCharsets.UTF_8);
+            String regeneratedAlloy = new ExactAlloyEncoder().encode(observation);
+            if (!MessageDigest.isEqual(
+                    archivedAlloy.getBytes(StandardCharsets.UTF_8),
+                    regeneratedAlloy.getBytes(StandardCharsets.UTF_8))) {
+                return invalid("Alloy artifact does not match canonical observation encoding");
+            }
+
+            var repeated = new AlloyInvariantEvaluator().evaluateAll(observation, regeneratedAlloy);
             if (!repeated.equals(capsule.decisions())) {
                 return invalid("repeated Alloy decisions do not match capsule");
             }
-            return new CapsuleVerification(true, "Capsule artifacts and repeated Alloy decisions are valid.");
+            return new CapsuleVerification(true,
+                    "Capsule artifacts, canonical encoding, and repeated Alloy decisions are valid.");
         } catch (Exception | LinkageError failure) {
             String message = failure.getMessage();
             return invalid(message == null ? failure.getClass().getSimpleName() : message);
