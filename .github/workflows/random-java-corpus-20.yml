@@ -1,8 +1,9 @@
 name: random-java-corpus-20
 
 on:
+  workflow_dispatch:
   push:
-    branches: ["feature/o03-vertical-slice"]
+    branches: ["feature/**"]
     paths:
       - ".github/workflows/random-java-corpus-20.yml"
       - "corpus/**"
