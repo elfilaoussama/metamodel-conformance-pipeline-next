@@ -14,7 +14,8 @@ public record Observation(
         List<SourceUnit> units,
         List<ClassifierObservation> classifiers,
         List<MemberObservation> members,
-        List<UnresolvedParent> unresolvedParents) {
+        List<UnresolvedParent> unresolvedParents,
+        List<ObservationDiagnostic> diagnostics) {
 
     public Observation {
         requireText(schemaVersion, "schemaVersion");
@@ -31,10 +32,33 @@ public record Observation(
                         .thenComparing(UnresolvedParent::targetName)
                 .thenComparingInt(UnresolvedParent::line))
                 .toList();
+        diagnostics = diagnostics == null ? List.of() : diagnostics.stream()
+                .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
+                        .thenComparingInt(ObservationDiagnostic::line)
+                        .thenComparing(item -> item.kind().name())
+                        .thenComparing(ObservationDiagnostic::message))
+                .toList();
         validateReferences(classifiers, members, unresolvedParents);
         if (!unresolvedParents.isEmpty() && completeEvidence.contains(EvidenceKind.HIERARCHY)) {
             throw new IllegalArgumentException("hierarchy evidence cannot be complete with unresolved parents");
         }
+        if (!diagnostics.isEmpty() && !completeEvidence.isEmpty()) {
+            throw new IllegalArgumentException("parse diagnostics forbid complete evidence claims");
+        }
+    }
+
+    public Observation(
+            String schemaVersion,
+            String adapterId,
+            String adapterVersion,
+            List<String> externalParents,
+            Set<EvidenceKind> completeEvidence,
+            List<SourceUnit> units,
+            List<ClassifierObservation> classifiers,
+            List<MemberObservation> members,
+            List<UnresolvedParent> unresolvedParents) {
+        this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
+                units, classifiers, members, unresolvedParents, List.of());
     }
 
     public Observation(
@@ -54,11 +78,12 @@ public record Observation(
                 units,
                 classifiers,
                 List.of(),
-                unresolvedParents);
+                unresolvedParents,
+                List.of());
     }
 
     public boolean isComplete() {
-        return unresolvedParents.isEmpty();
+        return unresolvedParents.isEmpty() && diagnostics.isEmpty();
     }
 
     private static List<String> sortedStrings(List<String> values) {

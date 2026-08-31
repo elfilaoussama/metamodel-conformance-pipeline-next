@@ -9,7 +9,7 @@ fi
 readonly repository="$1"
 readonly commit="$2"
 readonly output_root="$3"
-readonly pipeline_jar="${PIPELINE_JAR:-target/metamodel-conformance-pipeline-next-0.4.0-SNAPSHOT.jar}"
+readonly pipeline_jar="${PIPELINE_JAR:-target/metamodel-conformance-pipeline-next-0.5.0-SNAPSHOT.jar}"
 
 if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "invalid repository name" >&2
@@ -100,6 +100,12 @@ if [[ -f "${result_root}/verification-capsule.json" ]]; then
       analysisExit: $analysisExit,
       verificationExit: $verificationExit,
       toolOutcome: (if $verificationExit == 0 then "ANALYZED" else "CAPSULE_INVALID" end),
+      observationDiagnostics: [.observationDiagnostics[] | {
+        kind,
+        sourcePath,
+        line,
+        message
+      }],
       decisions: [.decisions[] | {
         invariantId,
         status,

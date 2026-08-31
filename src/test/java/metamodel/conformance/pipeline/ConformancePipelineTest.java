@@ -59,6 +59,18 @@ class ConformancePipelineTest {
         assertFalse(new CapsuleVerifier().verify(result.capsulePath()).valid());
     }
 
+    @Test
+    void emitsReplayableNotEvaluatedArtifactsForParseDiagnostics() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("parse-error"), temporary.resolve("parse-error"), Set.of());
+
+        assertEquals(1, result.observation().diagnostics().size());
+        assertTrue(result.decisions().stream()
+                .allMatch(decision -> decision.status() == DecisionStatus.NOT_EVALUATED));
+        assertTrue(Files.readString(result.observationPath()).contains("diagnostics"));
+        assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
+    }
+
     private static Path fixture(String name) throws Exception {
         return Path.of(ConformancePipelineTest.class.getResource("/fixtures/" + name).toURI());
     }

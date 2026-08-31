@@ -67,6 +67,12 @@ public final class PipelineCli {
             result.observation().unresolvedParents().forEach(item -> System.out.println(
                     "  " + item.targetName() + " (" + item.sourcePath() + ":" + item.line() + ")"));
         }
+        if (!result.observation().diagnostics().isEmpty()) {
+            System.out.println("Observation diagnostics:");
+            result.observation().diagnostics().forEach(item -> System.out.println(
+                    "  " + item.kind() + " " + item.sourcePath() + ":" + item.line()
+                            + " " + item.message()));
+        }
         if (result.decisions().stream().anyMatch(item -> !item.witnesses().isEmpty())) {
             Map<String, ClassifierObservation> byId = new HashMap<>();
             result.observation().classifiers().forEach(item -> byId.put(item.id(), item));

@@ -9,6 +9,8 @@ import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.ObservationDiagnostic;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -40,16 +42,20 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.4.0";
+    public static final String ADAPTER_VERSION = "0.5.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
             "java.lang.Enum",
             "java.lang.annotation.Annotation");
+    private static final Pattern DIAGNOSTIC_LINE = Pattern.compile("(?i)\\bline\\s+(\\d+)\\b");
+    private static final int MAX_DIAGNOSTIC_MESSAGE = 4096;
 
     @Override
     public Observation observe(Path sourceRoot, Set<String> externalParents) throws ObservationException {
@@ -65,7 +71,8 @@ public final class SpoonJavaObserver implements SourceObserver {
                 units.add(new SourceUnit(relativePath(root, file), Hashing.sha256(file)));
             }
 
-            List<CtType<?>> types = buildTypes(files);
+            BuildResult build = buildTypes(root, files);
+            List<CtType<?>> types = build.types();
             Map<String, TypeDraft> draftsById = new HashMap<>();
             Map<String, List<TypeDraft>> draftsByQualifiedName = new HashMap<>();
             for (CtType<?> type : types) {
@@ -201,21 +208,24 @@ public final class SpoonJavaObserver implements SourceObserver {
                         memberKeysByOwner.getOrDefault(draft.id(), List.of()),
                         inheritedMemberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
             }
-            EnumSet<EvidenceKind> completeEvidence = EnumSet.of(
-                    EvidenceKind.DECLARATION_OWNERSHIP, EvidenceKind.INHERITABILITY);
-            if (unresolved.isEmpty()) {
-                completeEvidence.add(EvidenceKind.HIERARCHY);
-            }
-            if (localSignaturesComplete) {
-                completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
+            EnumSet<EvidenceKind> completeEvidence = EnumSet.noneOf(EvidenceKind.class);
+            if (build.diagnostics().isEmpty()) {
+                completeEvidence.add(EvidenceKind.DECLARATION_OWNERSHIP);
+                completeEvidence.add(EvidenceKind.INHERITABILITY);
+                if (unresolved.isEmpty()) {
+                    completeEvidence.add(EvidenceKind.HIERARCHY);
+                }
+                if (localSignaturesComplete) {
+                    completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
+                }
             }
             // Spoon's getAllMethods/getAllFields aggregation is retained as provisional
             // diagnostic data, but it is not a Java-language-accurate inherited view.
             // Never advertise it as complete evidence until an independent frontend
             // observer has been validated against overriding and interface precedence.
             return new Observation(
-                    "3", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
-                    units, classifiers, members, unresolved);
+                    "4", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    units, classifiers, members, unresolved, build.diagnostics());
         } catch (ObservationException exception) {
             throw exception;
         } catch (RuntimeException | IOException exception) {
@@ -233,22 +243,55 @@ public final class SpoonJavaObserver implements SourceObserver {
         return sourceRoot.toRealPath(LinkOption.NOFOLLOW_LINKS);
     }
 
-    private static List<CtType<?>> buildTypes(List<Path> files) {
+    private static BuildResult buildTypes(Path root, List<Path> files) {
         try {
-            return modelTypes(buildModel(files));
+            return new BuildResult(modelTypes(buildModel(files)), List.of());
         } catch (ModelBuildingException failure) {
-            if (failure.getMessage() == null || !failure.getMessage().contains("already defined")) {
-                throw failure;
-            }
             List<CtType<?>> isolated = new ArrayList<>();
+            List<ObservationDiagnostic> diagnostics = new ArrayList<>();
             for (Path file : files) {
-                isolated.addAll(modelTypes(buildModel(List.of(file))));
+                try {
+                    isolated.addAll(modelTypes(buildModel(List.of(file))));
+                } catch (ModelBuildingException isolatedFailure) {
+                    diagnostics.add(parseDiagnostic(root, file, isolatedFailure));
+                }
             }
-            return isolated.stream()
+            List<CtType<?>> sorted = isolated.stream()
                     .sorted(Comparator.comparing((CtType<?> type) -> type.getQualifiedName())
                             .thenComparing(type -> type.getPosition().getFile().getPath()))
                     .toList();
+            return new BuildResult(sorted, diagnostics);
         }
+    }
+
+    private static ObservationDiagnostic parseDiagnostic(
+            Path root,
+            Path file,
+            ModelBuildingException failure) {
+        String relative = relativePath(root, file);
+        String message = failure.getMessage();
+        if (message == null || message.isBlank()) {
+            message = failure.getClass().getSimpleName();
+        }
+        message = message.replace(file.toAbsolutePath().normalize().toString(), relative)
+                .replace(root.toAbsolutePath().normalize().toString(), ".")
+                .replace('\r', ' ');
+        StringBuilder normalized = new StringBuilder();
+        for (int index = 0; index < message.length() && normalized.length() < MAX_DIAGNOSTIC_MESSAGE; index++) {
+            char character = message.charAt(index);
+            normalized.append(Character.isISOControl(character) && character != '\n' && character != '\t'
+                    ? ' ' : character);
+        }
+        String text = normalized.toString().trim();
+        if (text.isEmpty()) {
+            text = "Java parser rejected source unit";
+        }
+        Matcher line = DIAGNOSTIC_LINE.matcher(text);
+        return new ObservationDiagnostic(
+                DiagnosticKind.PARSE_ERROR,
+                relative,
+                line.find() ? Integer.parseInt(line.group(1)) : 0,
+                text);
     }
 
     private static CtModel buildModel(List<Path> files) {
@@ -395,5 +438,16 @@ public final class SpoonJavaObserver implements SourceObserver {
 
     private record TypeDraft(
             CtType<?> type, String id, String path, ClassifierKind kind, int startLine, int endLine) {
+    }
+
+    private record BuildResult(List<CtType<?>> types, List<ObservationDiagnostic> diagnostics) {
+        private BuildResult {
+            types = List.copyOf(types);
+            diagnostics = diagnostics.stream()
+                    .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
+                            .thenComparingInt(ObservationDiagnostic::line)
+                            .thenComparing(ObservationDiagnostic::message))
+                    .toList();
+        }
     }
 }

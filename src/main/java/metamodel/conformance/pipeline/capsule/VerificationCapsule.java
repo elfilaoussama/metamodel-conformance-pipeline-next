@@ -1,6 +1,7 @@
 package metamodel.conformance.pipeline.capsule;
 
 import metamodel.conformance.pipeline.decision.Decision;
+import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 
 import java.util.List;
 
@@ -16,9 +17,12 @@ public record VerificationCapsule(
         String observationSha256,
         String alloyPath,
         String alloySha256,
+        List<ObservationDiagnostic> observationDiagnostics,
         List<Decision> decisions) {
 
     public VerificationCapsule {
+        observationDiagnostics = observationDiagnostics == null
+                ? List.of() : List.copyOf(observationDiagnostics);
         decisions = decisions == null ? List.of() : List.copyOf(decisions);
     }
 }

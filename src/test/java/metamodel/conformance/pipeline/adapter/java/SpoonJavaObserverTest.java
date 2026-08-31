@@ -92,6 +92,22 @@ class SpoonJavaObserverTest {
                 .allMatch(member -> member.inheritability() == Inheritability.NOT_INHERITABLE));
     }
 
+    @Test
+    void preservesParseFailuresAsFailClosedSourceDiagnostics() throws Exception {
+        Observation observation = observer.observe(fixture("parse-error"), Set.of());
+
+        assertEquals(2, observation.units().size());
+        assertTrue(observation.classifiers().stream()
+                .anyMatch(classifier -> classifier.qualifiedName().equals("example.Valid")));
+        assertTrue(observation.completeEvidence().isEmpty());
+        assertEquals(1, observation.diagnostics().size());
+        assertEquals("example/Broken.java", observation.diagnostics().get(0).sourcePath());
+        assertEquals(metamodel.conformance.pipeline.model.DiagnosticKind.PARSE_ERROR,
+                observation.diagnostics().get(0).kind());
+        assertFalse(observation.diagnostics().get(0).message().contains(
+                fixture("parse-error").toAbsolutePath().toString()));
+    }
+
     private static Path fixture(String name) throws URISyntaxException {
         return Path.of(SpoonJavaObserverTest.class.getResource("/fixtures/" + name).toURI());
     }

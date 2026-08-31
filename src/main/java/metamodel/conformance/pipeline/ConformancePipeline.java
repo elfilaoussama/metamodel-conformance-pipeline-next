@@ -52,7 +52,7 @@ public final class ConformancePipeline {
 
         List<Decision> decisions = runner.evaluateAll(observation, alloy);
         VerificationCapsule capsule = new VerificationCapsule(
-                "4",
+                "5",
                 PipelineVersion.TOOL_ID,
                 PipelineVersion.VERSION,
                 observation.schemaVersion(),
@@ -63,6 +63,7 @@ public final class ConformancePipeline {
                 Hashing.sha256(observationPath),
                 ALLOY_FILE,
                 Hashing.sha256(alloyPath),
+                observation.diagnostics(),
                 decisions);
         Path capsulePath = output.resolve(CAPSULE_FILE);
         new CapsuleWriter().write(capsule, capsulePath);

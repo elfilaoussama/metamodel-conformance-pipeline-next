@@ -25,7 +25,7 @@ public final class CapsuleVerifier {
                 return invalid("capsule is not a regular file or exceeds the size limit");
             }
             VerificationCapsule capsule = CapsuleJson.MAPPER.readValue(capsuleFile.toFile(), VerificationCapsule.class);
-            if (!"4".equals(capsule.formatVersion()) || capsule.decisions().isEmpty()) {
+            if (!"5".equals(capsule.formatVersion()) || capsule.decisions().isEmpty()) {
                 return invalid("unsupported or empty capsule format");
             }
             Path root = capsuleFile.getParent().toRealPath(LinkOption.NOFOLLOW_LINKS);
@@ -49,6 +49,9 @@ public final class CapsuleVerifier {
             }
             if (!digestEquals(capsule.sourceSetSha256(), Hashing.sourceSetDigest(observation.units()))) {
                 return invalid("source-set digest mismatch");
+            }
+            if (!capsule.observationDiagnostics().equals(observation.diagnostics())) {
+                return invalid("observation diagnostics do not match capsule");
             }
             String alloy = Files.readString(alloyPath, StandardCharsets.UTF_8);
             var repeated = new AlloyInvariantEvaluator().evaluateAll(observation, alloy);

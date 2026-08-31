@@ -57,3 +57,13 @@ that richer evidence/projection in its registry contract. The encoder may then
 add the required Alloy relation without changing existing invariant-control flow.
 Until that projection is available, the invariant is `NOT_EVALUATED`; the
 pipeline must never infer element-level evidence from the compact token.
+
+## Parse diagnostics
+
+Parser-rejected source units remain part of the canonical source-set digest and
+are represented as source-path diagnostics in the observation model. Successfully
+parsed units may be retained for diagnostic value, but any parse error clears all
+global evidence-completeness claims. Consequently every registered invariant is
+`NOT_EVALUATED`, while deterministic XMI, Alloy, decisions, and capsule replay are
+still produced. A parse failure is therefore explicit evidence about observation
+completeness, never a tool-success result or an absent artifact.

@@ -39,9 +39,9 @@ Requirements: JDK 17 and Maven 3.9+.
 ```bash
 mvn verify
 mvn -q -DskipTests package
-java -jar target/metamodel-conformance-pipeline-next-0.4.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.5.0-SNAPSHOT.jar \
   analyze --source examples/acyclic --output build/acyclic
-java -jar target/metamodel-conformance-pipeline-next-0.4.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.5.0-SNAPSHOT.jar \
   verify-capsule --capsule build/acyclic/verification-capsule.json
 ```
 
@@ -89,6 +89,12 @@ Declarations with the same qualified name in different source paths retain disti
 path-based identities. A reference that cannot be assigned uniquely across those
 declarations remains unresolved, so hierarchy-dependent invariants are
 `NOT_EVALUATED`; the adapter never chooses a source set implicitly.
+
+Java files rejected by the parser remain in the hashed source set and are recorded
+as normalized, source-path diagnostics in schema-v4 `observation.xmi`. Valid files
+may still be preserved as partial observations, but no evidence kind is marked
+complete and every invariant is `NOT_EVALUATED`. The Alloy artifact and capsule are
+still emitted and independently replayable; a parse error is not a missing result.
 
 See [the observation contract](docs/decisions/0001-observation-contract.md) and
 [the invariant pipeline contract](docs/invariant-pipeline.md).

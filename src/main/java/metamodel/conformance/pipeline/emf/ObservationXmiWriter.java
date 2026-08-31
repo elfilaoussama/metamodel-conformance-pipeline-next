@@ -4,6 +4,7 @@ import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 import metamodel.conformance.pipeline.util.AtomicFiles;
@@ -120,6 +121,17 @@ public final class ObservationXmiWriter {
             set(item, "sourcePath", source.sourcePath());
             set(item, "line", source.line());
             unresolved.add(item);
+        }
+
+        EList<EObject> diagnostics = (EList<EObject>) root.eGet(feature(root, "diagnostics"));
+        EEnum diagnosticKind = (EEnum) ePackage.getEClassifier("DiagnosticKind");
+        for (ObservationDiagnostic source : observation.diagnostics()) {
+            EObject item = ePackage.getEFactoryInstance().create(schema.classifier("ObservationDiagnostic"));
+            set(item, "kind", diagnosticKind.getEEnumLiteral(source.kind().name()).getInstance());
+            set(item, "sourcePath", source.sourcePath());
+            set(item, "line", source.line());
+            set(item, "message", source.message());
+            diagnostics.add(item);
         }
 
         ResourceSetImpl resourceSet = new ResourceSetImpl();

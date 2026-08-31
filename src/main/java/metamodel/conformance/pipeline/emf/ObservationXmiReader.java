@@ -2,11 +2,13 @@ package metamodel.conformance.pipeline.emf;
 
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 import org.eclipse.emf.common.util.EList;
@@ -112,6 +114,14 @@ public final class ObservationXmiReader {
                     integer(item, "line")));
         }
         List<String> externalParents = new ArrayList<>((EList<String>) value(root, "externalParents"));
+        List<ObservationDiagnostic> diagnostics = new ArrayList<>();
+        for (EObject item : (EList<EObject>) value(root, "diagnostics")) {
+            diagnostics.add(new ObservationDiagnostic(
+                    DiagnosticKind.valueOf(value(item, "kind").toString()),
+                    string(item, "sourcePath"),
+                    integer(item, "line"),
+                    string(item, "message")));
+        }
         Set<EvidenceKind> completeEvidence = ((EList<Object>) value(root, "completeEvidence")).stream()
                 .map(Object::toString)
                 .map(EvidenceKind::valueOf)
@@ -125,7 +135,8 @@ public final class ObservationXmiReader {
                 units,
                 classifiers,
                 members,
-                unresolved);
+                unresolved,
+                diagnostics);
     }
 
     private static Object value(EObject object, String name) throws IOException {
