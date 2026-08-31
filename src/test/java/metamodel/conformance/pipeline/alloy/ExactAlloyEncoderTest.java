@@ -51,11 +51,17 @@ class ExactAlloyEncoderTest {
         String duplicateRepresentative = duplicateObservation.members().stream()
                 .map(member -> ExactAlloyEncoder.memberAtom(member.technicalKey()))
                 .min(String::compareTo).orElseThrow();
-        assertEquals(2, duplicate.split("->" + duplicateRepresentative, -1).length - 1);
+        String duplicateProjection = duplicate.lines()
+                .filter(line -> line.startsWith("  namespaceKeyRepresentative = "))
+                .findFirst().orElseThrow();
+        assertEquals(2, duplicateProjection.split("->" + duplicateRepresentative, -1).length - 1);
 
+        String overloadedProjection = overloaded.lines()
+                .filter(line -> line.startsWith("  namespaceKeyRepresentative = "))
+                .findFirst().orElseThrow();
         for (var member : overloadedObservation.members()) {
             String atom = ExactAlloyEncoder.memberAtom(member.technicalKey());
-            assertTrue(overloaded.contains(atom + "->" + atom));
+            assertTrue(overloadedProjection.contains(atom + "->" + atom));
         }
         assertFalse(overloaded.contains("NameToken"));
         assertFalse(overloaded.contains("SignatureToken"));
