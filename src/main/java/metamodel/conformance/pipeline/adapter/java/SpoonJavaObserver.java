@@ -245,7 +245,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                 isolated.addAll(modelTypes(buildModel(List.of(file))));
             }
             return isolated.stream()
-                    .sorted(Comparator.comparing(CtType::getQualifiedName)
+                    .sorted(Comparator.comparing((CtType<?> type) -> type.getQualifiedName())
                             .thenComparing(type -> type.getPosition().getFile().getPath()))
                     .toList();
         }
