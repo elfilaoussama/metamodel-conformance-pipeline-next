@@ -22,3 +22,8 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress verify
       - name: Verify pinned real repository
         run: ./scripts/verify-real-repository.sh
+
+  frozen-java-corpus:
+    needs: build
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/random-java-corpus-20.yml
