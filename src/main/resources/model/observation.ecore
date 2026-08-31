@@ -4,7 +4,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="urn:metamodel-conformance:observation:4"
+    nsURI="urn:metamodel-conformance:observation:5"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
@@ -20,6 +20,12 @@
   <eClassifiers xsi:type="ecore:EEnum" name="MemberKind">
     <eLiterals name="METHOD"/>
     <eLiterals name="ATTRIBUTE" value="1"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="GeneralizationKind">
+    <eLiterals name="EXTENDS"/>
+    <eLiterals name="IMPLEMENTS" value="1"/>
+    <eLiterals name="BASE" value="2"/>
+    <eLiterals name="OTHER" value="3"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="EvidenceKind">
     <eLiterals name="HIERARCHY"/>
@@ -53,6 +59,8 @@
         containment="true" eType="#//Classifier"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="members" upperBound="-1"
         containment="true" eType="#//Member"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="generalizations" upperBound="-1"
+        containment="true" eType="#//Generalization"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="unresolvedParents" upperBound="-1"
         containment="true" eType="#//UnresolvedParent"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="diagnostics" upperBound="-1"
@@ -85,6 +93,20 @@
         eType="#//Member"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="inheritedMembers" upperBound="-1"
         eType="#//Member"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Generalization">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="child" lowerBound="1"
+        eType="#//Classifier"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="parent" lowerBound="1"
+        eType="#//Classifier"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="kind" lowerBound="1"
+        eType="#//GeneralizationKind"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="declaredOrder" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePath" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="line" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="Member">
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="technicalKey" lowerBound="1" iD="true"
