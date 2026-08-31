@@ -71,12 +71,10 @@ public final class ExactAlloyEncoder {
     }
 
     private static List<String> parentEdges(Observation observation) {
-        List<String> edges = new ArrayList<>();
-        for (ClassifierObservation classifier : observation.classifiers()) {
-            classifier.parentIds().forEach(parent -> edges.add(
-                    classifierAtom(classifier.id()) + "->" + classifierAtom(parent)));
-        }
-        return edges;
+        return observation.generalizations().stream()
+                .filter(item -> item.isResolvedInternal())
+                .map(item -> classifierAtom(item.childId()) + "->" + classifierAtom(item.parentId()))
+                .toList();
     }
 
     private static List<String> declarationEdges(Observation observation) {
