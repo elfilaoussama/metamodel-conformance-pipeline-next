@@ -4,8 +4,6 @@ import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
-import metamodel.conformance.pipeline.obligation.ObligationCatalog;
-import metamodel.conformance.pipeline.obligation.ObligationDefinition;
 import metamodel.conformance.pipeline.util.Hashing;
 
 import java.io.IOException;
@@ -66,9 +64,6 @@ public final class ExactAlloyEncoder {
 
         String scope = scope(observation, nameAtoms.size(), typeAtoms.size());
         alloy.append("run ObservationConsistency ").append(scope).append('\n');
-        for (ObligationDefinition definition : ObligationCatalog.load().all()) {
-            alloy.append("run ").append(definition.command()).append(' ').append(scope).append('\n');
-        }
         return alloy.toString();
     }
 
@@ -181,13 +176,13 @@ public final class ExactAlloyEncoder {
     }
 
     private static String loadRules() {
-        try (InputStream input = ExactAlloyEncoder.class.getResourceAsStream("/alloy/obligations.als")) {
+        try (InputStream input = ExactAlloyEncoder.class.getResourceAsStream("/alloy/invariants.als")) {
             if (input == null) {
-                throw new IllegalStateException("bundled Alloy obligations are missing");
+                throw new IllegalStateException("bundled Alloy invariants are missing");
             }
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException failure) {
-            throw new IllegalStateException("cannot load Alloy obligations", failure);
+            throw new IllegalStateException("cannot load Alloy invariants", failure);
         }
     }
 }

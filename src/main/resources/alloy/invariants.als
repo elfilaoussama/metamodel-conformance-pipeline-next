@@ -1,19 +1,11 @@
 pred ObservationConsistency {}
 
-fun O02Violations : set Member {
+fun ExclusiveDeclarationOwnershipViolations : set Member {
   { m : Member | not one c : Classifier | m in c.declaredMembers }
 }
 
-pred O02Violation {
-  some O02Violations
-}
-
-fun O03Violations : set Classifier {
+fun AcyclicGeneralizationViolations : set Classifier {
   { c : Classifier | c in c.^parents }
-}
-
-pred O03Violation {
-  some O03Violations
 }
 
 pred sameMemberKey[m1, m2 : Member] {
@@ -42,25 +34,17 @@ fun formalInheritedMembers[c : Classifier] : set Member {
   }
 }
 
-fun O04Violations : Classifier -> Member {
+fun InheritedViewConsistencyViolations : Classifier -> Member {
   { c : Classifier, m : Member |
     (m in c.observedInheritedMembers and m not in formalInheritedMembers[c]) or
     (m not in c.observedInheritedMembers and m in formalInheritedMembers[c])
   }
 }
 
-pred O04Violation {
-  some O04Violations
-}
-
-fun O05Violations : Classifier -> Member {
+fun LocalInheritedSeparationViolations : Classifier -> Member {
   { c : Classifier, m : Member |
     m in c.declaredMembers and m in c.observedInheritedMembers
   }
-}
-
-pred O05Violation {
-  some O05Violations
 }
 
 pred sameMethodKey[m1, m2 : Member] {
@@ -76,7 +60,7 @@ pred sameAttributeName[a1, a2 : Member] {
   a1.memberName = a2.memberName
 }
 
-fun O08LocalMethodViolations : set Member {
+fun LocalMethodNamespaceViolations : set Member {
   { m1 : Member |
     some c : Classifier |
       m1 in c.declaredMembers and
@@ -84,7 +68,7 @@ fun O08LocalMethodViolations : set Member {
   }
 }
 
-fun O08LocalAttributeViolations : set Member {
+fun LocalAttributeNamespaceViolations : set Member {
   { a1 : Member |
     some c : Classifier |
       a1 in c.declaredMembers and
@@ -92,10 +76,6 @@ fun O08LocalAttributeViolations : set Member {
   }
 }
 
-fun O08LocalViolations : set Member {
-  O08LocalMethodViolations + O08LocalAttributeViolations
-}
-
-pred O08LocalViolation {
-  some O08LocalViolations
+fun LocalNamespaceUniquenessViolations : set Member {
+  LocalMethodNamespaceViolations + LocalAttributeNamespaceViolations
 }

@@ -48,7 +48,7 @@ public final class PipelineCli {
             return 64;
         } catch (Exception failure) {
             String message = failure.getMessage();
-            System.err.println("INDETERMINATE: "
+            System.err.println("PIPELINE_ERROR: "
                     + (message == null ? failure.getClass().getSimpleName() : message));
             return 3;
         }
@@ -61,7 +61,7 @@ public final class PipelineCli {
         PipelineResult result = new ConformancePipeline(new SpoonJavaObserver())
                 .analyze(source, output, new HashSet<>(options.many("external-parent")));
         result.decisions().forEach(decision ->
-                System.out.println(decision.constraint() + " " + decision.status() + ": " + decision.message()));
+                System.out.println(decision.invariantId() + " " + decision.status() + ": " + decision.message()));
         if (!result.observation().unresolvedParents().isEmpty()) {
             System.out.println("Unresolved parents:");
             result.observation().unresolvedParents().forEach(item -> System.out.println(
@@ -87,14 +87,14 @@ public final class PipelineCli {
                     }
                     return key;
                 }).toList();
-                System.out.println("  " + decision.constraint() + ": " + String.join(" -> ", descriptions));
+                System.out.println("  " + decision.invariantId() + ": " + String.join(" -> ", descriptions));
             }));
         }
         System.out.println("Capsule: " + result.capsulePath());
         if (result.decisions().stream().anyMatch(item -> item.status() == DecisionStatus.NON_CONFORMANT)) {
             return 2;
         }
-        return result.decisions().stream().anyMatch(item -> item.status() == DecisionStatus.INDETERMINATE)
+        return result.decisions().stream().anyMatch(item -> item.status() == DecisionStatus.NOT_EVALUATED)
                 ? 3 : 0;
     }
 
@@ -115,7 +115,7 @@ public final class PipelineCli {
                   analyze --source <dir> --output <dir> [--external-parent <qualified-name>]...
                   verify-capsule --capsule <verification-capsule.json>
 
-                Exit codes: 0 conformant/valid, 2 non-conformant, 3 indeterminate/invalid, 64 usage.
+                Exit codes: 0 conformant/valid, 2 non-conformant, 3 not-evaluated/invalid, 64 usage.
                 """);
     }
 

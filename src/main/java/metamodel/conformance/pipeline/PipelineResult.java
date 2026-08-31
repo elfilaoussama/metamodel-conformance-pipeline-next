@@ -17,7 +17,7 @@ public record PipelineResult(
         decisions = List.copyOf(decisions);
     }
 
-    public Decision decision() {
-        return decisions.stream().filter(item -> "O-03".equals(item.constraint())).findFirst().orElseThrow();
+    public Decision invariant(String invariantId) {
+        return decisions.stream().filter(item -> invariantId.equals(item.invariantId())).findFirst().orElseThrow();
     }
 }

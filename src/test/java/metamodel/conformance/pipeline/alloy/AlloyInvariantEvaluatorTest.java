@@ -14,26 +14,26 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-class AlloyObligationRunnerTest {
+class AlloyInvariantEvaluatorTest {
     private final ExactAlloyEncoder encoder = new ExactAlloyEncoder();
-    private final AlloyObligationRunner runner = new AlloyObligationRunner();
+    private final AlloyInvariantEvaluator runner = new AlloyInvariantEvaluator();
 
     @Test
-    void evaluatesAllCataloguedObligationsIndependently() {
+    void evaluatesAllCataloguedInvariantsIndependently() {
         Observation observation = TestObservations.membersConformant();
         List<Decision> decisions = runner.evaluateAll(observation, encoder.encode(observation));
 
-        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-02").status());
-        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-03").status());
-        assertEquals(DecisionStatus.INDETERMINATE, decision(decisions, "O-04").status());
-        assertEquals(DecisionStatus.INDETERMINATE, decision(decisions, "O-05").status());
-        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-08-local").status());
+        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "exclusive-declaration-ownership").status());
+        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "acyclic-generalization").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "inherited-view-consistency").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "local-inherited-separation").status());
+        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "local-namespace-uniqueness").status());
     }
 
     @Test
     void returnsAlloyMemberWitnessForExclusiveOwnershipViolation() {
         Observation observation = TestObservations.unownedMember();
-        Decision decision = decision(runner.evaluateAll(observation, encoder.encode(observation)), "O-02");
+        Decision decision = decision(runner.evaluateAll(observation, encoder.encode(observation)), "exclusive-declaration-ownership");
 
         assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
         assertEquals(List.of(observation.members().get(0).technicalKey()), decision.witnessTechnicalKeys());
@@ -45,9 +45,9 @@ class AlloyObligationRunnerTest {
         Observation overload = TestObservations.overloadedMethods();
 
         Decision duplicateDecision = decision(
-                runner.evaluateAll(duplicate, encoder.encode(duplicate)), "O-08-local");
+                runner.evaluateAll(duplicate, encoder.encode(duplicate)), "local-namespace-uniqueness");
         Decision overloadDecision = decision(
-                runner.evaluateAll(overload, encoder.encode(overload)), "O-08-local");
+                runner.evaluateAll(overload, encoder.encode(overload)), "local-namespace-uniqueness");
 
         assertEquals(DecisionStatus.NON_CONFORMANT, duplicateDecision.status());
         assertEquals(2, duplicateDecision.witnessTechnicalKeys().size());
@@ -58,14 +58,14 @@ class AlloyObligationRunnerTest {
     void detectsDuplicateLocalAttributeNames() {
         Observation observation = TestObservations.duplicateLocalAttributes();
         Decision decision = decision(
-                runner.evaluateAll(observation, encoder.encode(observation)), "O-08-local");
+                runner.evaluateAll(observation, encoder.encode(observation)), "local-namespace-uniqueness");
 
         assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
         assertEquals(2, decision.witnessTechnicalKeys().size());
     }
 
     @Test
-    void ownershipRelationMutationFlipsOnlyO02() {
+    void ownershipRelationMutationFlipsOnlyExclusiveDeclarationOwnership() {
         Observation base = TestObservations.membersConformant();
         ClassifierObservation secondOwner = new ClassifierObservation(
                 TestObservations.B,
@@ -84,21 +84,21 @@ class AlloyObligationRunnerTest {
         List<Decision> before = runner.evaluateAll(base, encoder.encode(base));
         List<Decision> after = runner.evaluateAll(mutated, encoder.encode(mutated));
 
-        assertEquals(DecisionStatus.CONFORMANT, decision(before, "O-02").status());
-        assertEquals(DecisionStatus.NON_CONFORMANT, decision(after, "O-02").status());
-        assertEquals(decision(before, "O-03").status(), decision(after, "O-03").status());
-        assertEquals(decision(before, "O-08-local").status(), decision(after, "O-08-local").status());
+        assertEquals(DecisionStatus.CONFORMANT, decision(before, "exclusive-declaration-ownership").status());
+        assertEquals(DecisionStatus.NON_CONFORMANT, decision(after, "exclusive-declaration-ownership").status());
+        assertEquals(decision(before, "acyclic-generalization").status(), decision(after, "acyclic-generalization").status());
+        assertEquals(decision(before, "local-namespace-uniqueness").status(), decision(after, "local-namespace-uniqueness").status());
     }
 
     @Test
-    void missingConditionSpecificEvidenceDoesNotBlockOtherObligations() {
+    void missingConditionSpecificEvidenceDoesNotBlockOtherInvariants() {
         Observation observation = TestObservations.incompleteLocalSignatures();
         List<Decision> decisions = runner.evaluateAll(observation, encoder.encode(observation));
 
-        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-02").status());
-        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "O-03").status());
-        assertEquals(DecisionStatus.INDETERMINATE, decision(decisions, "O-08-local").status());
-        assertFalse(decision(decisions, "O-08-local").message().isBlank());
+        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "exclusive-declaration-ownership").status());
+        assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "acyclic-generalization").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "local-namespace-uniqueness").status());
+        assertFalse(decision(decisions, "local-namespace-uniqueness").message().isBlank());
     }
 
     @Test
@@ -107,9 +107,9 @@ class AlloyObligationRunnerTest {
         Observation missing = TestObservations.missingInheritedMember();
 
         Decision conformantDecision = decision(
-                runner.evaluateAll(conformant, encoder.encode(conformant)), "O-04");
+                runner.evaluateAll(conformant, encoder.encode(conformant)), "inherited-view-consistency");
         Decision missingDecision = decision(
-                runner.evaluateAll(missing, encoder.encode(missing)), "O-04");
+                runner.evaluateAll(missing, encoder.encode(missing)), "inherited-view-consistency");
 
         assertEquals(DecisionStatus.CONFORMANT, conformantDecision.status());
         assertEquals(DecisionStatus.NON_CONFORMANT, missingDecision.status());
@@ -121,7 +121,7 @@ class AlloyObligationRunnerTest {
     void detectsAtomLevelLocalInheritedOverlap() {
         Observation observation = TestObservations.localInheritedOverlap();
         Decision decision = decision(
-                runner.evaluateAll(observation, encoder.encode(observation)), "O-05");
+                runner.evaluateAll(observation, encoder.encode(observation)), "local-inherited-separation");
 
         assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
         assertEquals(List.of(new WitnessTuple(List.of(
@@ -137,10 +137,10 @@ class AlloyObligationRunnerTest {
         List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
 
         assertEquals(5, decisions.size());
-        decisions.forEach(decision -> assertEquals(DecisionStatus.INDETERMINATE, decision.status()));
+        decisions.forEach(decision -> assertEquals(DecisionStatus.NOT_EVALUATED, decision.status()));
     }
 
     private static Decision decision(List<Decision> decisions, String id) {
-        return decisions.stream().filter(item -> id.equals(item.constraint())).findFirst().orElseThrow();
+        return decisions.stream().filter(item -> id.equals(item.invariantId())).findFirst().orElseThrow();
     }
 }

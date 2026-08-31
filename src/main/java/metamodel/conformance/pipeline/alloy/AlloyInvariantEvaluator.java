@@ -15,8 +15,8 @@ import metamodel.conformance.pipeline.decision.DecisionStatus;
 import metamodel.conformance.pipeline.decision.WitnessTuple;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Observation;
-import metamodel.conformance.pipeline.obligation.ObligationCatalog;
-import metamodel.conformance.pipeline.obligation.ObligationDefinition;
+import metamodel.conformance.pipeline.invariant.InvariantRegistry;
+import metamodel.conformance.pipeline.invariant.InvariantDefinition;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,14 +25,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public final class AlloyObligationRunner {
+public final class AlloyInvariantEvaluator {
     public List<Decision> evaluateAll(Observation observation, String alloyModel) {
-        ObligationCatalog catalog = ObligationCatalog.load();
+        InvariantRegistry registry = InvariantRegistry.load();
         CompModule module;
         try {
             module = CompUtil.parseEverything_fromString(new A4Reporter(), alloyModel);
         } catch (Exception | LinkageError failure) {
-            return catalog.all().stream().map(definition -> indeterminate(
+            return registry.all().stream().map(definition -> notEvaluated(
                     definition, "Alloy model parsing failed: " + safeMessage(failure))).toList();
         }
 
@@ -42,23 +42,23 @@ public final class AlloyObligationRunner {
             exactSolution = TranslateAlloyToKodkod.execute_command(
                     new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
             if (!exactSolution.satisfiable()) {
-                return catalog.all().stream().map(definition -> indeterminate(
+                return registry.all().stream().map(definition -> notEvaluated(
                         definition, "The exact Alloy observation is inconsistent.")).toList();
             }
         } catch (Exception | LinkageError failure) {
-            return catalog.all().stream().map(definition -> indeterminate(
+            return registry.all().stream().map(definition -> notEvaluated(
                     definition, "Alloy consistency evaluation failed: " + safeMessage(failure))).toList();
         }
 
         Map<String, String> atomKeys = new ExactAlloyEncoder().atomTechnicalKeys(observation);
         List<Decision> decisions = new ArrayList<>();
-        for (ObligationDefinition definition : catalog.all()) {
+        for (InvariantDefinition definition : registry.all()) {
             Set<EvidenceKind> missing = definition.requiredEvidence().stream()
                     .filter(required -> !observation.completeEvidence().contains(required))
                     .collect(Collectors.toSet());
             if (!missing.isEmpty()) {
                 String names = missing.stream().map(Enum::name).sorted().collect(Collectors.joining(", "));
-                decisions.add(indeterminate(definition, "Required evidence is incomplete: " + names));
+                decisions.add(notEvaluated(definition, "Required evidence is incomplete: " + names));
                 continue;
             }
             decisions.add(evaluate(exactSolution, module, definition, atomKeys));
@@ -69,7 +69,7 @@ public final class AlloyObligationRunner {
     private static Decision evaluate(
             A4Solution exactSolution,
             CompModule module,
-            ObligationDefinition definition,
+            InvariantDefinition definition,
             Map<String, String> atomKeys) {
         try {
             Func witnessFunction = findFunction(module, definition.witnessFunction());
@@ -80,7 +80,7 @@ public final class AlloyObligationRunner {
             List<WitnessTuple> witnesses = new ArrayList<>();
             for (A4Tuple tuple : tuples) {
                 if (tuple.arity() != definition.witnessArity()) {
-                    throw new IllegalStateException("witness relation arity does not match the catalog");
+                    throw new IllegalStateException("witness relation arity does not match the invariant registry");
                 }
                 List<String> technicalKeys = new ArrayList<>();
                 for (int index = 0; index < tuple.arity(); index++) {
@@ -109,7 +109,7 @@ public final class AlloyObligationRunner {
                     definition.violationMessage(),
                     witnesses);
         } catch (Exception | LinkageError failure) {
-            return indeterminate(definition, "Alloy evaluation failed: " + safeMessage(failure));
+            return notEvaluated(definition, "Alloy evaluation failed: " + safeMessage(failure));
         }
     }
 
@@ -137,8 +137,8 @@ public final class AlloyObligationRunner {
         return instanceSuffix >= 0 ? atom.substring(0, instanceSuffix) : atom;
     }
 
-    private static Decision indeterminate(ObligationDefinition definition, String message) {
-        return new Decision(DecisionStatus.INDETERMINATE, definition.id(), message, List.of());
+    private static Decision notEvaluated(InvariantDefinition definition, String message) {
+        return new Decision(DecisionStatus.NOT_EVALUATED, definition.id(), message, List.of());
     }
 
     private static String safeMessage(Throwable failure) {

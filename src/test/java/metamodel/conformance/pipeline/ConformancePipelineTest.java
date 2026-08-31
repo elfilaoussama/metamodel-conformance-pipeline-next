@@ -26,7 +26,7 @@ class ConformancePipelineTest {
         PipelineResult first = pipeline.analyze(fixture("acyclic"), temporary.resolve("one"), Set.of());
         PipelineResult second = pipeline.analyze(fixture("acyclic"), temporary.resolve("two"), Set.of());
 
-        assertEquals(DecisionStatus.CONFORMANT, first.decision().status());
+        assertEquals(DecisionStatus.CONFORMANT, first.invariant("acyclic-generalization").status());
         assertTrue(first.decisions().stream().allMatch(item -> item.status() == DecisionStatus.CONFORMANT));
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
@@ -40,12 +40,12 @@ class ConformancePipelineTest {
         PipelineResult unresolved = pipeline.analyze(
                 fixture("unresolved"), temporary.resolve("unresolved"), Set.of());
 
-        assertEquals(DecisionStatus.NON_CONFORMANT, cyclic.decision().status());
-        assertEquals(DecisionStatus.INDETERMINATE, unresolved.decision().status());
+        assertEquals(DecisionStatus.NON_CONFORMANT, cyclic.invariant("acyclic-generalization").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED, unresolved.invariant("acyclic-generalization").status());
         assertEquals(DecisionStatus.CONFORMANT, unresolved.decisions().stream()
-                .filter(item -> "O-02".equals(item.constraint())).findFirst().orElseThrow().status());
+                .filter(item -> "exclusive-declaration-ownership".equals(item.invariantId())).findFirst().orElseThrow().status());
         assertEquals(DecisionStatus.CONFORMANT, unresolved.decisions().stream()
-                .filter(item -> "O-08-local".equals(item.constraint())).findFirst().orElseThrow().status());
+                .filter(item -> "local-namespace-uniqueness".equals(item.invariantId())).findFirst().orElseThrow().status());
     }
 
     @Test

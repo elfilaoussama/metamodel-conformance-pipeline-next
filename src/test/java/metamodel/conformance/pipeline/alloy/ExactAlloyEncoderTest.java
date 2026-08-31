@@ -17,7 +17,8 @@ class ExactAlloyEncoderTest {
                 + "->" + ExactAlloyEncoder.classifierAtom(TestObservations.A)));
         assertTrue(alloy.contains("parameterTypes: Int -> lone TypeToken"));
         assertTrue(alloy.contains("run ObservationConsistency for exactly 2 Classifier"));
-        assertTrue(alloy.contains("run O03Violation for exactly 2 Classifier"));
+        assertFalse(alloy.contains("run AcyclicGeneralizationViolation"));
+        assertTrue(alloy.contains("fun AcyclicGeneralizationViolations : set Classifier"));
         assertFalse(alloy.contains("example.A"));
     }
 
@@ -30,7 +31,7 @@ class ExactAlloyEncoderTest {
                 + ExactAlloyEncoder.classifierAtom(TestObservations.B) + "->"
                 + ExactAlloyEncoder.memberAtom(observation.members().get(0).technicalKey())));
         assertTrue(alloy.contains("fun formalInheritedMembers[c : Classifier]"));
-        assertTrue(alloy.contains("fun O04Violations : Classifier -> Member"));
-        assertTrue(alloy.contains("fun O05Violations : Classifier -> Member"));
+        assertTrue(alloy.contains("fun InheritedViewConsistencyViolations : Classifier -> Member"));
+        assertTrue(alloy.contains("fun LocalInheritedSeparationViolations : Classifier -> Member"));
     }
 }

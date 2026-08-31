@@ -3,7 +3,7 @@ package metamodel.conformance.pipeline;
 import metamodel.conformance.pipeline.adapter.ObservationException;
 import metamodel.conformance.pipeline.adapter.SourceObserver;
 import metamodel.conformance.pipeline.alloy.ExactAlloyEncoder;
-import metamodel.conformance.pipeline.alloy.AlloyObligationRunner;
+import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
 import metamodel.conformance.pipeline.capsule.CapsuleWriter;
 import metamodel.conformance.pipeline.capsule.VerificationCapsule;
 import metamodel.conformance.pipeline.decision.Decision;
@@ -26,13 +26,13 @@ public final class ConformancePipeline {
 
     private final SourceObserver observer;
     private final ExactAlloyEncoder encoder;
-    private final AlloyObligationRunner runner;
+    private final AlloyInvariantEvaluator runner;
 
     public ConformancePipeline(SourceObserver observer) {
-        this(observer, new ExactAlloyEncoder(), new AlloyObligationRunner());
+        this(observer, new ExactAlloyEncoder(), new AlloyInvariantEvaluator());
     }
 
-    ConformancePipeline(SourceObserver observer, ExactAlloyEncoder encoder, AlloyObligationRunner runner) {
+    ConformancePipeline(SourceObserver observer, ExactAlloyEncoder encoder, AlloyInvariantEvaluator runner) {
         this.observer = observer;
         this.encoder = encoder;
         this.runner = runner;
@@ -52,7 +52,7 @@ public final class ConformancePipeline {
 
         List<Decision> decisions = runner.evaluateAll(observation, alloy);
         VerificationCapsule capsule = new VerificationCapsule(
-                "3",
+                "4",
                 PipelineVersion.TOOL_ID,
                 PipelineVersion.VERSION,
                 observation.schemaVersion(),
