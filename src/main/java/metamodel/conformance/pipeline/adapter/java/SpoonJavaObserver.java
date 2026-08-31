@@ -13,6 +13,7 @@ import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 import metamodel.conformance.pipeline.util.Hashing;
 import spoon.Launcher;
+import spoon.compiler.ModelBuildingException;
 import spoon.reflect.CtModel;
 import spoon.reflect.cu.SourcePosition;
 import spoon.reflect.declaration.CtAnnotationType;
@@ -64,17 +65,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                 units.add(new SourceUnit(relativePath(root, file), Hashing.sha256(file)));
             }
 
-            Launcher launcher = new Launcher();
-            launcher.getEnvironment().setNoClasspath(true);
-            launcher.getEnvironment().setComplianceLevel(17);
-            launcher.getEnvironment().setCommentEnabled(false);
-            files.forEach(file -> launcher.addInputResource(file.toString()));
-            CtModel model = launcher.buildModel();
-
-            List<CtType<?>> types = model.getAllTypes().stream()
-                    .filter(type -> type.getPosition().isValidPosition())
-                    .sorted(Comparator.comparing(CtType::getQualifiedName))
-                    .toList();
+            List<CtType<?>> types = buildTypes(files);
             Map<String, TypeDraft> draftsById = new HashMap<>();
             Map<String, List<TypeDraft>> draftsByQualifiedName = new HashMap<>();
             for (CtType<?> type : types) {
@@ -240,6 +231,40 @@ public final class SpoonJavaObserver implements SourceObserver {
             throw new ObservationException("symbolic-link source roots are not accepted: " + sourceRoot);
         }
         return sourceRoot.toRealPath(LinkOption.NOFOLLOW_LINKS);
+    }
+
+    private static List<CtType<?>> buildTypes(List<Path> files) {
+        try {
+            return modelTypes(buildModel(files));
+        } catch (ModelBuildingException failure) {
+            if (failure.getMessage() == null || !failure.getMessage().contains("already defined")) {
+                throw failure;
+            }
+            List<CtType<?>> isolated = new ArrayList<>();
+            for (Path file : files) {
+                isolated.addAll(modelTypes(buildModel(List.of(file))));
+            }
+            return isolated.stream()
+                    .sorted(Comparator.comparing(CtType::getQualifiedName)
+                            .thenComparing(type -> type.getPosition().getFile().getPath()))
+                    .toList();
+        }
+    }
+
+    private static CtModel buildModel(List<Path> files) {
+        Launcher launcher = new Launcher();
+        launcher.getEnvironment().setNoClasspath(true);
+        launcher.getEnvironment().setComplianceLevel(17);
+        launcher.getEnvironment().setCommentEnabled(false);
+        files.forEach(file -> launcher.addInputResource(file.toString()));
+        return launcher.buildModel();
+    }
+
+    private static List<CtType<?>> modelTypes(CtModel model) {
+        return model.getAllTypes().stream()
+                .filter(type -> type.getPosition().isValidPosition())
+                .sorted(Comparator.comparing(CtType::getQualifiedName))
+                .toList();
     }
 
     private static List<Path> discoverJavaFiles(Path root) throws IOException, ObservationException {
