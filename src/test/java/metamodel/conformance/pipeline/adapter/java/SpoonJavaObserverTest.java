@@ -39,6 +39,28 @@ class SpoonJavaObserverTest {
     }
 
     @Test
+    void preservesDuplicateQualifiedTypesAsDistinctPathBasedDeclarations() throws Exception {
+        Observation observation = observer.observe(fixture("duplicate-source-sets"), Set.of());
+        var duplicates = observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("example.Duplicate"))
+                .toList();
+
+        assertEquals(2, duplicates.size());
+        assertEquals(2, duplicates.stream().map(item -> item.id()).distinct().count());
+        assertEquals(2, duplicates.stream().map(item -> item.sourcePath()).distinct().count());
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.LOCAL_SIGNATURES));
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertEquals(1, observation.unresolvedParents().size());
+        assertEquals("example.Duplicate", observation.unresolvedParents().get(0).targetName());
+
+        Observation allowlisted = observer.observe(
+                fixture("duplicate-source-sets"), Set.of("example.Duplicate"));
+        assertFalse(allowlisted.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertEquals(1, allowlisted.unresolvedParents().size());
+    }
+
+    @Test
     void treatsLanguageDefinedRootsAsResolvedPlatformEvidence() throws Exception {
         Observation observation = observer.observe(fixture("platform-roots"), Set.of());
 

@@ -43,7 +43,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.3.0";
+    public static final String ADAPTER_VERSION = "0.4.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -75,17 +75,18 @@ public final class SpoonJavaObserver implements SourceObserver {
                     .filter(type -> type.getPosition().isValidPosition())
                     .sorted(Comparator.comparing(CtType::getQualifiedName))
                     .toList();
-            Map<String, TypeDraft> drafts = new HashMap<>();
+            Map<String, TypeDraft> draftsById = new HashMap<>();
+            Map<String, List<TypeDraft>> draftsByQualifiedName = new HashMap<>();
             for (CtType<?> type : types) {
                 String path = sourcePath(root, type);
                 ClassifierKind kind = kindOf(type);
                 String id = stableId(path, kind, type.getQualifiedName());
                 SourcePosition position = type.getPosition();
-                TypeDraft previous = drafts.put(type.getQualifiedName(), new TypeDraft(
-                        type, id, path, kind, position.getLine(), position.getEndLine()));
-                if (previous != null) {
-                    throw new ObservationException("duplicate qualified classifier name: " + type.getQualifiedName());
-                }
+                TypeDraft draft = new TypeDraft(
+                        type, id, path, kind, position.getLine(), position.getEndLine());
+                draftsById.put(id, draft);
+                draftsByQualifiedName.computeIfAbsent(type.getQualifiedName(), ignored -> new ArrayList<>())
+                        .add(draft);
             }
 
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
@@ -93,7 +94,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             Map<String, List<String>> memberKeysByOwner = new HashMap<>();
             Map<String, List<String>> memberKeysByDeclaration = new HashMap<>();
             boolean localSignaturesComplete = true;
-            for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
+            for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 List<String> memberKeys = new ArrayList<>();
                 for (CtTypeMember typeMember : draft.type().getTypeMembers()) {
                     if (!typeMember.getPosition().isValidPosition()) {
@@ -116,7 +117,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         members.add(member);
                         memberKeys.add(member.technicalKey());
                         memberKeysByDeclaration.computeIfAbsent(declarationKey(
-                                draft.type().getQualifiedName(), MemberKind.METHOD,
+                                draft.id(), MemberKind.METHOD,
                                 method.getSimpleName(), parameterTypes), ignored -> new ArrayList<>())
                                 .add(member.technicalKey());
                     } else if (typeMember instanceof CtField<?> field) {
@@ -127,12 +128,12 @@ public final class SpoonJavaObserver implements SourceObserver {
                         members.add(member);
                         memberKeys.add(member.technicalKey());
                         memberKeysByDeclaration.computeIfAbsent(declarationKey(
-                                draft.type().getQualifiedName(), MemberKind.ATTRIBUTE,
+                                draft.id(), MemberKind.ATTRIBUTE,
                                 field.getSimpleName(), List.of()), ignored -> new ArrayList<>())
                                 .add(member.technicalKey());
                     }
                 }
-                memberKeysByOwner.put(draft.type().getQualifiedName(), memberKeys);
+                memberKeysByOwner.put(draft.id(), memberKeys);
             }
 
             Map<String, MemberObservation> membersByKey = members.stream()
@@ -140,19 +141,24 @@ public final class SpoonJavaObserver implements SourceObserver {
                             MemberObservation::technicalKey, member -> member));
             Map<String, List<String>> inheritedMemberKeysByOwner = new HashMap<>();
             boolean inheritedMembersComplete = true;
-            for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
+            for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 LinkedHashSet<String> inheritedKeys = new LinkedHashSet<>();
                 try {
                     for (CtMethod<?> method : draft.type().getAllMethods()) {
                         CtType<?> declaringType = method.getDeclaringType();
                         if (declaringType == null
-                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())
-                                || !drafts.containsKey(declaringType.getQualifiedName())) {
+                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())) {
+                            continue;
+                        }
+                        TypeDraft declarationOwner = uniqueDraft(
+                                draftsByQualifiedName, declaringType.getQualifiedName());
+                        if (declarationOwner == null) {
+                            inheritedMembersComplete = false;
                             continue;
                         }
                         List<String> parameterTypes = method.getParameters().stream()
                                 .map(parameter -> parameter.getType().getQualifiedName()).toList();
-                        String key = declarationKey(declaringType.getQualifiedName(), MemberKind.METHOD,
+                        String key = declarationKey(declarationOwner.id(), MemberKind.METHOD,
                                 method.getSimpleName(), parameterTypes);
                         inheritedMembersComplete &= addResolvedMember(
                                 inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
@@ -160,11 +166,16 @@ public final class SpoonJavaObserver implements SourceObserver {
                     for (CtFieldReference<?> field : draft.type().getAllFields()) {
                         CtTypeReference<?> declaringType = field.getDeclaringType();
                         if (declaringType == null
-                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())
-                                || !drafts.containsKey(declaringType.getQualifiedName())) {
+                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())) {
                             continue;
                         }
-                        String key = declarationKey(declaringType.getQualifiedName(), MemberKind.ATTRIBUTE,
+                        TypeDraft declarationOwner = uniqueDraft(
+                                draftsByQualifiedName, declaringType.getQualifiedName());
+                        if (declarationOwner == null) {
+                            inheritedMembersComplete = false;
+                            continue;
+                        }
+                        String key = declarationKey(declarationOwner.id(), MemberKind.ATTRIBUTE,
                                 field.getSimpleName(), List.of());
                         inheritedMembersComplete &= addResolvedMember(
                                 inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
@@ -177,13 +188,17 @@ public final class SpoonJavaObserver implements SourceObserver {
 
             List<ClassifierObservation> classifiers = new ArrayList<>();
             List<UnresolvedParent> unresolved = new ArrayList<>();
-            for (TypeDraft draft : drafts.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
+            for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 LinkedHashSet<String> parentIds = new LinkedHashSet<>();
                 for (CtTypeReference<?> parent : directParents(draft.type())) {
                     String parentName = parent.getQualifiedName();
-                    TypeDraft internal = drafts.get(parentName);
-                    if (internal != null) {
-                        parentIds.add(internal.id());
+                    List<TypeDraft> internalCandidates = draftsByQualifiedName.get(parentName);
+                    if (internalCandidates != null && internalCandidates.size() == 1) {
+                        parentIds.add(internalCandidates.get(0).id());
+                    } else if (internalCandidates != null && !internalCandidates.isEmpty()) {
+                        // An external allowlist must never hide an ambiguous internal identity.
+                        unresolved.add(new UnresolvedParent(
+                                draft.id(), parentName, draft.path(), referenceLine(parent, draft.startLine())));
                     } else if (!PLATFORM_ROOTS.contains(parentName) && !allowed.contains(parentName)) {
                         unresolved.add(new UnresolvedParent(
                                 draft.id(), parentName, draft.path(), referenceLine(parent, draft.startLine())));
@@ -192,7 +207,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                 classifiers.add(new ClassifierObservation(
                         draft.id(), draft.type().getQualifiedName(), draft.kind(), draft.path(),
                         draft.startLine(), draft.endLine(), List.copyOf(parentIds),
-                        memberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of()),
+                        memberKeysByOwner.getOrDefault(draft.id(), List.of()),
                         inheritedMemberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
             }
             EnumSet<EvidenceKind> completeEvidence = EnumSet.of(
@@ -323,9 +338,16 @@ public final class SpoonJavaObserver implements SourceObserver {
         return isPrivate ? Inheritability.NOT_INHERITABLE : Inheritability.INHERITABLE;
     }
 
+    private static TypeDraft uniqueDraft(
+            Map<String, List<TypeDraft>> draftsByQualifiedName,
+            String qualifiedName) {
+        List<TypeDraft> candidates = draftsByQualifiedName.get(qualifiedName);
+        return candidates != null && candidates.size() == 1 ? candidates.get(0) : null;
+    }
+
     private static String declarationKey(
-            String ownerQualifiedName, MemberKind kind, String memberName, List<String> parameterTypes) {
-        return ownerQualifiedName + "\0" + kind + "\0" + memberName + "\0"
+            String ownerId, MemberKind kind, String memberName, List<String> parameterTypes) {
+        return ownerId + "\0" + kind + "\0" + memberName + "\0"
                 + String.join("\0", parameterTypes);
     }
 

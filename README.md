@@ -78,6 +78,10 @@ The current adapter accepts a closed Java source root. Parent types declared
 outside that root must be explicitly allowlisted with `--external-parent`; an
 unallowlisted parent makes hierarchy-dependent invariants `NOT_EVALUATED`. Resource exhaustion and
 solver failures are reported as failures, not scientific limits or findings.
+Declarations with the same qualified name in different source paths retain distinct
+path-based identities. A reference that cannot be assigned uniquely across those
+declarations remains unresolved, so hierarchy-dependent invariants are
+`NOT_EVALUATED`; the adapter never chooses a source set implicitly.
 
 See [the observation contract](docs/decisions/0001-observation-contract.md) and
 [the invariant pipeline contract](docs/invariant-pipeline.md).
