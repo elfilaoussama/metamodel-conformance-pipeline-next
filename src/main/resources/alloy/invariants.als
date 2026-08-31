@@ -1,10 +1,10 @@
 pred ObservationConsistency {}
 
-fact UniqueParameterPositionPerMember {
-  all member : Member, position : PositionToken |
-    lone { parameter : Parameter |
-      parameter.parameterOwner = member and
-      parameter.parameterPosition = position }
+fact CanonicalParameterSequences {
+  no sequence : ParameterSequence | sequence in sequence.^remainingTypes
+  all disj left, right : ParameterSequence |
+    left.firstType != right.firstType or
+    left.remainingTypes != right.remainingTypes
 }
 
 fun ExclusiveDeclarationOwnershipViolations : set Member {
@@ -58,16 +58,7 @@ pred sameMethodKey[m1, m2 : Member] {
   m1.kind = METHOD
   m2.kind = METHOD
   m1.memberName = m2.memberName
-  all position : PositionToken, parameterTypeToken : TypeToken |
-    (some parameter : Parameter |
-      parameter.parameterOwner = m1 and
-      parameter.parameterPosition = position and
-      parameter.parameterType = parameterTypeToken)
-    iff
-    (some parameter : Parameter |
-      parameter.parameterOwner = m2 and
-      parameter.parameterPosition = position and
-      parameter.parameterType = parameterTypeToken)
+  m1.parameterSignature = m2.parameterSignature
 }
 
 pred sameAttributeName[a1, a2 : Member] {

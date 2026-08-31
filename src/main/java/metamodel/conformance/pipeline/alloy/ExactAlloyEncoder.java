@@ -23,10 +23,7 @@ public final class ExactAlloyEncoder {
                 .map(MemberObservation::memberName).toList(), "N_");
         Map<String, String> typeAtoms = tokens(observation.members().stream()
                 .flatMap(member -> member.parameterTypes().stream()).toList(), "T_");
-        int positionCount = observation.members().stream()
-                .mapToInt(member -> member.parameterTypes().size()).max().orElse(0);
-        int parameterCount = observation.members().stream()
-                .mapToInt(member -> member.parameterTypes().size()).sum();
+        Map<List<String>, String> sequenceAtoms = parameterSequences(observation);
 
         StringBuilder alloy = new StringBuilder();
         alloy.append("module repository_instance\n\n");
@@ -41,16 +38,15 @@ public final class ExactAlloyEncoder {
                 .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
                 .append("abstract sig NameToken {}\n")
                 .append("abstract sig TypeToken {}\n")
-                .append("abstract sig PositionToken {}\n")
+                .append("abstract sig ParameterSequence {\n")
+                .append("  firstType: one TypeToken,\n")
+                .append("  remainingTypes: lone ParameterSequence\n")
+                .append("}\n")
                 .append("abstract sig Member {\n")
                 .append("  kind: one MemberKind,\n")
                 .append("  inheritability: one Inheritability,\n")
-                .append("  memberName: one NameToken\n")
-                .append("}\n")
-                .append("abstract sig Parameter {\n")
-                .append("  parameterOwner: one Member,\n")
-                .append("  parameterPosition: one PositionToken,\n")
-                .append("  parameterType: one TypeToken\n")
+                .append("  memberName: one NameToken,\n")
+                .append("  parameterSignature: lone ParameterSequence\n")
                 .append("}\n\n");
 
         observation.classifiers().forEach(item -> alloy.append("one sig ")
@@ -61,15 +57,8 @@ public final class ExactAlloyEncoder {
                 .append(" extends NameToken {}\n"));
         typeAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
                 .append(" extends TypeToken {}\n"));
-        for (int index = 0; index < positionCount; index++) {
-            alloy.append("one sig ").append(positionAtom(index)).append(" extends PositionToken {}\n");
-        }
-        for (MemberObservation member : observation.members()) {
-            for (int index = 0; index < member.parameterTypes().size(); index++) {
-                alloy.append("one sig ").append(parameterAtom(member.technicalKey(), index))
-                        .append(" extends Parameter {}\n");
-            }
-        }
+        sequenceAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
+                .append(" extends ParameterSequence {}\n"));
 
         alloy.append("\nfact ExactObservation {\n");
         relation(alloy, "parents", parentEdges(observation));
@@ -78,14 +67,13 @@ public final class ExactAlloyEncoder {
         relation(alloy, "kind", kindEdges(observation));
         relation(alloy, "inheritability", inheritabilityEdges(observation));
         relation(alloy, "memberName", nameEdges(observation, nameAtoms));
-        relation(alloy, "parameterOwner", parameterOwnerEdges(observation));
-        relation(alloy, "parameterPosition", parameterPositionEdges(observation));
-        relation(alloy, "parameterType", parameterTypeEdges(observation, typeAtoms));
+        relation(alloy, "parameterSignature", parameterSignatureEdges(observation, sequenceAtoms));
+        relation(alloy, "firstType", firstTypeEdges(sequenceAtoms, typeAtoms));
+        relation(alloy, "remainingTypes", remainingTypeEdges(sequenceAtoms));
         alloy.append("}\n\n");
         alloy.append(loadRules()).append('\n');
 
-        String scope = scope(
-                observation, nameAtoms.size(), typeAtoms.size(), positionCount, parameterCount);
+        String scope = scope(observation, nameAtoms.size(), typeAtoms.size(), sequenceAtoms.size());
         alloy.append("run ObservationConsistency ").append(scope).append('\n');
         return alloy.toString();
     }
@@ -111,24 +99,39 @@ public final class ExactAlloyEncoder {
         return "M_" + technicalKey.substring(4);
     }
 
-    static String parameterAtom(String technicalKey, int index) {
-        if (index < 0) {
-            throw new IllegalArgumentException("parameter index must be non-negative");
+    static String sequenceAtom(List<String> parameterTypes) {
+        if (parameterTypes == null || parameterTypes.isEmpty()) {
+            throw new IllegalArgumentException("parameter sequence must not be empty");
         }
-        return "P_" + memberAtom(technicalKey).substring(2) + "_" + index;
-    }
-
-    static String positionAtom(int index) {
-        if (index < 0) {
-            throw new IllegalArgumentException("parameter index must be non-negative");
-        }
-        return "I_" + index;
+        return "S_" + Hashing.sha256(sequenceKey(parameterTypes));
     }
 
     private static Map<String, String> tokens(List<String> values, String prefix) {
         Map<String, String> result = new LinkedHashMap<>();
         values.stream().distinct().sorted().forEach(value -> result.put(value, prefix + Hashing.sha256(value)));
         return result;
+    }
+
+    private static Map<List<String>, String> parameterSequences(Observation observation) {
+        List<List<String>> suffixes = new ArrayList<>();
+        for (MemberObservation member : observation.members()) {
+            for (int index = 0; index < member.parameterTypes().size(); index++) {
+                suffixes.add(List.copyOf(member.parameterTypes().subList(
+                        index, member.parameterTypes().size())));
+            }
+        }
+        Map<List<String>, String> result = new LinkedHashMap<>();
+        suffixes.stream().distinct().sorted(Comparator.comparing(ExactAlloyEncoder::sequenceKey))
+                .forEach(sequence -> result.put(sequence, sequenceAtom(sequence)));
+        return result;
+    }
+
+    private static String sequenceKey(List<String> parameterTypes) {
+        StringBuilder key = new StringBuilder();
+        for (String type : parameterTypes) {
+            key.append(type.length()).append(':').append(type);
+        }
+        return key.toString();
     }
 
     private static List<String> parentEdges(Observation observation) {
@@ -173,35 +176,35 @@ public final class ExactAlloyEncoder {
                 + nameAtoms.get(member.memberName())).toList();
     }
 
-    private static List<String> parameterOwnerEdges(Observation observation) {
-        List<String> edges = new ArrayList<>();
-        for (MemberObservation member : observation.members()) {
-            for (int index = 0; index < member.parameterTypes().size(); index++) {
-                edges.add(parameterAtom(member.technicalKey(), index) + "->"
-                        + memberAtom(member.technicalKey()));
-            }
-        }
-        return edges;
-    }
-
-    private static List<String> parameterPositionEdges(Observation observation) {
-        List<String> edges = new ArrayList<>();
-        for (MemberObservation member : observation.members()) {
-            for (int index = 0; index < member.parameterTypes().size(); index++) {
-                edges.add(parameterAtom(member.technicalKey(), index) + "->" + positionAtom(index));
-            }
-        }
-        return edges;
-    }
-
-    private static List<String> parameterTypeEdges(
+    private static List<String> parameterSignatureEdges(
             Observation observation,
+            Map<List<String>, String> sequenceAtoms) {
+        List<String> edges = new ArrayList<>();
+        for (MemberObservation member : observation.members()) {
+            if (!member.parameterTypes().isEmpty()) {
+                edges.add(memberAtom(member.technicalKey()) + "->"
+                        + sequenceAtoms.get(member.parameterTypes()));
+            }
+        }
+        return edges;
+    }
+
+    private static List<String> firstTypeEdges(
+            Map<List<String>, String> sequenceAtoms,
             Map<String, String> typeAtoms) {
         List<String> edges = new ArrayList<>();
-        for (MemberObservation member : observation.members()) {
-            for (int index = 0; index < member.parameterTypes().size(); index++) {
-                edges.add(parameterAtom(member.technicalKey(), index) + "->"
-                        + typeAtoms.get(member.parameterTypes().get(index)));
+        for (Map.Entry<List<String>, String> entry : sequenceAtoms.entrySet()) {
+            edges.add(entry.getValue() + "->" + typeAtoms.get(entry.getKey().get(0)));
+        }
+        return edges;
+    }
+
+    private static List<String> remainingTypeEdges(Map<List<String>, String> sequenceAtoms) {
+        List<String> edges = new ArrayList<>();
+        for (Map.Entry<List<String>, String> entry : sequenceAtoms.entrySet()) {
+            if (entry.getKey().size() > 1) {
+                List<String> tail = List.copyOf(entry.getKey().subList(1, entry.getKey().size()));
+                edges.add(entry.getValue() + "->" + sequenceAtoms.get(tail));
             }
         }
         return edges;
@@ -228,12 +231,11 @@ public final class ExactAlloyEncoder {
             Observation observation,
             int nameCount,
             int typeCount,
-            int positionCount,
-            int parameterCount) {
+            int sequenceCount) {
         return "for exactly " + observation.classifiers().size() + " Classifier, exactly "
                 + observation.members().size() + " Member, exactly " + nameCount
-                + " NameToken, exactly " + typeCount + " TypeToken, exactly " + positionCount
-                + " PositionToken, exactly " + parameterCount + " Parameter";
+                + " NameToken, exactly " + typeCount + " TypeToken, exactly " + sequenceCount
+                + " ParameterSequence";
     }
 
     private static String loadRules() {
