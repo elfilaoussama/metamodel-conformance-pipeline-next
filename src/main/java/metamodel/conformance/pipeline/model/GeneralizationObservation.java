@@ -3,7 +3,6 @@ package metamodel.conformance.pipeline.model;
 import java.util.Objects;
 
 public record GeneralizationObservation(
-        String technicalKey,
         String childId,
         String parentId,
         GeneralizationKind kind,
@@ -12,7 +11,6 @@ public record GeneralizationObservation(
         int line) {
 
     public GeneralizationObservation {
-        technicalKey = requireText(technicalKey, "technicalKey");
         childId = requireText(childId, "childId");
         parentId = requireText(parentId, "parentId");
         kind = Objects.requireNonNull(kind, "kind");
