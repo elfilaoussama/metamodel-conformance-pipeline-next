@@ -13,7 +13,7 @@ class ExactAlloyEncoderTest {
         String alloy = new ExactAlloyEncoder().encode(TestObservations.acyclic());
 
         assertEquals(2, alloy.lines().filter(line -> line.startsWith("one sig C_")).count());
-        assertTrue(alloy.contains("parents = " + ExactAlloyEncoder.classifierAtom(TestObservations.B)
+        assertTrue(alloy.contains("parents = (" + ExactAlloyEncoder.classifierAtom(TestObservations.B)
                 + "->" + ExactAlloyEncoder.classifierAtom(TestObservations.A)));
         assertTrue(alloy.contains("abstract sig Parameter"));
         assertTrue(alloy.contains("parameterOwner: one Member"));
@@ -31,7 +31,7 @@ class ExactAlloyEncoderTest {
         var observation = TestObservations.inheritedViewConformant();
         String alloy = new ExactAlloyEncoder().encode(observation);
 
-        assertTrue(alloy.contains("observedInheritedMembers = "
+        assertTrue(alloy.contains("observedInheritedMembers = ("
                 + ExactAlloyEncoder.classifierAtom(TestObservations.B) + "->"
                 + ExactAlloyEncoder.memberAtom(observation.members().get(0).technicalKey())));
         assertTrue(alloy.contains("fun formalInheritedMembers[c : Classifier]"));
