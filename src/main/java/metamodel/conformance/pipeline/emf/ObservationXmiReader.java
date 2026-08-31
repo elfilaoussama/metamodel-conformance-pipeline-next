@@ -4,6 +4,8 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.GeneralizationKind;
+import metamodel.conformance.pipeline.model.GeneralizationObservation;
 import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
@@ -109,6 +111,16 @@ public final class ObservationXmiReader {
                     declaredMemberKeys,
                     inheritedMemberKeys));
         }
+        List<GeneralizationObservation> generalizations = new ArrayList<>();
+        for (EObject edge : (EList<EObject>) value(root, "generalizations")) {
+            generalizations.add(new GeneralizationObservation(
+                    string((EObject) value(edge, "child"), "id"),
+                    string((EObject) value(edge, "parent"), "id"),
+                    GeneralizationKind.valueOf(value(edge, "kind").toString()),
+                    integer(edge, "declaredOrder"),
+                    string(edge, "sourcePath"),
+                    integer(edge, "line")));
+        }
         List<UnresolvedParent> unresolved = new ArrayList<>();
         for (EObject item : (EList<EObject>) value(root, "unresolvedParents")) {
             unresolved.add(new UnresolvedParent(
@@ -139,6 +151,7 @@ public final class ObservationXmiReader {
                 units,
                 classifiers,
                 members,
+                generalizations,
                 unresolved,
                 diagnostics);
     }
