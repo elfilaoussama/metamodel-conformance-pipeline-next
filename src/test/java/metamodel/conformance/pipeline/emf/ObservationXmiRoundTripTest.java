@@ -13,6 +13,7 @@ import metamodel.conformance.pipeline.model.UnresolvedParent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,6 +21,8 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ObservationXmiRoundTripTest {
     @TempDir
@@ -83,5 +86,41 @@ class ObservationXmiRoundTripTest {
 
         assertEquals(observation, repeated);
         assertEquals(generalizations, repeated.generalizations());
+    }
+
+    @Test
+    void roundTripsUnknownGeneralizationOrderAsUnknown() throws Exception {
+        ClassifierObservation parent = new ClassifierObservation(
+                TestObservations.A, "example.A", ClassifierKind.INTERFACE,
+                "example/A.java", 1, 2, List.of(), List.of());
+        ClassifierObservation child = new ClassifierObservation(
+                TestObservations.B, "example.B", ClassifierKind.CLASS,
+                "example/B.java", 3, 7, List.of(TestObservations.A), List.of());
+        GeneralizationObservation edge = new GeneralizationObservation(
+                TestObservations.B, TestObservations.A, "example.A", GeneralizationKind.IMPLEMENTS, null,
+                GeneralizationResolutionStatus.RESOLVED_INTERNAL, "example/B.java", 3);
+        Observation observation = new Observation(
+                "5", "unknown-order", "1.0", List.of(), Set.of(),
+                List.of(new SourceUnit(Language.JAVA, "example/B.java", "a".repeat(64))),
+                List.of(parent, child), List.of(), List.of(edge), List.of(), List.of());
+        Path target = temporary.resolve("unknown-order.xmi");
+
+        new ObservationXmiWriter().write(observation, target);
+        Observation repeated = new ObservationXmiReader().read(target);
+
+        assertNull(repeated.generalizations().get(0).declaredOrder());
+        assertEquals(observation, repeated);
+    }
+
+    @Test
+    void rejectsMismatchedSchemaVersionEvenWhenTheXmiShapeIsOtherwiseValid() throws Exception {
+        Observation observation = TestObservations.acyclic();
+        Path target = temporary.resolve("wrong-schema.xmi");
+        new ObservationXmiWriter().write(observation, target);
+        String xmi = Files.readString(target).replace("schemaVersion=\"5\"", "schemaVersion=\"4\"");
+        Files.writeString(target, xmi);
+
+        IOException failure = assertThrows(IOException.class, () -> new ObservationXmiReader().read(target));
+        assertEquals("unsupported observation schema: 4", failure.getMessage());
     }
 }
