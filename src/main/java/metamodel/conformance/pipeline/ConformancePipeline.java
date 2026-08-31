@@ -7,6 +7,7 @@ import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
 import metamodel.conformance.pipeline.capsule.CapsuleWriter;
 import metamodel.conformance.pipeline.capsule.VerificationCapsule;
 import metamodel.conformance.pipeline.decision.Decision;
+import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.emf.ObservationXmiWriter;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.util.AtomicFiles;
@@ -41,10 +42,15 @@ public final class ConformancePipeline {
     public PipelineResult analyze(Path sourceRoot, Path outputDirectory, Set<String> externalParents)
             throws ObservationException, IOException {
         Path output = prepareOutputDirectory(outputDirectory);
-        Observation observation = observer.observe(sourceRoot, externalParents);
+        Observation extracted = observer.observe(sourceRoot, externalParents);
 
         Path observationPath = output.resolve(OBSERVATION_FILE);
-        new ObservationXmiWriter().write(observation, observationPath);
+        new ObservationXmiWriter().write(extracted, observationPath);
+
+        // observation.xmi is the durable canonical boundary. Downstream formal
+        // encoding must consume the representation that is actually archived,
+        // rather than the observer's transient in-memory object.
+        Observation observation = new ObservationXmiReader().read(observationPath);
 
         String alloy = encoder.encode(observation);
         Path alloyPath = output.resolve(ALLOY_FILE);
