@@ -18,8 +18,8 @@
       "witnessFunction": "AcyclicGeneralizationViolations",
       "witnessArity": 1,
       "requiredEvidence": ["HIERARCHY"],
-      "conformanceMessage": "No inheritance cycle exists in the exact observed graph.",
-      "violationMessage": "An inheritance cycle exists in the exact observed graph."
+      "conformanceMessage": "No inheritance cycle exists in the exact resolved internal generalization graph.",
+      "violationMessage": "An inheritance cycle exists in the exact resolved internal generalization graph."
     },
     {
       "id": "inherited-view-consistency",
