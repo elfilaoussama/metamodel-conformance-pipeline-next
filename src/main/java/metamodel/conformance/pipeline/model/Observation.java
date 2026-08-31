@@ -32,7 +32,8 @@ public record Observation(
         members = members.stream().sorted(Comparator.comparing(MemberObservation::technicalKey)).toList();
         generalizations = generalizations == null ? List.of() : generalizations.stream()
                 .sorted(Comparator.comparing(GeneralizationObservation::childId)
-                        .thenComparingInt(GeneralizationObservation::declaredOrder)
+                        .thenComparing(GeneralizationObservation::declaredOrder,
+                                Comparator.nullsLast(Integer::compareTo))
                         .thenComparing(item -> item.kind().name())
                         .thenComparing(GeneralizationObservation::targetName))
                 .toList();
@@ -130,17 +131,14 @@ public record Observation(
         }
         Map<String, String> namesById = classifiers.stream().collect(Collectors.toMap(
                 ClassifierObservation::id, ClassifierObservation::qualifiedName));
-        Map<String, Integer> nextOrder = new java.util.HashMap<>();
         List<GeneralizationObservation> result = new ArrayList<>();
         for (ClassifierObservation classifier : classifiers) {
-            int order = 0;
             for (String parentId : classifier.parentIds()) {
                 result.add(new GeneralizationObservation(
                         classifier.id(), parentId, namesById.getOrDefault(parentId, parentId),
-                        GeneralizationKind.OTHER, order++, GeneralizationResolutionStatus.RESOLVED_INTERNAL,
+                        GeneralizationKind.OTHER, null, GeneralizationResolutionStatus.RESOLVED_INTERNAL,
                         classifier.sourcePath(), classifier.startLine()));
             }
-            nextOrder.put(classifier.id(), order);
         }
         if (unresolvedParents != null) {
             for (UnresolvedParent unresolved : unresolvedParents.stream()
@@ -148,12 +146,10 @@ public record Observation(
                             .thenComparingInt(UnresolvedParent::line)
                             .thenComparing(UnresolvedParent::targetName))
                     .toList()) {
-                int order = nextOrder.getOrDefault(unresolved.ownerId(), 0);
                 result.add(new GeneralizationObservation(
                         unresolved.ownerId(), null, unresolved.targetName(), GeneralizationKind.OTHER,
-                        order, GeneralizationResolutionStatus.UNRESOLVED,
+                        null, GeneralizationResolutionStatus.UNRESOLVED,
                         unresolved.sourcePath(), Math.max(1, unresolved.line())));
-                nextOrder.put(unresolved.ownerId(), order + 1);
             }
         }
         return result;
@@ -217,6 +213,9 @@ public record Observation(
     private static void validateGeneralizationOrder(List<GeneralizationObservation> generalizations) {
         Set<String> positions = new HashSet<>();
         for (GeneralizationObservation generalization : generalizations) {
+            if (!generalization.hasObservedDeclaredOrder()) {
+                continue;
+            }
             String position = generalization.childId() + "\0" + generalization.declaredOrder();
             if (!positions.add(position)) {
                 throw new IllegalArgumentException(
