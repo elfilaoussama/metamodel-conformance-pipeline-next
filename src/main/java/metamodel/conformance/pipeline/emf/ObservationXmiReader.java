@@ -120,7 +120,7 @@ public final class ObservationXmiReader {
                     parent == null ? null : string(parent, "id"),
                     string(edge, "targetName"),
                     GeneralizationKind.valueOf(value(edge, "kind").toString()),
-                    integer(edge, "declaredOrder"),
+                    integerOrNull(edge, "declaredOrder"),
                     GeneralizationResolutionStatus.valueOf(value(edge, "resolutionStatus").toString()),
                     string(edge, "sourcePath"),
                     integer(edge, "line")));
@@ -180,6 +180,17 @@ public final class ObservationXmiReader {
         Object value = value(object, name);
         if (!(value instanceof Integer number)) {
             throw new IOException("invalid integer feature " + object.eClass().getName() + "." + name);
+        }
+        return number;
+    }
+
+    private static Integer integerOrNull(EObject object, String name) throws IOException {
+        Object value = value(object, name);
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof Integer number)) {
+            throw new IOException("invalid optional integer feature " + object.eClass().getName() + "." + name);
         }
         return number;
     }
