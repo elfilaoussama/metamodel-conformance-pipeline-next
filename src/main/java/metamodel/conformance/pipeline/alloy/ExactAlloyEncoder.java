@@ -95,6 +95,11 @@ public final class ExactAlloyEncoder {
         return result;
     }
 
+    /**
+     * Projects complete ordered signatures to injective atoms for the active
+     * equality-only Alloy profile. The canonical EMF observation remains the
+     * source of element-level parameter evidence for richer future profiles.
+     */
     private static Map<List<String>, String> signatureTokens(Observation observation) {
         Map<List<String>, String> result = new LinkedHashMap<>();
         List<List<String>> signatures = observation.members().stream()
