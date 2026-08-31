@@ -108,8 +108,8 @@
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="kind" lowerBound="1"
         eType="#//GeneralizationKind"/>
-    <eStructuralFeatures xsi:type="ecore:EAttribute" name="declaredOrder" lowerBound="1"
-        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="declaredOrder"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EIntegerObject"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="resolutionStatus" lowerBound="1"
         eType="#//GeneralizationResolutionStatus"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePath" lowerBound="1"
