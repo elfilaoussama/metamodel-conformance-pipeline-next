@@ -15,7 +15,7 @@ import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 import metamodel.conformance.pipeline.util.Hashing;
 import spoon.Launcher;
-import spoon.compiler.ModelBuildingException;
+import spoon.SpoonException;
 import spoon.reflect.CtModel;
 import spoon.reflect.cu.SourcePosition;
 import spoon.reflect.declaration.CtAnnotationType;
@@ -246,13 +246,13 @@ public final class SpoonJavaObserver implements SourceObserver {
     private static BuildResult buildTypes(Path root, List<Path> files) {
         try {
             return new BuildResult(modelTypes(buildModel(files)), List.of());
-        } catch (ModelBuildingException failure) {
+        } catch (SpoonException failure) {
             List<CtType<?>> isolated = new ArrayList<>();
             List<ObservationDiagnostic> diagnostics = new ArrayList<>();
             for (Path file : files) {
                 try {
                     isolated.addAll(modelTypes(buildModel(List.of(file))));
-                } catch (ModelBuildingException isolatedFailure) {
+                } catch (SpoonException isolatedFailure) {
                     diagnostics.add(parseDiagnostic(root, file, isolatedFailure));
                 }
             }
@@ -267,7 +267,7 @@ public final class SpoonJavaObserver implements SourceObserver {
     private static ObservationDiagnostic parseDiagnostic(
             Path root,
             Path file,
-            ModelBuildingException failure) {
+            SpoonException failure) {
         String relative = relativePath(root, file);
         String message = failure.getMessage();
         if (message == null || message.isBlank()) {

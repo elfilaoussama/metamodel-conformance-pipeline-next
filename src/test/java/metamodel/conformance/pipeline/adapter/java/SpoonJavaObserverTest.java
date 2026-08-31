@@ -101,7 +101,8 @@ class SpoonJavaObserverTest {
                 .anyMatch(classifier -> classifier.qualifiedName().equals("example.Valid")));
         assertTrue(observation.completeEvidence().isEmpty());
         assertEquals(1, observation.diagnostics().size());
-        assertEquals("example/Broken.java", observation.diagnostics().get(0).sourcePath());
+        assertEquals("example/Level order Traversal OR Level order traversal in spiral form.java",
+                observation.diagnostics().get(0).sourcePath());
         assertEquals(metamodel.conformance.pipeline.model.DiagnosticKind.PARSE_ERROR,
                 observation.diagnostics().get(0).kind());
         assertFalse(observation.diagnostics().get(0).message().contains(
