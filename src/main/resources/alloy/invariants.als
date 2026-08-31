@@ -1,5 +1,12 @@
 pred ObservationConsistency {}
 
+fact UniqueParameterPositionPerMember {
+  all member : Member, position : PositionToken |
+    lone { parameter : Parameter |
+      parameter.parameterOwner = member and
+      parameter.parameterPosition = position }
+}
+
 fun ExclusiveDeclarationOwnershipViolations : set Member {
   { m : Member | not one c : Classifier | m in c.declaredMembers }
 }
@@ -51,7 +58,16 @@ pred sameMethodKey[m1, m2 : Member] {
   m1.kind = METHOD
   m2.kind = METHOD
   m1.memberName = m2.memberName
-  m1.parameterTypes = m2.parameterTypes
+  all position : PositionToken, parameterTypeToken : TypeToken |
+    (some parameter : Parameter |
+      parameter.parameterOwner = m1 and
+      parameter.parameterPosition = position and
+      parameter.parameterType = parameterTypeToken)
+    iff
+    (some parameter : Parameter |
+      parameter.parameterOwner = m2 and
+      parameter.parameterPosition = position and
+      parameter.parameterType = parameterTypeToken)
 }
 
 pred sameAttributeName[a1, a2 : Member] {
