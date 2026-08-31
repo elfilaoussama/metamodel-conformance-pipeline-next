@@ -7,7 +7,7 @@ public record GeneralizationObservation(
         String parentId,
         String targetName,
         GeneralizationKind kind,
-        int declaredOrder,
+        Integer declaredOrder,
         GeneralizationResolutionStatus resolutionStatus,
         String sourcePath,
         int line) {
@@ -18,8 +18,8 @@ public record GeneralizationObservation(
         kind = Objects.requireNonNull(kind, "kind");
         resolutionStatus = Objects.requireNonNull(resolutionStatus, "resolutionStatus");
         sourcePath = requireText(sourcePath, "sourcePath");
-        if (declaredOrder < 0) {
-            throw new IllegalArgumentException("declaredOrder must be non-negative");
+        if (declaredOrder != null && declaredOrder < 0) {
+            throw new IllegalArgumentException("declaredOrder must be non-negative when observed");
         }
         if (line < 1) {
             throw new IllegalArgumentException("line must be positive");
@@ -33,6 +33,10 @@ public record GeneralizationObservation(
 
     public boolean isResolvedInternal() {
         return resolutionStatus == GeneralizationResolutionStatus.RESOLVED_INTERNAL;
+    }
+
+    public boolean hasObservedDeclaredOrder() {
+        return declaredOrder != null;
     }
 
     private static String requireText(String value, String name) {
