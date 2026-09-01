@@ -58,6 +58,28 @@ invariant decision is produced. A failure in any required work unit makes that
 invariant `NOT_EVALUATED`. This avoids repository-size caps while preserving every
 cross-atom relation declared relevant by the invariant registry.
 
+## Independent Java inherited view
+
+Spoon observes declarations, direct parents, member signatures, and source
+provenance. A separate JDK compiler task observes inherited memberships through
+`Elements.getAllMembers`; annotation processing is disabled and the compiler uses
+an empty classpath, so repository code and build plugins are not executed. Javac
+members are mapped back to Spoon declaration atoms only through source ownership,
+member kind/name, and ordered parameter types.
+
+`INHERITED_MEMBERS` is declared complete only when javac reports no errors and all
+internal type and declaration mappings are unique. Any missing dependency,
+duplicate mapping, compiler failure, or unsupported source shape yields incomplete
+evidence and an empty stored inherited relation. The affected invariants then return
+`NOT_EVALUATED`; the adapter never substitutes its own inheritance algorithm.
+
+The current declaration-level inheritability field is intentionally conservative.
+Public and protected declarations are `INHERITABLE`; private declarations and
+interface static methods are `NOT_INHERITABLE`; package-private declarations are
+`UNKNOWN` because their eligibility depends on the descendant package. Any such
+unknown prevents invariants requiring complete `INHERITABILITY` from being
+evaluated until the observation schema carries contextual accessibility.
+
 ## Reproducible Alloy execution
 
 Capsule format v6 records the immutable execution configuration actually owned

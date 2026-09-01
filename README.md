@@ -39,9 +39,9 @@ Requirements: JDK 17 and Maven 3.9+.
 ```bash
 mvn verify
 mvn -q -DskipTests package
-java -jar target/metamodel-conformance-pipeline-next-0.7.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.8.0-SNAPSHOT.jar \
   analyze --source examples/acyclic --output build/acyclic
-java -jar target/metamodel-conformance-pipeline-next-0.7.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.8.0-SNAPSHOT.jar \
   verify-capsule --capsule build/acyclic/verification-capsule.json
 ```
 
@@ -66,12 +66,17 @@ written last as the completed-run marker. Once extraction succeeds, a failed rer
 removes any older capsule before publishing new artifacts, so partial output cannot
 be mistaken for a verified result.
 
-Spoon's aggregate inherited-member APIs are currently preserved only as provisional
-diagnostic observations: corpus validation showed that they do not implement the
-Java inheritance view accurately for all interface and overriding cases. The Java
-adapter therefore does not declare `INHERITED_MEMBERS` complete. Invariants requiring
-that evidence return `NOT_EVALUATED` until an independently validated frontend view
-is available; Alloy still derives the expected memberships from the observed structure.
+Inherited memberships are observed independently with the JDK compiler's
+`Elements.getAllMembers` API, using annotation processing disabled and an empty
+classpath. Spoon remains responsible for declaration evidence, while source
+provenance maps javac's semantic members back to the canonical declaration atoms.
+`INHERITED_MEMBERS` is complete only when javac reports no errors and every internal
+type/member mapping is unique. Otherwise only invariants requiring that evidence
+return `NOT_EVALUATED`; an absent tuple is never treated as complete evidence.
+Declaration-level inheritability is complete only for context-independent cases:
+public/protected members are inheritable, private and interface-static members are
+not, and package-private members remain `UNKNOWN` because accessibility depends on
+the descendant package.
 
 ## Invariant extensibility
 

@@ -23,8 +23,8 @@ class CrossProcessDeterminismTest {
         Path first = temporary.resolve("first");
         Path second = temporary.resolve("second");
 
-        assertEquals(3, analyzeInFreshJvm(source, first));
-        assertEquals(3, analyzeInFreshJvm(source, second));
+        assertEquals(0, analyzeInFreshJvm(source, first));
+        assertEquals(0, analyzeInFreshJvm(source, second));
 
         for (String artifact : new String[] {
                 "observation.xmi", "repository-instance.als", "verification-capsule.json"}) {

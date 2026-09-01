@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly REPOSITORY_URL="https://github.com/elfilaoussama/metamodel-conformance-pipeline.git"
 readonly REPOSITORY_COMMIT="25a80241f7514aa0a9e9a5ad2c5ec3fa90277527"
-readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.7.0-SNAPSHOT.jar"
+readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.8.0-SNAPSHOT.jar"
 
 integration_root="$(mktemp -d)"
 readonly integration_root
@@ -24,7 +24,7 @@ java -jar "${PIPELINE_JAR}" analyze \
   --external-parent org.eclipse.jgit.lib.ProgressMonitor || analysis_exit=$?
 
 if [[ ${analysis_exit} -ne 3 ]]; then
-  echo "Expected exit 3 while inherited-member evidence is deliberately not evaluated; got ${analysis_exit}" >&2
+  echo "Expected exit 3 because javac cannot close inherited-member evidence for this dependency-rich repository; got ${analysis_exit}" >&2
   exit 1
 fi
 

@@ -27,6 +27,11 @@ external-parent allowlist. Missing evidence is represented, never discarded.
 This boundary makes adapters replaceable while keeping the downstream Alloy
 encoding independent of Java, Python, or C++ parser APIs.
 
+For Java, inherited memberships are a second-front-end observation: Spoon records
+declarations, while javac's language-model API resolves the inherited view. The
+pipeline does not derive both sides of the inherited-view invariant from the same
+algorithm.
+
 ## Security and determinism
 
 - Real paths must remain beneath the declared source root.

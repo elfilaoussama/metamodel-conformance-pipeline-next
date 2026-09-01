@@ -24,15 +24,15 @@ conditions:
     requires: [HIERARCHY]
     witness: CLASSIFIER
   O-04:
-    status: DEFERRED
+    status: EVALUABLE
     requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, INHERITED_MEMBERS]
     witness: CLASSIFIER_MEMBER_PAIR
-    reason: Spoon aggregate-member APIs are not a validated independent Java inherited view.
+    reason: Evaluated only when the independent javac inherited-member observation is complete.
   O-05:
-    status: DEFERRED
+    status: EVALUABLE
     requires: [DECLARATION_OWNERSHIP, INHERITED_MEMBERS]
     witness: CLASSIFIER_MEMBER_PAIR
-    reason: Depends on the same unvalidated inherited-member observation.
+    reason: Evaluated only when the independent javac inherited-member observation is complete.
   O-06:
     status: DEFERRED
     reason: Requires independently observed bodies and implementation bindings.

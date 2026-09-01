@@ -25,10 +25,10 @@ import spoon.reflect.declaration.CtEnum;
 import spoon.reflect.declaration.CtInterface;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
+import spoon.reflect.declaration.CtModifiable;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.declaration.CtTypeMember;
 import spoon.reflect.declaration.ModifierKind;
-import spoon.reflect.reference.CtFieldReference;
 import spoon.reflect.reference.CtTypeReference;
 
 import java.io.IOException;
@@ -49,7 +49,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.7.0";
+    public static final String ADAPTER_VERSION = "0.8.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -92,8 +92,8 @@ public final class SpoonJavaObserver implements SourceObserver {
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
             List<MemberObservation> members = new ArrayList<>();
             Map<String, List<String>> memberKeysByOwner = new HashMap<>();
-            Map<String, List<String>> memberKeysByDeclaration = new HashMap<>();
             boolean localSignaturesComplete = true;
+            boolean inheritabilityComplete = true;
             for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 List<String> memberKeys = new ArrayList<>();
                 for (CtTypeMember typeMember : draft.type().getTypeMembers()) {
@@ -112,78 +112,22 @@ public final class SpoonJavaObserver implements SourceObserver {
                         }
                         MemberObservation member = memberObservation(
                                 root, draft, MemberKind.METHOD, method.getSimpleName(),
-                                inheritability(method.hasModifier(ModifierKind.PRIVATE)),
+                                inheritability(draft.type(), method),
                                 method.getPosition(), parameterTypes);
+                        inheritabilityComplete &= member.inheritability() != Inheritability.UNKNOWN;
                         members.add(member);
                         memberKeys.add(member.technicalKey());
-                        memberKeysByDeclaration.computeIfAbsent(declarationKey(
-                                draft.id(), MemberKind.METHOD,
-                                method.getSimpleName(), parameterTypes), ignored -> new ArrayList<>())
-                                .add(member.technicalKey());
                     } else if (typeMember instanceof CtField<?> field) {
                         MemberObservation member = memberObservation(
                                 root, draft, MemberKind.ATTRIBUTE, field.getSimpleName(),
-                                inheritability(field.hasModifier(ModifierKind.PRIVATE)),
+                                inheritability(draft.type(), field),
                                 field.getPosition(), List.of());
+                        inheritabilityComplete &= member.inheritability() != Inheritability.UNKNOWN;
                         members.add(member);
                         memberKeys.add(member.technicalKey());
-                        memberKeysByDeclaration.computeIfAbsent(declarationKey(
-                                draft.id(), MemberKind.ATTRIBUTE,
-                                field.getSimpleName(), List.of()), ignored -> new ArrayList<>())
-                                .add(member.technicalKey());
                     }
                 }
                 memberKeysByOwner.put(draft.id(), memberKeys);
-            }
-
-            Map<String, MemberObservation> membersByKey = members.stream()
-                    .collect(java.util.stream.Collectors.toUnmodifiableMap(
-                            MemberObservation::technicalKey, member -> member));
-            Map<String, List<String>> inheritedMemberKeysByOwner = new HashMap<>();
-            boolean inheritedMembersComplete = true;
-            for (TypeDraft draft : draftsById.values().stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
-                LinkedHashSet<String> inheritedKeys = new LinkedHashSet<>();
-                try {
-                    for (CtMethod<?> method : draft.type().getAllMethods()) {
-                        CtType<?> declaringType = method.getDeclaringType();
-                        if (declaringType == null
-                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())) {
-                            continue;
-                        }
-                        TypeDraft declarationOwner = uniqueDraft(
-                                draftsByQualifiedName, declaringType.getQualifiedName());
-                        if (declarationOwner == null) {
-                            inheritedMembersComplete = false;
-                            continue;
-                        }
-                        List<String> parameterTypes = method.getParameters().stream()
-                                .map(parameter -> parameter.getType().getQualifiedName()).toList();
-                        String key = declarationKey(declarationOwner.id(), MemberKind.METHOD,
-                                method.getSimpleName(), parameterTypes);
-                        inheritedMembersComplete &= addResolvedMember(
-                                inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
-                    }
-                    for (CtFieldReference<?> field : draft.type().getAllFields()) {
-                        CtTypeReference<?> declaringType = field.getDeclaringType();
-                        if (declaringType == null
-                                || draft.type().getQualifiedName().equals(declaringType.getQualifiedName())) {
-                            continue;
-                        }
-                        TypeDraft declarationOwner = uniqueDraft(
-                                draftsByQualifiedName, declaringType.getQualifiedName());
-                        if (declarationOwner == null) {
-                            inheritedMembersComplete = false;
-                            continue;
-                        }
-                        String key = declarationKey(declarationOwner.id(), MemberKind.ATTRIBUTE,
-                                field.getSimpleName(), List.of());
-                        inheritedMembersComplete &= addResolvedMember(
-                                inheritedKeys, memberKeysByDeclaration.get(key), membersByKey);
-                    }
-                } catch (RuntimeException | StackOverflowError failure) {
-                    inheritedMembersComplete = false;
-                }
-                inheritedMemberKeysByOwner.put(draft.type().getQualifiedName(), List.copyOf(inheritedKeys));
             }
 
             List<ClassifierObservation> classifiers = new ArrayList<>();
@@ -207,24 +151,33 @@ public final class SpoonJavaObserver implements SourceObserver {
                 classifiers.add(new ClassifierObservation(
                         draft.id(), draft.type().getQualifiedName(), draft.kind(), draft.path(),
                         draft.startLine(), draft.endLine(), List.copyOf(parentIds),
-                        memberKeysByOwner.getOrDefault(draft.id(), List.of()),
-                        inheritedMemberKeysByOwner.getOrDefault(draft.type().getQualifiedName(), List.of())));
+                        memberKeysByOwner.getOrDefault(draft.id(), List.of())));
             }
+            JavacInheritedMemberObserver.Result inherited = build.diagnostics().isEmpty()
+                    ? new JavacInheritedMemberObserver().observe(root, files, classifiers, members)
+                    : JavacInheritedMemberObserver.Result.incomplete();
+            classifiers = classifiers.stream().map(classifier -> new ClassifierObservation(
+                    classifier.id(), classifier.qualifiedName(), classifier.kind(),
+                    classifier.sourcePath(), classifier.startLine(), classifier.endLine(),
+                    classifier.parentIds(), classifier.declaredMemberKeys(),
+                    inherited.inheritedByClassifier().getOrDefault(classifier.id(), List.of())))
+                    .toList();
             EnumSet<EvidenceKind> completeEvidence = EnumSet.noneOf(EvidenceKind.class);
             if (build.diagnostics().isEmpty()) {
                 completeEvidence.add(EvidenceKind.DECLARATION_OWNERSHIP);
-                completeEvidence.add(EvidenceKind.INHERITABILITY);
+                if (inheritabilityComplete) {
+                    completeEvidence.add(EvidenceKind.INHERITABILITY);
+                }
                 if (unresolved.isEmpty()) {
                     completeEvidence.add(EvidenceKind.HIERARCHY);
                 }
                 if (localSignaturesComplete) {
                     completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
                 }
+                if (inherited.complete()) {
+                    completeEvidence.add(EvidenceKind.INHERITED_MEMBERS);
+                }
             }
-            // Spoon's getAllMethods/getAllFields aggregation is retained as provisional
-            // diagnostic data, but it is not a Java-language-accurate inherited view.
-            // Never advertise it as complete evidence until an independent frontend
-            // observer has been validated against overriding and interface precedence.
             return new Observation(
                     "5", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
                     units, classifiers, members, unresolved, build.diagnostics());
@@ -404,38 +357,19 @@ public final class SpoonJavaObserver implements SourceObserver {
                 parameterTypes);
     }
 
-    private static Inheritability inheritability(boolean isPrivate) {
-        return isPrivate ? Inheritability.NOT_INHERITABLE : Inheritability.INHERITABLE;
-    }
-
-    private static TypeDraft uniqueDraft(
-            Map<String, List<TypeDraft>> draftsByQualifiedName,
-            String qualifiedName) {
-        List<TypeDraft> candidates = draftsByQualifiedName.get(qualifiedName);
-        return candidates != null && candidates.size() == 1 ? candidates.get(0) : null;
-    }
-
-    private static String declarationKey(
-            String ownerId, MemberKind kind, String memberName, List<String> parameterTypes) {
-        return ownerId + "\0" + kind + "\0" + memberName + "\0"
-                + String.join("\0", parameterTypes);
-    }
-
-    private static boolean addResolvedMember(
-            Set<String> inheritedKeys,
-            List<String> candidates,
-            Map<String, MemberObservation> membersByKey) {
-        if (candidates == null || candidates.size() != 1) {
-            return false;
+    private static Inheritability inheritability(CtType<?> owner, CtModifiable member) {
+        if (member.hasModifier(ModifierKind.PRIVATE)) {
+            return Inheritability.NOT_INHERITABLE;
         }
-        MemberObservation declaration = membersByKey.get(candidates.get(0));
-        if (declaration == null) {
-            return false;
+        if (owner instanceof CtInterface<?> && member.hasModifier(ModifierKind.STATIC)) {
+            return Inheritability.NOT_INHERITABLE;
         }
-        if (declaration.inheritability() == Inheritability.INHERITABLE) {
-            inheritedKeys.add(declaration.technicalKey());
+        if (owner instanceof CtInterface<?>
+                || member.hasModifier(ModifierKind.PUBLIC)
+                || member.hasModifier(ModifierKind.PROTECTED)) {
+            return Inheritability.INHERITABLE;
         }
-        return true;
+        return Inheritability.UNKNOWN;
     }
 
     private record TypeDraft(

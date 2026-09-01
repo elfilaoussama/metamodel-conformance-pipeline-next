@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URISyntaxException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,7 +29,8 @@ class SpoonJavaObserverTest {
         assertTrue(observation.completeEvidence().containsAll(Set.of(
                 metamodel.conformance.pipeline.model.EvidenceKind.HIERARCHY,
                 metamodel.conformance.pipeline.model.EvidenceKind.DECLARATION_OWNERSHIP,
-                metamodel.conformance.pipeline.model.EvidenceKind.LOCAL_SIGNATURES)));
+                metamodel.conformance.pipeline.model.EvidenceKind.LOCAL_SIGNATURES,
+                metamodel.conformance.pipeline.model.EvidenceKind.INHERITED_MEMBERS)));
     }
 
     @Test
@@ -36,6 +38,9 @@ class SpoonJavaObserverTest {
         Observation observation = observer.observe(fixture("unresolved"), Set.of());
         assertEquals(1, observation.unresolvedParents().size());
         assertEquals("example.MissingParent", observation.unresolvedParents().get(0).targetName());
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observation.classifiers().stream()
+                .allMatch(classifier -> classifier.inheritedMemberKeys().isEmpty()));
     }
 
     @Test
@@ -69,7 +74,7 @@ class SpoonJavaObserverTest {
     }
 
     @Test
-    void preservesProvisionalInheritedMembershipsWithoutClaimingCompleteEvidence() throws Exception {
+    void observesInheritedMembershipsIndependentlyWithJavac() throws Exception {
         Observation observation = observer.observe(fixture("inherited-view"), Set.of());
         var child = observation.classifiers().stream()
                 .filter(item -> item.qualifiedName().equals("example.Child"))
@@ -79,7 +84,7 @@ class SpoonJavaObserverTest {
                 .toList();
 
         assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITABILITY));
-        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
         assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("work")
                 && member.sourcePath().endsWith("Middle.java")));
         assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("work")
@@ -90,6 +95,61 @@ class SpoonJavaObserverTest {
         assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("secret")));
         assertTrue(observation.members().stream().filter(member -> member.memberName().equals("hidden"))
                 .allMatch(member -> member.inheritability() == Inheritability.NOT_INHERITABLE));
+    }
+
+    @Test
+    void usesJavacInterfaceAndOverrideResolution() throws Exception {
+        Observation observation = observer.observe(fixture("inherited-interfaces"), Set.of());
+        var child = observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("example.Child"))
+                .findFirst().orElseThrow();
+        var inherited = observation.members().stream()
+                .filter(member -> child.inheritedMemberKeys().contains(member.technicalKey()))
+                .toList();
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("work")
+                && member.sourcePath().endsWith("Left.java")));
+        assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("work")
+                && member.sourcePath().endsWith("Root.java")));
+        assertTrue(inherited.stream().anyMatch(member -> member.memberName().equals("rootOnly")));
+        assertFalse(inherited.stream().anyMatch(member -> member.memberName().equals("utility")));
+        assertTrue(observation.members().stream()
+                .filter(member -> member.memberName().equals("utility"))
+                .allMatch(member -> member.inheritability() == Inheritability.NOT_INHERITABLE));
+    }
+
+    @Test
+    void mapsSameLineInheritedOverloadsByTheirOrderedParameterTypes() throws Exception {
+        Observation observation = observer.observe(fixture("inherited-overloads"), Set.of());
+        var child = observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("example.Child"))
+                .findFirst().orElseThrow();
+        var inheritedWork = observation.members().stream()
+                .filter(member -> child.inheritedMemberKeys().contains(member.technicalKey()))
+                .filter(member -> member.memberName().equals("work"))
+                .toList();
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertEquals(2, inheritedWork.size());
+        assertTrue(inheritedWork.stream().anyMatch(member -> member.parameterTypes().equals(List.of("int"))));
+        assertTrue(inheritedWork.stream()
+                .anyMatch(member -> member.parameterTypes().equals(List.of("java.lang.String"))));
+    }
+
+    @Test
+    void withholdsGlobalInheritabilityForPackagePrivateDeclarations() throws Exception {
+        Observation observation = observer.observe(fixture("package-private-inheritance"), Set.of());
+        var child = observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("child.Child"))
+                .findFirst().orElseThrow();
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITABILITY));
+        assertTrue(child.inheritedMemberKeys().isEmpty());
+        assertTrue(observation.members().stream()
+                .filter(member -> member.memberName().equals("packageOnly"))
+                .allMatch(member -> member.inheritability() == Inheritability.UNKNOWN));
     }
 
     @Test

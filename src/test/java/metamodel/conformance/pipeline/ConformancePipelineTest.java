@@ -31,9 +31,9 @@ class ConformancePipelineTest {
         PipelineResult second = pipeline.analyze(fixture("acyclic"), temporary.resolve("two"), Set.of());
 
         assertEquals(DecisionStatus.CONFORMANT, first.invariant("acyclic-generalization").status());
-        assertEquals(DecisionStatus.NOT_EVALUATED,
+        assertEquals(DecisionStatus.CONFORMANT,
                 first.invariant("inherited-view-consistency").status());
-        assertEquals(DecisionStatus.NOT_EVALUATED,
+        assertEquals(DecisionStatus.CONFORMANT,
                 first.invariant("local-inherited-separation").status());
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
@@ -54,6 +54,20 @@ class ConformancePipelineTest {
                 .filter(item -> "exclusive-declaration-ownership".equals(item.invariantId())).findFirst().orElseThrow().status());
         assertEquals(DecisionStatus.CONFORMANT, unresolved.decisions().stream()
                 .filter(item -> "local-namespace-uniqueness".equals(item.invariantId())).findFirst().orElseThrow().status());
+    }
+
+    @Test
+    void independentlyObservedInheritedViewMatchesAlloyDerivation() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("inherited-view"), temporary.resolve("inherited-view"), Set.of());
+
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("inherited-view-consistency").status());
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("local-inherited-separation").status());
+        assertTrue(result.observation().completeEvidence()
+                .contains(metamodel.conformance.pipeline.model.EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
     }
 
     @Test
@@ -81,7 +95,7 @@ class ConformancePipelineTest {
         PipelineResult result = pipeline.analyze(
                 fixture("acyclic"), temporary.resolve("producer-drift"), Set.of());
         String capsule = Files.readString(result.capsulePath());
-        String changed = capsule.replace("\"toolVersion\" : \"0.7.0\"", "\"toolVersion\" : \"9.9.9\"");
+        String changed = capsule.replace("\"toolVersion\" : \"0.8.0\"", "\"toolVersion\" : \"9.9.9\"");
         assertFalse(capsule.equals(changed));
         Files.writeString(result.capsulePath(), changed);
 
