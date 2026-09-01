@@ -8,6 +8,8 @@
       "witnessFunction": "ExclusiveDeclarationOwnershipViolations",
       "witnessArity": 1,
       "requiredEvidence": ["DECLARATION_OWNERSHIP"],
+      "partitionRelations": ["DECLARED_MEMBERS"],
+      "partitionRoots": ["MEMBER"],
       "conformanceMessage": "Every observed member has exactly one declaring classifier.",
       "violationMessage": "At least one observed member has zero or multiple declaring classifiers."
     },
@@ -18,6 +20,8 @@
       "witnessFunction": "AcyclicGeneralizationViolations",
       "witnessArity": 1,
       "requiredEvidence": ["HIERARCHY"],
+      "partitionRelations": ["PARENTS"],
+      "partitionRoots": ["CLASSIFIER"],
       "conformanceMessage": "No inheritance cycle exists in the exact observed graph.",
       "violationMessage": "An inheritance cycle exists in the exact observed graph."
     },
@@ -28,6 +32,8 @@
       "witnessFunction": "InheritedViewConsistencyViolations",
       "witnessArity": 2,
       "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "INHERITED_MEMBERS"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "OBSERVED_INHERITED_MEMBERS"],
+      "partitionRoots": ["CLASSIFIER"],
       "conformanceMessage": "The frontend-observed inherited view equals the Alloy-derived view.",
       "violationMessage": "At least one frontend-observed inherited membership differs from the Alloy-derived view."
     },
@@ -38,6 +44,8 @@
       "witnessFunction": "LocalInheritedSeparationViolations",
       "witnessArity": 2,
       "requiredEvidence": ["DECLARATION_OWNERSHIP", "INHERITED_MEMBERS"],
+      "partitionRelations": ["DECLARED_MEMBERS", "OBSERVED_INHERITED_MEMBERS"],
+      "partitionRoots": ["CLASSIFIER"],
       "conformanceMessage": "Local and frontend-observed inherited memberships are atom-disjoint.",
       "violationMessage": "At least one member atom is both local and inherited in the same classifier."
     },
@@ -48,6 +56,8 @@
       "witnessFunction": "LocalNamespaceUniquenessViolations",
       "witnessArity": 1,
       "requiredEvidence": ["DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES"],
+      "partitionRelations": ["DECLARED_MEMBERS"],
+      "partitionRoots": ["CLASSIFIER"],
       "conformanceMessage": "Local method keys and attribute names are unique within each classifier.",
       "violationMessage": "At least one classifier contains a duplicate method key or attribute name."
     }

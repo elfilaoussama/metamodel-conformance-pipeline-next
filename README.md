@@ -48,10 +48,12 @@ java -jar target/metamodel-conformance-pipeline-next-0.5.0-SNAPSHOT.jar \
 The same input and tool version produce byte-identical `observation.xmi`, Alloy
 model, and capsule. Wall-clock timestamps are intentionally excluded. Invariant
 metadata and evidence requirements come from one registry; all invariant semantics
-come from one Alloy resource. The evaluator solves the exact observation once, checks that it is
-satisfiable, and evaluates every Alloy-defined witness function on that same exact
-solution. Java only checks declared evidence prerequisites and maps Alloy witness
-atoms back to source locations. An inconsistent encoding is `NOT_EVALUATED`, never
+come from one Alloy resource. For each evaluable invariant, the registry declares
+which observed relations connect an exact solver work unit and which atom kind
+roots those units. The evaluator solves every deterministic connected component,
+aggregates the Alloy-defined witnesses, and maps their atoms back to source
+locations. Java performs structural partitioning only; it does not decide whether
+an invariant is violated. An inconsistent work unit is `NOT_EVALUATED`, never
 `CONFORMANT`.
 
 Spoon's aggregate inherited-member APIs are currently preserved only as provisional
@@ -67,10 +69,12 @@ The Java evaluator contains no invariant identifiers and no invariant-specific
 branches. Adding or changing an invariant consists of changing its entry in
 `src/main/resources/invariants/registry.json` and its Alloy witness function in
 `src/main/resources/alloy/invariants.als`. The registry declares the required
-evidence and witness arity. The generic evaluator discovers every entry, checks
-its evidence, evaluates its Alloy function, maps its tuples to provenance, and
-records the result. Java changes are needed only when a genuinely new kind of
-source evidence must be observed—not when an invariant formula changes.
+evidence, witness arity, partition relations, and partition roots. The generic
+evaluator discovers every entry, checks its evidence, plans its exact work units,
+evaluates its Alloy function, maps its tuples to provenance, and records the
+result. Java changes are needed only when a genuinely new kind of source evidence
+or structural projection primitive must be supported—not when an invariant
+formula changes.
 
 The canonical EMF model retains member kind, name, inheritability, and complete
 ordered parameter-type lists. The exact Alloy model preserves names, parameter

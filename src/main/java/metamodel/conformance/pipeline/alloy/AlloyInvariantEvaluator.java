@@ -45,34 +45,28 @@ public final class AlloyInvariantEvaluator {
             return orderedDecisions(registry, decisionsById);
         }
 
-        CompModule module;
+        ExactAlloyEncoder encoder = new ExactAlloyEncoder();
         try {
-            module = CompUtil.parseEverything_fromString(new A4Reporter(), alloyModel);
-        } catch (Exception | LinkageError failure) {
-            evaluable.forEach(definition -> decisionsById.put(definition.id(), notEvaluated(
-                    definition, "Alloy model parsing failed: " + safeMessage(failure))));
-            return orderedDecisions(registry, decisionsById);
-        }
-
-        A4Solution exactSolution;
-        try {
-            Command consistencyCommand = findCommand(module, "ObservationConsistency");
-            exactSolution = TranslateAlloyToKodkod.execute_command(
-                    new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
-            if (!exactSolution.satisfiable()) {
+            if (!encoder.encode(observation).equals(alloyModel)) {
                 evaluable.forEach(definition -> decisionsById.put(definition.id(), notEvaluated(
-                        definition, "The exact Alloy observation is inconsistent.")));
+                        definition, "The Alloy artifact does not match the canonical observation.")));
                 return orderedDecisions(registry, decisionsById);
             }
-        } catch (Exception | LinkageError failure) {
+        } catch (Exception | LinkageError | StackOverflowError failure) {
             evaluable.forEach(definition -> decisionsById.put(definition.id(), notEvaluated(
-                    definition, "Alloy consistency evaluation failed: " + safeMessage(failure))));
+                    definition, "Alloy encoding validation failed: " + safeMessage(failure))));
             return orderedDecisions(registry, decisionsById);
         }
 
-        Map<String, String> atomKeys = new ExactAlloyEncoder().atomTechnicalKeys(observation);
+        AlloyWorkUnitPlanner planner = new AlloyWorkUnitPlanner();
         for (InvariantDefinition definition : evaluable) {
-            decisionsById.put(definition.id(), evaluate(exactSolution, module, definition, atomKeys));
+            try {
+                decisionsById.put(definition.id(), evaluate(
+                        planner.plan(observation, definition), definition, encoder));
+            } catch (Exception | LinkageError | StackOverflowError failure) {
+                decisionsById.put(definition.id(), notEvaluated(
+                        definition, "Alloy work-unit planning failed: " + safeMessage(failure)));
+            }
         }
         return orderedDecisions(registry, decisionsById);
     }
@@ -96,31 +90,44 @@ public final class AlloyInvariantEvaluator {
     }
 
     private static Decision evaluate(
-            A4Solution exactSolution,
-            CompModule module,
+            List<Observation> workUnits,
             InvariantDefinition definition,
-            Map<String, String> atomKeys) {
+            ExactAlloyEncoder encoder) {
+        List<WitnessTuple> witnesses = new ArrayList<>();
         try {
-            Func witnessFunction = findFunction(module, definition.witnessFunction());
-            Object evaluated = exactSolution.eval(witnessFunction.call());
-            if (!(evaluated instanceof A4TupleSet tuples)) {
-                throw new IllegalStateException("witness function did not return a relation");
-            }
-            List<WitnessTuple> witnesses = new ArrayList<>();
-            for (A4Tuple tuple : tuples) {
-                if (tuple.arity() != definition.witnessArity()) {
-                    throw new IllegalStateException("witness relation arity does not match the invariant registry");
+            for (Observation workUnit : workUnits) {
+                String model = encoder.encode(workUnit);
+                CompModule module = CompUtil.parseEverything_fromString(new A4Reporter(), model);
+                Command consistencyCommand = findCommand(module, "ObservationConsistency");
+                A4Solution exactSolution = TranslateAlloyToKodkod.execute_command(
+                        new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
+                if (!exactSolution.satisfiable()) {
+                    return notEvaluated(definition, "An exact Alloy work unit is inconsistent.");
                 }
-                List<String> technicalKeys = new ArrayList<>();
-                for (int index = 0; index < tuple.arity(); index++) {
-                    String atom = normalizeAtom(tuple.atom(index));
-                    String technicalKey = atomKeys.get(atom);
-                    if (technicalKey == null) {
-                        throw new IllegalStateException("witness atom has no observation mapping: " + atom);
+
+                Func witnessFunction = findFunction(module, definition.witnessFunction());
+                Object evaluated = exactSolution.eval(witnessFunction.call());
+                if (!(evaluated instanceof A4TupleSet tuples)) {
+                    throw new IllegalStateException("witness function did not return a relation");
+                }
+                Map<String, String> atomKeys = encoder.atomTechnicalKeys(workUnit);
+                for (A4Tuple tuple : tuples) {
+                    if (tuple.arity() != definition.witnessArity()) {
+                        throw new IllegalStateException(
+                                "witness relation arity does not match the invariant registry");
                     }
-                    technicalKeys.add(technicalKey);
+                    List<String> technicalKeys = new ArrayList<>();
+                    for (int index = 0; index < tuple.arity(); index++) {
+                        String atom = normalizeAtom(tuple.atom(index));
+                        String technicalKey = atomKeys.get(atom);
+                        if (technicalKey == null) {
+                            throw new IllegalStateException(
+                                    "witness atom has no observation mapping: " + atom);
+                        }
+                        technicalKeys.add(technicalKey);
+                    }
+                    witnesses.add(new WitnessTuple(technicalKeys));
                 }
-                witnesses.add(new WitnessTuple(technicalKeys));
             }
             witnesses = witnesses.stream().distinct()
                     .sorted(Comparator.comparing(witness -> String.join("\0", witness.technicalKeys())))
@@ -137,8 +144,8 @@ public final class AlloyInvariantEvaluator {
                     definition.id(),
                     definition.violationMessage(),
                     witnesses);
-        } catch (Exception | LinkageError failure) {
-            return notEvaluated(definition, "Alloy evaluation failed: " + safeMessage(failure));
+        } catch (Exception | LinkageError | StackOverflowError failure) {
+            return notEvaluated(definition, "Alloy work-unit evaluation failed: " + safeMessage(failure));
         }
     }
 

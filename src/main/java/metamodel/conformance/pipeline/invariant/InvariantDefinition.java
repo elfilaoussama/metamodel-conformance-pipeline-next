@@ -11,6 +11,8 @@ public record InvariantDefinition(
         String witnessFunction,
         int witnessArity,
         Set<EvidenceKind> requiredEvidence,
+        Set<ProjectionRelation> partitionRelations,
+        Set<ProjectionRoot> partitionRoots,
         String conformanceMessage,
         String violationMessage) {
 
@@ -23,5 +25,10 @@ public record InvariantDefinition(
             throw new IllegalArgumentException("witnessArity must be positive");
         }
         requiredEvidence = requiredEvidence == null ? Set.of() : Set.copyOf(requiredEvidence);
+        partitionRelations = partitionRelations == null ? Set.of() : Set.copyOf(partitionRelations);
+        partitionRoots = partitionRoots == null ? Set.of() : Set.copyOf(partitionRoots);
+        if (partitionRoots.isEmpty()) {
+            throw new IllegalArgumentException("at least one partition root is required");
+        }
     }
 }

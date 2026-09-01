@@ -42,6 +42,22 @@ relation over a satisfiable exact observation produces `CONFORMANT`. Parsing,
 encoding, solving, witness-arity, or provenance failures can never produce
 `CONFORMANT`.
 
+## Exact work units
+
+The registry declares `partitionRelations` and `partitionRoots` for each
+invariant. The generic planner treats the selected observed relations as an
+undirected connectivity graph and produces deterministic connected components.
+Disconnected components may be packed together to reduce solver startup cost,
+but a component is never split. Directed relation tuples are preserved unchanged;
+connectivity is used only to identify independent solver work. The packing target
+is an execution heuristic, not a repository-size limit: no observed atom or tuple
+is dropped, and an oversized connected component remains intact.
+
+All witness tuples from all work units are deduplicated and aggregated before the
+invariant decision is produced. A failure in any required work unit makes that
+invariant `NOT_EVALUATED`. This avoids repository-size caps while preserving every
+cross-atom relation declared relevant by the invariant registry.
+
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves

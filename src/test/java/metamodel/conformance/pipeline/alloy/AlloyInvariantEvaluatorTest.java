@@ -6,7 +6,10 @@ import metamodel.conformance.pipeline.decision.DecisionStatus;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.decision.WitnessTuple;
+import metamodel.conformance.pipeline.util.Hashing;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -155,6 +158,32 @@ class AlloyInvariantEvaluatorTest {
             assertEquals(DecisionStatus.NOT_EVALUATED, decision.status());
             assertFalse(decision.message().contains("parsing failed"));
         });
+    }
+
+    @Test
+    void aggregatesWitnessesAcrossExactHierarchyComponents() {
+        ClassifierObservation first = new ClassifierObservation(
+                TestObservations.A, "example.A", ClassifierKind.CLASS,
+                "example/A.java", 1, 1, List.of(TestObservations.B));
+        ClassifierObservation second = new ClassifierObservation(
+                TestObservations.B, "example.B", ClassifierKind.CLASS,
+                "example/A.java", 2, 2, List.of(TestObservations.A));
+        String isolatedId = TestObservations.id("isolated");
+        ClassifierObservation isolated = new ClassifierObservation(
+                isolatedId, "example.Isolated", ClassifierKind.CLASS,
+                "example/A.java", 3, 3, List.of());
+        Observation observation = new Observation(
+                "4", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
+                List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
+                List.of(first, second, isolated), List.of(), List.of());
+
+        Decision decision = decision(
+                runner.evaluateAll(observation, encoder.encode(observation)),
+                "acyclic-generalization");
+
+        assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
+        assertEquals(List.of(TestObservations.A, TestObservations.B).stream().sorted().toList(),
+                decision.witnessTechnicalKeys());
     }
 
     private static Decision decision(List<Decision> decisions, String id) {
