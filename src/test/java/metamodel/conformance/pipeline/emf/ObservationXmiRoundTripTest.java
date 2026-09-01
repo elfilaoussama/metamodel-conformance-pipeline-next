@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,5 +28,18 @@ class ObservationXmiRoundTripTest {
 
         assertEquals(observation, new ObservationXmiReader().read(first));
         assertArrayEquals(Files.readAllBytes(first), Files.readAllBytes(second));
+    }
+
+    @Test
+    void preservesRepeatedOrderedParameterTypes() throws Exception {
+        Observation observation = TestObservations.repeatedParameterTypes();
+        Path xmi = temporary.resolve("repeated-parameters.xmi");
+
+        new ObservationXmiWriter().write(observation, xmi);
+        Observation replayed = new ObservationXmiReader().read(xmi);
+
+        assertEquals(List.of("Type", "Type", "Type", "Type"),
+                replayed.members().get(0).parameterTypes());
+        assertEquals(observation, replayed);
     }
 }

@@ -76,6 +76,15 @@ public final class TestObservations {
                 Set.of(EvidenceKind.HIERARCHY, EvidenceKind.DECLARATION_OWNERSHIP, EvidenceKind.LOCAL_SIGNATURES));
     }
 
+    public static Observation repeatedParameterTypes() {
+        MemberObservation method = method(
+                "repeated-parameters", "work", List.of("Type", "Type", "Type", "Type"));
+        return memberObservation(
+                List.of(classifier(A, "example.A", List.of(), List.of(method.technicalKey()))),
+                List.of(method),
+                Set.of(EvidenceKind.DECLARATION_OWNERSHIP, EvidenceKind.LOCAL_SIGNATURES));
+    }
+
     public static Observation duplicateLocalAttributes() {
         MemberObservation first = attribute("duplicate-attribute-one", "value");
         MemberObservation second = attribute("duplicate-attribute-two", "value");
@@ -150,7 +159,7 @@ public final class TestObservations {
     private static Observation observation(
             List<ClassifierObservation> classifiers, List<UnresolvedParent> unresolved) {
         return new Observation(
-                "4", "test-adapter", "1.0.0", List.of(),
+                "5", "test-adapter", "1.0.0", List.of(),
                 List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
                 classifiers,
                 unresolved);
@@ -161,7 +170,7 @@ public final class TestObservations {
             List<MemberObservation> members,
             Set<EvidenceKind> evidence) {
         return new Observation(
-                "4", "test-adapter", "1.0.0", List.of(), evidence,
+                "5", "test-adapter", "1.0.0", List.of(), evidence,
                 List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
                 classifiers, members, List.of());
     }

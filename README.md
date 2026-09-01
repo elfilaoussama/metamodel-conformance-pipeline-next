@@ -39,9 +39,9 @@ Requirements: JDK 17 and Maven 3.9+.
 ```bash
 mvn verify
 mvn -q -DskipTests package
-java -jar target/metamodel-conformance-pipeline-next-0.5.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.6.0-SNAPSHOT.jar \
   analyze --source examples/acyclic --output build/acyclic
-java -jar target/metamodel-conformance-pipeline-next-0.5.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.6.0-SNAPSHOT.jar \
   verify-capsule --capsule build/acyclic/verification-capsule.json
 ```
 

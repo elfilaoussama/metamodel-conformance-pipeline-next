@@ -91,7 +91,7 @@ class AlloyWorkUnitPlannerTest {
             List<MemberObservation> members,
             Set<EvidenceKind> evidence) {
         return new Observation(
-                "4", "test-adapter", "1.0.0", List.of(), evidence,
+                "5", "test-adapter", "1.0.0", List.of(), evidence,
                 List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
                 classifiers, members, List.of());
     }

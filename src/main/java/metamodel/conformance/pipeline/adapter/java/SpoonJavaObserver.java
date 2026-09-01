@@ -48,7 +48,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.5.0";
+    public static final String ADAPTER_VERSION = "0.6.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -224,7 +224,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             // Never advertise it as complete evidence until an independent frontend
             // observer has been validated against overriding and interface precedence.
             return new Observation(
-                    "4", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    "5", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
                     units, classifiers, members, unresolved, build.diagnostics());
         } catch (ObservationException exception) {
             throw exception;
