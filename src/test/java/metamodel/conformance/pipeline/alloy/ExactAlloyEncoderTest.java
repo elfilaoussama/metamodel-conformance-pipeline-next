@@ -55,8 +55,12 @@ class ExactAlloyEncoderTest {
             assertTrue(duplicate.contains(atom + "->P_1->T_" + Hashing.sha256("int")));
         }
 
-        String first = ExactAlloyEncoder.memberAtom(overloadedObservation.members().get(0).technicalKey());
-        String second = ExactAlloyEncoder.memberAtom(overloadedObservation.members().get(1).technicalKey());
+        String first = ExactAlloyEncoder.memberAtom(overloadedObservation.members().stream()
+                .filter(member -> member.parameterTypes().get(0).equals("java.lang.String"))
+                .findFirst().orElseThrow().technicalKey());
+        String second = ExactAlloyEncoder.memberAtom(overloadedObservation.members().stream()
+                .filter(member -> member.parameterTypes().get(0).equals("int"))
+                .findFirst().orElseThrow().technicalKey());
         assertTrue(overloaded.contains(first + "->P_0->T_" + Hashing.sha256("java.lang.String")));
         assertTrue(overloaded.contains(first + "->P_1->T_" + Hashing.sha256("int")));
         assertTrue(overloaded.contains(second + "->P_0->T_" + Hashing.sha256("int")));
@@ -66,3 +70,4 @@ class ExactAlloyEncoderTest {
         assertFalse(overloaded.contains("SignatureToken"));
     }
 }
+
