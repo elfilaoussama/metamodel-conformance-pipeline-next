@@ -1,6 +1,7 @@
 package metamodel.conformance.pipeline.capsule;
 
 import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
+import metamodel.conformance.pipeline.alloy.ExactAlloyEncoder;
 import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -54,6 +55,10 @@ public final class CapsuleVerifier {
                 return invalid("observation diagnostics do not match capsule");
             }
             String alloy = Files.readString(alloyPath, StandardCharsets.UTF_8);
+            String regeneratedAlloy = new ExactAlloyEncoder().encode(observation);
+            if (!regeneratedAlloy.equals(alloy)) {
+                return invalid(describeAlloyDrift(alloy, regeneratedAlloy));
+            }
             var repeated = new AlloyInvariantEvaluator().evaluateAll(observation, alloy);
             if (!repeated.equals(capsule.decisions())) {
                 return invalid("repeated Alloy decisions do not match capsule");
@@ -90,6 +95,29 @@ public final class CapsuleVerifier {
         }
         return MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.US_ASCII), actual.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    private static String describeAlloyDrift(String archived, String regenerated) {
+        String[] archivedLines = archived.split("\\R", -1);
+        String[] regeneratedLines = regenerated.split("\\R", -1);
+        int shared = Math.min(archivedLines.length, regeneratedLines.length);
+        int line = 0;
+        while (line < shared && archivedLines[line].equals(regeneratedLines[line])) {
+            line++;
+        }
+        if (line == shared) {
+            return "canonical XMI-to-Alloy drift after line " + line
+                    + " (archived lines=" + archivedLines.length
+                    + ", regenerated lines=" + regeneratedLines.length + ")";
+        }
+        return "canonical XMI-to-Alloy drift at line " + (line + 1)
+                + ": archived=" + abbreviated(archivedLines[line])
+                + "; regenerated=" + abbreviated(regeneratedLines[line]);
+    }
+
+    private static String abbreviated(String value) {
+        int limit = 240;
+        return value.length() <= limit ? value : value.substring(0, limit) + "...";
     }
 
     private static CapsuleVerification invalid(String message) {
