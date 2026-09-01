@@ -16,7 +16,7 @@ pred nearerAncestorMemberHides[c, owner : Classifier, inherited : Member] {
   some nearer : c.^parents - owner |
     owner in nearer.^parents and
     some replacement : nearer.declaredMembers |
-      replacement in InheritableMember and
+      replacement.inheritability = INHERITABLE and
       sameMemberKey[replacement, inherited]
 }
 
@@ -24,7 +24,7 @@ fun formalInheritedMembers[c : Classifier] : set Member {
   { inherited : Member |
     some owner : c.^parents |
       inherited in owner.declaredMembers and
-      inherited in InheritableMember and
+      inherited.inheritability = INHERITABLE and
       not localMemberHides[c, inherited] and
       not nearerAncestorMemberHides[c, owner, inherited]
   }
@@ -44,7 +44,16 @@ fun LocalInheritedSeparationViolations : Classifier -> Member {
 }
 
 pred sameMemberKey[m1, m2 : Member] {
-  m1.namespaceKeyRepresentative = m2.namespaceKeyRepresentative
+  (
+    m1.kind = METHOD and
+    m2.kind = METHOD and
+    m1.memberName = m2.memberName and
+    m1.parameterTypeAt = m2.parameterTypeAt
+  ) or (
+    m1.kind = ATTRIBUTE and
+    m2.kind = ATTRIBUTE and
+    m1.memberName = m2.memberName
+  )
 }
 
 fun LocalNamespaceUniquenessViolations : set Member {

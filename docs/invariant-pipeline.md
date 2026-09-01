@@ -46,18 +46,17 @@ encoding, solving, witness-arity, or provenance failures can never produce
 
 The canonical EMF observation is the durable evidence boundary. It preserves
 member kind, name, inheritability, and complete ordered method-parameter type
-lists. The active Alloy profile needs only equality of whole namespace keys, so
-the mechanical encoder maps every member to an existing representative member
-for its `(kind, name, ordered parameter types)` equivalence class. This adds no
-auxiliary atoms and is injective at the equivalence-class level: different keys
-have different representatives, including signatures containing the same types
-in a different order.
+lists. The exact Alloy model carries those observations structurally through
+`kind`, `memberName`, and `parameterTypeAt` relations. Parameter positions and
+type tokens remain separate atoms, so Java never groups members into semantic
+namespace-key equivalence classes.
 
-An invariant that inspects parameter positions or individual types must declare
-that richer evidence/projection in its registry contract. The encoder may then
-add the required Alloy relation without changing existing invariant-control flow.
-Until that projection is available, the invariant is `NOT_EVALUATED`; the
-pipeline must never infer element-level evidence from the equality projection.
+Alloy alone defines whether two methods have the same ordered signature or two
+attributes have the same local name. A future invariant may reuse these relations
+without changing Java control flow. If it needs a genuinely new source fact, that
+fact must first be added to the canonical observation and independently observed;
+the pipeline must never infer element-level evidence that the frontend did not
+provide.
 
 ## Parse diagnostics
 

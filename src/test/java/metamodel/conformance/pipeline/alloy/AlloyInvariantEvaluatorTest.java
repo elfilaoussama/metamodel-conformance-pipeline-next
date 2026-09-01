@@ -133,8 +133,7 @@ class AlloyInvariantEvaluatorTest {
     void inconsistentExactObservationCannotProduceConformance() {
         Observation observation = TestObservations.membersConformant();
         String inconsistentModel = encoder.encode(observation)
-                .replaceFirst("(?m)^  namespaceKeyRepresentative = .*$",
-                        "  no namespaceKeyRepresentative");
+                .replaceFirst("(?m)^  kind = .*$", "  no kind");
 
         List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
 
