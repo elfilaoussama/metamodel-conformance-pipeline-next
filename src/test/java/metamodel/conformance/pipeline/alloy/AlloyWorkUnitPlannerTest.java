@@ -33,12 +33,13 @@ class AlloyWorkUnitPlannerTest {
         List<Observation> units = planner.plan(observation,
                 InvariantRegistry.load().require("acyclic-generalization"));
 
-        assertEquals(2, units.size());
-        assertEquals(List.of(1, 2), units.stream()
-                .map(unit -> unit.classifiers().size()).sorted().toList());
+        assertEquals(1, units.size());
+        assertEquals(3, units.get(0).classifiers().size());
         assertEquals(0, units.stream().mapToInt(unit -> unit.members().size()).sum());
         assertTrue(units.stream().anyMatch(unit -> unit.classifiers().stream()
                 .anyMatch(item -> item.id().equals(b) && item.parentIds().equals(List.of(a)))));
+        assertTrue(units.get(0).classifiers().stream()
+                .anyMatch(item -> item.id().equals(c) && item.parentIds().isEmpty()));
     }
 
     @Test
