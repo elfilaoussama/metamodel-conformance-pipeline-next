@@ -51,7 +51,10 @@ class ExactAlloyEncoderTest {
         String duplicateRepresentative = duplicateObservation.members().stream()
                 .map(member -> ExactAlloyEncoder.memberAtom(member.technicalKey()))
                 .min(String::compareTo).orElseThrow();
-        assertEquals(2, duplicate.split("->" + duplicateRepresentative, -1).length - 1);
+        for (var member : duplicateObservation.members()) {
+            String atom = ExactAlloyEncoder.memberAtom(member.technicalKey());
+            assertTrue(duplicate.contains(atom + "->" + duplicateRepresentative));
+        }
 
         for (var member : overloadedObservation.members()) {
             String atom = ExactAlloyEncoder.memberAtom(member.technicalKey());
