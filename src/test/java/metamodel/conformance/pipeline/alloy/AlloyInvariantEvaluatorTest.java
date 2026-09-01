@@ -10,6 +10,7 @@ import metamodel.conformance.pipeline.decision.WitnessTuple;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -139,6 +140,22 @@ class AlloyInvariantEvaluatorTest {
 
         assertEquals(5, decisions.size());
         decisions.forEach(decision -> assertEquals(DecisionStatus.NOT_EVALUATED, decision.status()));
+    }
+
+    @Test
+    void skipsAlloyWhenNoInvariantHasCompleteEvidence() {
+        Observation base = TestObservations.membersConformant();
+        Observation incomplete = new Observation(
+                base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
+                Set.of(), base.units(), base.classifiers(), base.members(), base.unresolvedParents());
+
+        List<Decision> decisions = runner.evaluateAll(incomplete, "this is deliberately not Alloy");
+
+        assertEquals(5, decisions.size());
+        decisions.forEach(decision -> {
+            assertEquals(DecisionStatus.NOT_EVALUATED, decision.status());
+            assertFalse(decision.message().contains("parsing failed"));
+        });
     }
 
     private static Decision decision(List<Decision> decisions, String id) {

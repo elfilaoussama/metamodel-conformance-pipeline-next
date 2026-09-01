@@ -20,6 +20,7 @@ import metamodel.conformance.pipeline.invariant.InvariantDefinition;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,12 +29,29 @@ import java.util.stream.Collectors;
 public final class AlloyInvariantEvaluator {
     public List<Decision> evaluateAll(Observation observation, String alloyModel) {
         InvariantRegistry registry = InvariantRegistry.load();
+        Map<String, Decision> decisionsById = new LinkedHashMap<>();
+        List<InvariantDefinition> evaluable = new ArrayList<>();
+        for (InvariantDefinition definition : registry.all()) {
+            Set<EvidenceKind> missing = missingEvidence(observation, definition);
+            if (missing.isEmpty()) {
+                evaluable.add(definition);
+            } else {
+                String names = missing.stream().map(Enum::name).sorted().collect(Collectors.joining(", "));
+                decisionsById.put(definition.id(), notEvaluated(
+                        definition, "Required evidence is incomplete: " + names));
+            }
+        }
+        if (evaluable.isEmpty()) {
+            return orderedDecisions(registry, decisionsById);
+        }
+
         CompModule module;
         try {
             module = CompUtil.parseEverything_fromString(new A4Reporter(), alloyModel);
         } catch (Exception | LinkageError failure) {
-            return registry.all().stream().map(definition -> notEvaluated(
-                    definition, "Alloy model parsing failed: " + safeMessage(failure))).toList();
+            evaluable.forEach(definition -> decisionsById.put(definition.id(), notEvaluated(
+                    definition, "Alloy model parsing failed: " + safeMessage(failure))));
+            return orderedDecisions(registry, decisionsById);
         }
 
         A4Solution exactSolution;
@@ -42,28 +60,39 @@ public final class AlloyInvariantEvaluator {
             exactSolution = TranslateAlloyToKodkod.execute_command(
                     new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
             if (!exactSolution.satisfiable()) {
-                return registry.all().stream().map(definition -> notEvaluated(
-                        definition, "The exact Alloy observation is inconsistent.")).toList();
+                evaluable.forEach(definition -> decisionsById.put(definition.id(), notEvaluated(
+                        definition, "The exact Alloy observation is inconsistent.")));
+                return orderedDecisions(registry, decisionsById);
             }
         } catch (Exception | LinkageError failure) {
-            return registry.all().stream().map(definition -> notEvaluated(
-                    definition, "Alloy consistency evaluation failed: " + safeMessage(failure))).toList();
+            evaluable.forEach(definition -> decisionsById.put(definition.id(), notEvaluated(
+                    definition, "Alloy consistency evaluation failed: " + safeMessage(failure))));
+            return orderedDecisions(registry, decisionsById);
         }
 
         Map<String, String> atomKeys = new ExactAlloyEncoder().atomTechnicalKeys(observation);
-        List<Decision> decisions = new ArrayList<>();
-        for (InvariantDefinition definition : registry.all()) {
-            Set<EvidenceKind> missing = definition.requiredEvidence().stream()
-                    .filter(required -> !observation.completeEvidence().contains(required))
-                    .collect(Collectors.toSet());
-            if (!missing.isEmpty()) {
-                String names = missing.stream().map(Enum::name).sorted().collect(Collectors.joining(", "));
-                decisions.add(notEvaluated(definition, "Required evidence is incomplete: " + names));
-                continue;
-            }
-            decisions.add(evaluate(exactSolution, module, definition, atomKeys));
+        for (InvariantDefinition definition : evaluable) {
+            decisionsById.put(definition.id(), evaluate(exactSolution, module, definition, atomKeys));
         }
-        return List.copyOf(decisions);
+        return orderedDecisions(registry, decisionsById);
+    }
+
+    private static Set<EvidenceKind> missingEvidence(
+            Observation observation, InvariantDefinition definition) {
+        return definition.requiredEvidence().stream()
+                .filter(required -> !observation.completeEvidence().contains(required))
+                .collect(Collectors.toSet());
+    }
+
+    private static List<Decision> orderedDecisions(
+            InvariantRegistry registry, Map<String, Decision> decisionsById) {
+        return registry.all().stream().map(definition -> {
+            Decision decision = decisionsById.get(definition.id());
+            if (decision == null) {
+                throw new IllegalStateException("missing invariant decision: " + definition.id());
+            }
+            return decision;
+        }).toList();
     }
 
     private static Decision evaluate(
