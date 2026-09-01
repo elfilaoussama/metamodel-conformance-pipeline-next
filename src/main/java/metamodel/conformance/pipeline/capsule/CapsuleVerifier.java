@@ -110,14 +110,27 @@ public final class CapsuleVerifier {
                     + " (archived lines=" + archivedLines.length
                     + ", regenerated lines=" + regeneratedLines.length + ")";
         }
+        int column = firstDifference(archivedLines[line], regeneratedLines[line]);
         return "canonical XMI-to-Alloy drift at line " + (line + 1)
-                + ": archived=" + abbreviated(archivedLines[line])
-                + "; regenerated=" + abbreviated(regeneratedLines[line]);
+                + ", column " + (column + 1)
+                + ": archived=" + context(archivedLines[line], column)
+                + "; regenerated=" + context(regeneratedLines[line], column);
     }
 
-    private static String abbreviated(String value) {
-        int limit = 240;
-        return value.length() <= limit ? value : value.substring(0, limit) + "...";
+    private static int firstDifference(String left, String right) {
+        int shared = Math.min(left.length(), right.length());
+        int column = 0;
+        while (column < shared && left.charAt(column) == right.charAt(column)) {
+            column++;
+        }
+        return column;
+    }
+
+    private static String context(String value, int column) {
+        int start = Math.max(0, column - 100);
+        int end = Math.min(value.length(), column + 140);
+        return (start == 0 ? "" : "...") + value.substring(start, end)
+                + (end == value.length() ? "" : "...");
     }
 
     private static CapsuleVerification invalid(String message) {
