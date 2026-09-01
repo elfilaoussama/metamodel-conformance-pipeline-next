@@ -12,6 +12,12 @@ public final class AtomicFiles {
     }
 
     public static void writeUtf8(Path target, String content) throws IOException {
+        writeUtf8(target, content, Long.MAX_VALUE, "artifact");
+    }
+
+    public static void writeUtf8(
+            Path target, String content, long maximumBytes, String label) throws IOException {
+        ArtifactLimits.requireUtf8Within(label, content, maximumBytes);
         Path normalizedTarget = target.toAbsolutePath().normalize();
         Files.createDirectories(normalizedTarget.getParent());
         Path temporary = Files.createTempFile(

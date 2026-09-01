@@ -11,6 +11,7 @@ import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
+import metamodel.conformance.pipeline.util.ArtifactLimits;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
@@ -30,8 +31,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class ObservationXmiReader {
-    private static final long MAX_XMI_BYTES = 32L * 1024L * 1024L;
-
     @SuppressWarnings("unchecked")
     public Observation read(Path path) throws IOException {
         Path input = path.toRealPath(LinkOption.NOFOLLOW_LINKS);
@@ -39,9 +38,7 @@ public final class ObservationXmiReader {
             throw new IOException("observation is not a regular file");
         }
         long size = Files.size(input);
-        if (size > MAX_XMI_BYTES) {
-            throw new IOException("observation exceeds " + MAX_XMI_BYTES + " bytes");
-        }
+        ArtifactLimits.requireFileWithin("canonical XMI", input, ArtifactLimits.MAX_XMI_BYTES);
         String prefix = Files.readString(input, StandardCharsets.UTF_8);
         if (prefix.contains("<!DOCTYPE") || prefix.contains("<!ENTITY")) {
             throw new IOException("DTD and entity declarations are forbidden in observations");

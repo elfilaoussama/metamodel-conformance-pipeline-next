@@ -7,6 +7,7 @@ import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
+import metamodel.conformance.pipeline.util.ArtifactLimits;
 import metamodel.conformance.pipeline.util.AtomicFiles;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.common.util.URI;
@@ -36,6 +37,8 @@ public final class ObservationXmiWriter {
         Path temporary = Files.createTempFile(normalizedTarget.getParent(), "observation-", ".xmi");
         try {
             save(observation, temporary);
+            ArtifactLimits.requireFileWithin(
+                    "canonical XMI", temporary, ArtifactLimits.MAX_XMI_BYTES);
             AtomicFiles.move(temporary, normalizedTarget);
         } finally {
             Files.deleteIfExists(temporary);

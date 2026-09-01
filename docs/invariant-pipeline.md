@@ -68,6 +68,19 @@ reconstructs `A4Options` from that archived object, and rejects configuration
 drift before reading or solving the observation artifacts. Machine-specific
 temporary-directory fields are deliberately excluded from experiment identity.
 
+## Atomic artifact publication
+
+The producer and independent verifier share the same limits: 32 MiB for canonical
+XMI, 16 MiB for the Alloy artifact, and 1 MiB for the verification capsule. Text
+limits count UTF-8 bytes. Each artifact is written through a temporary file and
+atomically replaces its target where the filesystem supports that operation.
+
+The verification capsule is the final commit marker for a completed run. Extraction
+finishes before an existing marker is removed; after that point, any encoding,
+solving, or writing failure leaves no capsule claiming that the output directory is
+complete. A new capsule is published only after the XMI, Alloy model, decisions, and
+their hashes are finalized.
+
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves

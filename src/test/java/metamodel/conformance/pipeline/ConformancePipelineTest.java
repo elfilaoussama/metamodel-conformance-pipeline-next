@@ -1,8 +1,10 @@
 package metamodel.conformance.pipeline;
 
+import metamodel.conformance.pipeline.adapter.ObservationException;
 import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.decision.DecisionStatus;
+import metamodel.conformance.pipeline.model.Observation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,6 +15,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConformancePipelineTest {
@@ -81,6 +84,41 @@ class ConformancePipelineTest {
                 .allMatch(decision -> decision.status() == DecisionStatus.NOT_EVALUATED));
         assertTrue(Files.readString(result.observationPath()).contains("diagnostics"));
         assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
+    }
+
+    @Test
+    void removesAnOldCapsuleBeforePublishingNewArtifacts() throws Exception {
+        Path output = temporary.resolve("failed-publication");
+        Files.createDirectories(output);
+        Path oldCapsule = output.resolve("verification-capsule.json");
+        Files.writeString(oldCapsule, "old-but-apparently-complete");
+        Observation base = TestObservations.acyclic();
+        Observation unsupported = new Observation(
+                "unsupported", base.adapterId(), base.adapterVersion(), base.externalParents(),
+                base.completeEvidence(), base.units(), base.classifiers(), base.members(),
+                base.unresolvedParents(), base.diagnostics());
+        ConformancePipeline failing = new ConformancePipeline((source, parents) -> unsupported);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> failing.analyze(fixture("acyclic"), output, Set.of()));
+
+        assertFalse(Files.exists(oldCapsule));
+    }
+
+    @Test
+    void preservesAnOldCapsuleWhenExtractionNeverCompletes() throws Exception {
+        Path output = temporary.resolve("extraction-failure");
+        Files.createDirectories(output);
+        Path oldCapsule = output.resolve("verification-capsule.json");
+        Files.writeString(oldCapsule, "previous-complete-run");
+        ConformancePipeline failing = new ConformancePipeline((source, parents) -> {
+            throw new ObservationException("extraction failed");
+        });
+
+        assertThrows(ObservationException.class,
+                () -> failing.analyze(fixture("acyclic"), output, Set.of()));
+
+        assertEquals("previous-complete-run", Files.readString(oldCapsule));
     }
 
     private static Path fixture(String name) throws Exception {

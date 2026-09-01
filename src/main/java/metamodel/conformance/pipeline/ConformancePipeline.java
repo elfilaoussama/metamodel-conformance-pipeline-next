@@ -9,6 +9,7 @@ import metamodel.conformance.pipeline.capsule.VerificationCapsule;
 import metamodel.conformance.pipeline.decision.Decision;
 import metamodel.conformance.pipeline.emf.ObservationXmiWriter;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.util.ArtifactLimits;
 import metamodel.conformance.pipeline.util.AtomicFiles;
 import metamodel.conformance.pipeline.util.Hashing;
 
@@ -42,13 +43,16 @@ public final class ConformancePipeline {
             throws ObservationException, IOException {
         Path output = prepareOutputDirectory(outputDirectory);
         Observation observation = observer.observe(sourceRoot, externalParents);
+        Path capsulePath = output.resolve(CAPSULE_FILE);
+        Files.deleteIfExists(capsulePath);
 
         Path observationPath = output.resolve(OBSERVATION_FILE);
         new ObservationXmiWriter().write(observation, observationPath);
 
         String alloy = encoder.encode(observation);
         Path alloyPath = output.resolve(ALLOY_FILE);
-        AtomicFiles.writeUtf8(alloyPath, alloy);
+        AtomicFiles.writeUtf8(
+                alloyPath, alloy, ArtifactLimits.MAX_ALLOY_BYTES, "Alloy artifact");
 
         List<Decision> decisions = runner.evaluateAll(observation, alloy);
         VerificationCapsule capsule = new VerificationCapsule(
@@ -66,7 +70,6 @@ public final class ConformancePipeline {
                 runner.executionConfig(),
                 observation.diagnostics(),
                 decisions);
-        Path capsulePath = output.resolve(CAPSULE_FILE);
         new CapsuleWriter().write(capsule, capsulePath);
         return new PipelineResult(observation, decisions, observationPath, alloyPath, capsulePath);
     }

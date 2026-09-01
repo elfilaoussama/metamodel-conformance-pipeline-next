@@ -59,6 +59,13 @@ locations. Java performs structural partitioning only; it does not decide whethe
 an invariant is violated. An inconsistent work unit is `NOT_EVALUATED`, never
 `CONFORMANT`.
 
+Artifact publication is fail-closed. Producers and verifiers enforce the same byte
+limits (32 MiB XMI, 16 MiB Alloy, and 1 MiB capsule), with UTF-8 text measured as
+encoded bytes. XMI and Alloy files are replaced atomically, and the capsule is
+written last as the completed-run marker. Once extraction succeeds, a failed rerun
+removes any older capsule before publishing new artifacts, so partial output cannot
+be mistaken for a verified result.
+
 Spoon's aggregate inherited-member APIs are currently preserved only as provisional
 diagnostic observations: corpus validation showed that they do not implement the
 Java inheritance view accurately for all interface and overriding cases. The Java
@@ -98,7 +105,7 @@ declarations remains unresolved, so hierarchy-dependent invariants are
 `NOT_EVALUATED`; the adapter never chooses a source set implicitly.
 
 Java files rejected by the parser remain in the hashed source set and are recorded
-as normalized, source-path diagnostics in schema-v4 `observation.xmi`. Valid files
+as normalized, source-path diagnostics in schema-v5 `observation.xmi`. Valid files
 may still be preserved as partial observations, but no evidence kind is marked
 complete and every invariant is `NOT_EVALUATED`. The Alloy artifact and capsule are
 still emitted and independently replayable; a parse error is not a missing result.

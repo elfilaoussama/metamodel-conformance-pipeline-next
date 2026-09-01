@@ -1,10 +1,11 @@
 package metamodel.conformance.pipeline.capsule;
 
+import metamodel.conformance.pipeline.alloy.AlloyExecutionConfig;
 import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
 import metamodel.conformance.pipeline.alloy.ExactAlloyEncoder;
-import metamodel.conformance.pipeline.alloy.AlloyExecutionConfig;
 import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.util.ArtifactLimits;
 import metamodel.conformance.pipeline.util.Hashing;
 
 import java.io.IOException;
@@ -15,15 +16,12 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 
 public final class CapsuleVerifier {
-    private static final long MAX_CAPSULE_BYTES = 1024L * 1024L;
-    private static final long MAX_ALLOY_BYTES = 16L * 1024L * 1024L;
-
     public CapsuleVerification verify(Path capsulePath) {
         try {
             Path capsuleFile = capsulePath.toRealPath(LinkOption.NOFOLLOW_LINKS);
             if (!Files.isRegularFile(capsuleFile, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(capsulePath)
-                    || Files.size(capsuleFile) > MAX_CAPSULE_BYTES) {
+                    || Files.size(capsuleFile) > ArtifactLimits.MAX_CAPSULE_BYTES) {
                 return invalid("capsule is not a regular file or exceeds the size limit");
             }
             VerificationCapsule capsule = CapsuleJson.MAPPER.readValue(capsuleFile.toFile(), VerificationCapsule.class);
@@ -36,9 +34,10 @@ public final class CapsuleVerifier {
             Path root = capsuleFile.getParent().toRealPath(LinkOption.NOFOLLOW_LINKS);
             Path observationPath = resolveArtifact(root, capsule.observationPath());
             Path alloyPath = resolveArtifact(root, capsule.alloyPath());
-            if (Files.size(alloyPath) > MAX_ALLOY_BYTES) {
-                return invalid("Alloy artifact exceeds the size limit");
-            }
+            ArtifactLimits.requireFileWithin(
+                    "canonical XMI", observationPath, ArtifactLimits.MAX_XMI_BYTES);
+            ArtifactLimits.requireFileWithin(
+                    "Alloy artifact", alloyPath, ArtifactLimits.MAX_ALLOY_BYTES);
             if (!digestEquals(capsule.observationSha256(), Hashing.sha256(observationPath))) {
                 return invalid("observation digest mismatch");
             }
