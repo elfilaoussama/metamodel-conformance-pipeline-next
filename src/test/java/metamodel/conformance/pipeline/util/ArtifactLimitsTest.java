@@ -1,5 +1,7 @@
 package metamodel.conformance.pipeline.util;
 
+import metamodel.conformance.pipeline.model.Language;
+import metamodel.conformance.pipeline.model.SourceUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ArtifactLimitsTest {
@@ -31,5 +34,16 @@ class ArtifactLimitsTest {
                 () -> AtomicFiles.writeUtf8(target, "12345", 4, "test artifact"));
 
         assertEquals("previous", Files.readString(target));
+    }
+
+    @Test
+    void sourceSetIdentityIncludesTheObservedLanguage() {
+        String digest = Hashing.sha256("same source");
+
+        assertNotEquals(
+                Hashing.sourceSetDigest(java.util.List.of(
+                        new SourceUnit(Language.JAVA, "source.txt", digest))),
+                Hashing.sourceSetDigest(java.util.List.of(
+                        new SourceUnit(Language.PYTHON, "source.txt", digest))));
     }
 }

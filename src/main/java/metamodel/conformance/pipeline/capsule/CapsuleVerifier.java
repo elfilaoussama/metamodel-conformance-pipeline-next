@@ -1,5 +1,6 @@
 package metamodel.conformance.pipeline.capsule;
 
+import metamodel.conformance.pipeline.PipelineVersion;
 import metamodel.conformance.pipeline.alloy.AlloyExecutionConfig;
 import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
 import metamodel.conformance.pipeline.alloy.ExactAlloyEncoder;
@@ -27,6 +28,10 @@ public final class CapsuleVerifier {
             VerificationCapsule capsule = CapsuleJson.MAPPER.readValue(capsuleFile.toFile(), VerificationCapsule.class);
             if (!"6".equals(capsule.formatVersion()) || capsule.decisions().isEmpty()) {
                 return invalid("unsupported or empty capsule format");
+            }
+            if (!PipelineVersion.TOOL_ID.equals(capsule.toolId())
+                    || !PipelineVersion.VERSION.equals(capsule.toolVersion())) {
+                return invalid("unsupported capsule producer identity or version");
             }
             if (capsule.alloyExecution() == null || !capsule.alloyExecution().supported()) {
                 return invalid("unsupported or missing Alloy execution configuration");

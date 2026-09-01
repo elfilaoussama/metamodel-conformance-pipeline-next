@@ -4,6 +4,7 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
@@ -13,6 +14,7 @@ import metamodel.conformance.pipeline.util.Hashing;
 
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 public final class TestObservations {
     public static final String A = id("A");
@@ -160,7 +162,7 @@ public final class TestObservations {
             List<ClassifierObservation> classifiers, List<UnresolvedParent> unresolved) {
         return new Observation(
                 "5", "test-adapter", "1.0.0", List.of(),
-                List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
+                sourceUnits(classifiers, List.of()),
                 classifiers,
                 unresolved);
     }
@@ -171,8 +173,20 @@ public final class TestObservations {
             Set<EvidenceKind> evidence) {
         return new Observation(
                 "5", "test-adapter", "1.0.0", List.of(), evidence,
-                List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
+                sourceUnits(classifiers, members),
                 classifiers, members, List.of());
+    }
+
+    private static List<SourceUnit> sourceUnits(
+            List<ClassifierObservation> classifiers, List<MemberObservation> members) {
+        return Stream.concat(
+                        classifiers.stream().map(ClassifierObservation::sourcePath),
+                        members.stream().map(MemberObservation::sourcePath))
+                .distinct()
+                .sorted()
+                .map(path -> new SourceUnit(
+                        Language.JAVA, path, Hashing.sha256("source\0" + path)))
+                .toList();
     }
 
     private static MemberObservation method(String seed, String name, List<String> parameterTypes) {

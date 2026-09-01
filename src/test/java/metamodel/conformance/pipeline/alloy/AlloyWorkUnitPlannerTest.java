@@ -7,6 +7,7 @@ import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.util.Hashing;
 import org.junit.jupiter.api.Test;
@@ -92,7 +93,8 @@ class AlloyWorkUnitPlannerTest {
             Set<EvidenceKind> evidence) {
         return new Observation(
                 "5", "test-adapter", "1.0.0", List.of(), evidence,
-                List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
+                List.of(new SourceUnit(
+                        Language.JAVA, "example/A.java", Hashing.sha256("source"))),
                 classifiers, members, List.of());
     }
 

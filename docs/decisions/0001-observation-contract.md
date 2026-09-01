@@ -32,5 +32,11 @@ encoding independent of Java, Python, or C++ parser APIs.
 - Real paths must remain beneath the declared source root.
 - Symbolic-link source files are rejected.
 - Output contains hashes and normalized relative paths, not source contents.
+- Source paths use canonical `/`-separated relative form; absolute paths,
+  backslashes, empty segments, `.` segments, and `..` segments are rejected.
+- Source-unit paths are unique, SHA-256 values are lowercase 64-hex digests, and
+  classifier/member technical identifiers use their prefixed digest forms.
+- Every classifier, member, unresolved reference, and diagnostic source path
+  resolves to a source unit included in the hashed observation boundary.
 - Serialization contains no timestamps or machine-specific absolute paths.
 - Schema and adapter versions are explicit compatibility inputs.

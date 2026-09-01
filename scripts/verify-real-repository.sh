@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly REPOSITORY_URL="https://github.com/elfilaoussama/metamodel-conformance-pipeline.git"
 readonly REPOSITORY_COMMIT="25a80241f7514aa0a9e9a5ad2c5ec3fa90277527"
-readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.6.0-SNAPSHOT.jar"
+readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.7.0-SNAPSHOT.jar"
 
 integration_root="$(mktemp -d)"
 readonly integration_root

@@ -24,21 +24,23 @@ public record Observation(
         externalParents = sortedStrings(externalParents);
         completeEvidence = completeEvidence == null
                 ? Set.of() : Set.copyOf(completeEvidence);
-        units = units.stream().sorted(Comparator.comparing(SourceUnit::path)).toList();
-        classifiers = classifiers.stream().sorted(Comparator.comparing(ClassifierObservation::id)).toList();
-        members = members.stream().sorted(Comparator.comparing(MemberObservation::technicalKey)).toList();
-        unresolvedParents = unresolvedParents.stream()
+        units = List.copyOf(units).stream().sorted(Comparator.comparing(SourceUnit::path)).toList();
+        classifiers = List.copyOf(classifiers).stream()
+                .sorted(Comparator.comparing(ClassifierObservation::id)).toList();
+        members = List.copyOf(members).stream()
+                .sorted(Comparator.comparing(MemberObservation::technicalKey)).toList();
+        unresolvedParents = List.copyOf(unresolvedParents).stream()
                 .sorted(Comparator.comparing(UnresolvedParent::ownerId)
                         .thenComparing(UnresolvedParent::targetName)
                 .thenComparingInt(UnresolvedParent::line))
                 .toList();
-        diagnostics = diagnostics == null ? List.of() : diagnostics.stream()
+        diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics).stream()
                 .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
                         .thenComparingInt(ObservationDiagnostic::line)
                         .thenComparing(item -> item.kind().name())
                         .thenComparing(ObservationDiagnostic::message))
                 .toList();
-        validateReferences(classifiers, members, unresolvedParents);
+        validateReferences(units, classifiers, members, unresolvedParents, diagnostics);
         if (!unresolvedParents.isEmpty() && completeEvidence.contains(EvidenceKind.HIERARCHY)) {
             throw new IllegalArgumentException("hierarchy evidence cannot be complete with unresolved parents");
         }
@@ -82,23 +84,30 @@ public record Observation(
                 List.of());
     }
 
-    public boolean isComplete() {
-        return unresolvedParents.isEmpty() && diagnostics.isEmpty();
-    }
-
     private static List<String> sortedStrings(List<String> values) {
-        return values == null ? List.of() : values.stream().sorted().distinct().toList();
+        return values == null ? List.of() : values.stream()
+                .map(value -> CanonicalObservationValue.text(value, "external parent"))
+                .sorted().distinct().toList();
     }
 
     private static void validateReferences(
+            List<SourceUnit> units,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<UnresolvedParent> unresolvedParents) {
+            List<UnresolvedParent> unresolvedParents,
+            List<ObservationDiagnostic> diagnostics) {
+        Set<String> sourcePaths = new HashSet<>();
+        for (SourceUnit unit : units) {
+            if (!sourcePaths.add(unit.path())) {
+                throw new IllegalArgumentException("duplicate source-unit path: " + unit.path());
+            }
+        }
         Set<String> ids = new HashSet<>();
         for (ClassifierObservation classifier : classifiers) {
             if (!ids.add(classifier.id())) {
                 throw new IllegalArgumentException("duplicate classifier id: " + classifier.id());
             }
+            requireSourcePath(sourcePaths, classifier.sourcePath(), "classifier");
         }
         for (ClassifierObservation classifier : classifiers) {
             for (String parentId : classifier.parentIds()) {
@@ -112,6 +121,7 @@ public record Observation(
             if (!memberKeys.add(member.technicalKey())) {
                 throw new IllegalArgumentException("duplicate technical member key: " + member.technicalKey());
             }
+            requireSourcePath(sourcePaths, member.sourcePath(), "member");
         }
         for (ClassifierObservation classifier : classifiers) {
             for (String memberKey : classifier.declaredMemberKeys()) {
@@ -129,6 +139,17 @@ public record Observation(
             if (!ids.contains(unresolved.ownerId())) {
                 throw new IllegalArgumentException("unknown unresolved-parent owner: " + unresolved.ownerId());
             }
+            requireSourcePath(sourcePaths, unresolved.sourcePath(), "unresolved parent");
+        }
+        for (ObservationDiagnostic diagnostic : diagnostics) {
+            requireSourcePath(sourcePaths, diagnostic.sourcePath(), "diagnostic");
+        }
+    }
+
+    private static void requireSourcePath(Set<String> units, String sourcePath, String kind) {
+        if (!units.contains(sourcePath)) {
+            throw new IllegalArgumentException(
+                    kind + " sourcePath has no source unit: " + sourcePath);
         }
     }
 

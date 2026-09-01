@@ -7,6 +7,7 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.decision.WitnessTuple;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -82,7 +83,11 @@ class AlloyInvariantEvaluatorTest {
                 List.of(base.members().get(0).technicalKey()));
         Observation mutated = new Observation(
                 base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
-                base.completeEvidence(), base.units(),
+                base.completeEvidence(), List.of(
+                        base.units().get(0),
+                        new SourceUnit(
+                                Language.JAVA, "example/B.java",
+                                Hashing.sha256("source\0example/B.java"))),
                 List.of(base.classifiers().get(0), secondOwner), base.members(), base.unresolvedParents());
 
         List<Decision> before = runner.evaluateAll(base, encoder.encode(base));
@@ -174,7 +179,8 @@ class AlloyInvariantEvaluatorTest {
                 "example/A.java", 3, 3, List.of());
         Observation observation = new Observation(
                 "5", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
-                List.of(new SourceUnit("example/A.java", Hashing.sha256("source"))),
+                List.of(new SourceUnit(
+                        Language.JAVA, "example/A.java", Hashing.sha256("source"))),
                 List.of(first, second, isolated), List.of(), List.of());
 
         Decision decision = decision(

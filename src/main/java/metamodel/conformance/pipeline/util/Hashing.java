@@ -35,7 +35,8 @@ public final class Hashing {
     public static String sourceSetDigest(List<SourceUnit> units) {
         StringBuilder canonical = new StringBuilder();
         units.stream().sorted(java.util.Comparator.comparing(SourceUnit::path))
-                .forEach(unit -> canonical.append(unit.path()).append('\0')
+                .forEach(unit -> canonical.append(unit.language()).append('\0')
+                        .append(unit.path()).append('\0')
                         .append(unit.sha256()).append('\n'));
         return sha256(canonical.toString());
     }

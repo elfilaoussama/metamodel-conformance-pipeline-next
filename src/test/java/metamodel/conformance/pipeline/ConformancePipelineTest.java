@@ -4,6 +4,7 @@ import metamodel.conformance.pipeline.adapter.ObservationException;
 import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.decision.DecisionStatus;
+import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.model.Observation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,6 +38,7 @@ class ConformancePipelineTest {
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
         assertArrayEquals(Files.readAllBytes(first.capsulePath()), Files.readAllBytes(second.capsulePath()));
+        assertEquals(new ObservationXmiReader().read(first.observationPath()), first.observation());
         assertTrue(new CapsuleVerifier().verify(first.capsulePath()).valid());
     }
 
@@ -68,6 +70,18 @@ class ConformancePipelineTest {
                 fixture("acyclic"), temporary.resolve("configuration-drift"), Set.of());
         String capsule = Files.readString(result.capsulePath());
         String changed = capsule.replace("\"symmetry\" : 20", "\"symmetry\" : 0");
+        assertFalse(capsule.equals(changed));
+        Files.writeString(result.capsulePath(), changed);
+
+        assertFalse(new CapsuleVerifier().verify(result.capsulePath()).valid());
+    }
+
+    @Test
+    void rejectsCapsuleProducerVersionDrift() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("acyclic"), temporary.resolve("producer-drift"), Set.of());
+        String capsule = Files.readString(result.capsulePath());
+        String changed = capsule.replace("\"toolVersion\" : \"0.7.0\"", "\"toolVersion\" : \"9.9.9\"");
         assertFalse(capsule.equals(changed));
         Files.writeString(result.capsulePath(), changed);
 

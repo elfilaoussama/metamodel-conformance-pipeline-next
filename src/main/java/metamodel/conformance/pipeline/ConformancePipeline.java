@@ -7,6 +7,7 @@ import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
 import metamodel.conformance.pipeline.capsule.CapsuleWriter;
 import metamodel.conformance.pipeline.capsule.VerificationCapsule;
 import metamodel.conformance.pipeline.decision.Decision;
+import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.emf.ObservationXmiWriter;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.util.ArtifactLimits;
@@ -42,12 +43,13 @@ public final class ConformancePipeline {
     public PipelineResult analyze(Path sourceRoot, Path outputDirectory, Set<String> externalParents)
             throws ObservationException, IOException {
         Path output = prepareOutputDirectory(outputDirectory);
-        Observation observation = observer.observe(sourceRoot, externalParents);
+        Observation observed = observer.observe(sourceRoot, externalParents);
         Path capsulePath = output.resolve(CAPSULE_FILE);
         Files.deleteIfExists(capsulePath);
 
         Path observationPath = output.resolve(OBSERVATION_FILE);
-        new ObservationXmiWriter().write(observation, observationPath);
+        new ObservationXmiWriter().write(observed, observationPath);
+        Observation observation = new ObservationXmiReader().read(observationPath);
 
         String alloy = encoder.encode(observation);
         Path alloyPath = output.resolve(ALLOY_FILE);

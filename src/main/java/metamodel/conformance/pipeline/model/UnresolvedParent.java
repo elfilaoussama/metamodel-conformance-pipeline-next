@@ -2,9 +2,11 @@ package metamodel.conformance.pipeline.model;
 
 public record UnresolvedParent(String ownerId, String targetName, String sourcePath, int line) {
     public UnresolvedParent {
-        if (ownerId == null || ownerId.isBlank() || targetName == null || targetName.isBlank()
-                || sourcePath == null || sourcePath.isBlank() || line < 1) {
-            throw new IllegalArgumentException("unresolved parent fields must be complete");
+        ownerId = CanonicalObservationValue.technicalId(ownerId, "cls_", "ownerId");
+        targetName = CanonicalObservationValue.text(targetName, "targetName");
+        sourcePath = CanonicalObservationValue.relativePath(sourcePath, "sourcePath");
+        if (line < 1) {
+            throw new IllegalArgumentException("unresolved parent line must be positive");
         }
     }
 }

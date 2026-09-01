@@ -15,13 +15,14 @@ public record MemberObservation(
         List<String> parameterTypes) {
 
     public MemberObservation {
-        technicalKey = requireText(technicalKey, "technicalKey");
+        technicalKey = CanonicalObservationValue.technicalId(
+                technicalKey, "mem_", "technicalKey");
         observedIdentifier = observedIdentifier == null || observedIdentifier.isBlank()
                 ? null : observedIdentifier;
         kind = Objects.requireNonNull(kind, "kind");
         inheritability = Objects.requireNonNull(inheritability, "inheritability");
         memberName = requireText(memberName, "memberName");
-        sourcePath = requireText(sourcePath, "sourcePath");
+        sourcePath = CanonicalObservationValue.relativePath(sourcePath, "sourcePath");
         if (startLine < 1 || endLine < startLine) {
             throw new IllegalArgumentException("invalid member source line range");
         }

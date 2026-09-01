@@ -15,10 +15,10 @@ public record ClassifierObservation(
         List<String> inheritedMemberKeys) {
 
     public ClassifierObservation {
-        id = requireText(id, "id");
+        id = CanonicalObservationValue.technicalId(id, "cls_", "id");
         qualifiedName = requireText(qualifiedName, "qualifiedName");
         kind = Objects.requireNonNull(kind, "kind");
-        sourcePath = requireText(sourcePath, "sourcePath");
+        sourcePath = CanonicalObservationValue.relativePath(sourcePath, "sourcePath");
         if (startLine < 1 || endLine < startLine) {
             throw new IllegalArgumentException("invalid source line range");
         }

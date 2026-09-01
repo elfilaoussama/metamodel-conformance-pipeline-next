@@ -9,7 +9,7 @@ fi
 readonly repository="$1"
 readonly commit="$2"
 readonly output_root="$3"
-readonly pipeline_jar="${PIPELINE_JAR:-target/metamodel-conformance-pipeline-next-0.6.0-SNAPSHOT.jar}"
+readonly pipeline_jar="${PIPELINE_JAR:-target/metamodel-conformance-pipeline-next-0.7.0-SNAPSHOT.jar}"
 
 if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "invalid repository name" >&2

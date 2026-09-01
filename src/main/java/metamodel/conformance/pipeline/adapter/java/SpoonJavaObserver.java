@@ -6,6 +6,7 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
@@ -48,7 +49,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.6.0";
+    public static final String ADAPTER_VERSION = "0.7.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -68,7 +69,8 @@ public final class SpoonJavaObserver implements SourceObserver {
 
             List<SourceUnit> units = new ArrayList<>();
             for (Path file : files) {
-                units.add(new SourceUnit(relativePath(root, file), Hashing.sha256(file)));
+                units.add(new SourceUnit(
+                        Language.JAVA, relativePath(root, file), Hashing.sha256(file)));
             }
 
             BuildResult build = buildTypes(root, files);

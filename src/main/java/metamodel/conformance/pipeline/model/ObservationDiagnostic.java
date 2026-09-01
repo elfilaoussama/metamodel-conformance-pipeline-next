@@ -10,9 +10,7 @@ public record ObservationDiagnostic(
         if (kind == null) {
             throw new IllegalArgumentException("diagnostic kind is required");
         }
-        if (sourcePath == null || sourcePath.isBlank()) {
-            throw new IllegalArgumentException("diagnostic sourcePath must not be blank");
-        }
+        sourcePath = CanonicalObservationValue.relativePath(sourcePath, "sourcePath");
         if (line < 0) {
             throw new IllegalArgumentException("diagnostic line must not be negative");
         }

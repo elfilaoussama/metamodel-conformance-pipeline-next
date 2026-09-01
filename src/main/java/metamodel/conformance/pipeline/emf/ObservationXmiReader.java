@@ -5,6 +5,7 @@ import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
@@ -61,7 +62,10 @@ public final class ObservationXmiReader {
 
         List<SourceUnit> units = new ArrayList<>();
         for (EObject unit : (EList<EObject>) value(root, "units")) {
-            units.add(new SourceUnit(string(unit, "path"), string(unit, "sha256")));
+            units.add(new SourceUnit(
+                    Language.valueOf(enumName(unit, "language")),
+                    string(unit, "path"),
+                    string(unit, "sha256")));
         }
         List<MemberObservation> members = new ArrayList<>();
         for (EObject member : (EList<EObject>) value(root, "members")) {
