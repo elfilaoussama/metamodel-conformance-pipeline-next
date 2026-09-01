@@ -1,6 +1,7 @@
 package metamodel.conformance.pipeline.capsule;
 
 import metamodel.conformance.pipeline.decision.Decision;
+import metamodel.conformance.pipeline.alloy.AlloyExecutionConfig;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 
 import java.util.List;
@@ -17,6 +18,7 @@ public record VerificationCapsule(
         String observationSha256,
         String alloyPath,
         String alloySha256,
+        AlloyExecutionConfig alloyExecution,
         List<ObservationDiagnostic> observationDiagnostics,
         List<Decision> decisions) {
 

@@ -58,6 +58,16 @@ invariant decision is produced. A failure in any required work unit makes that
 invariant `NOT_EVALUATED`. This avoids repository-size caps while preserving every
 cross-atom relation declared relevant by the invariant registry.
 
+## Reproducible Alloy execution
+
+Capsule format v6 records the immutable execution configuration actually owned
+by the evaluator: Alloy version, solver ID, partial-instance inference, symmetry,
+skolem depth, core settings, Kodkod recording, overflow policy, unrolling, and
+decomposition settings. The verifier accepts only the frozen supported profile,
+reconstructs `A4Options` from that archived object, and rejects configuration
+drift before reading or solving the observation artifacts. Machine-specific
+temporary-directory fields are deliberately excluded from experiment identity.
+
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves

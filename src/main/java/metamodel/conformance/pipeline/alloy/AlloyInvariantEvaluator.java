@@ -5,7 +5,6 @@ import edu.mit.csail.sdg.ast.Command;
 import edu.mit.csail.sdg.ast.Func;
 import edu.mit.csail.sdg.parser.CompModule;
 import edu.mit.csail.sdg.parser.CompUtil;
-import edu.mit.csail.sdg.translator.A4Options;
 import edu.mit.csail.sdg.translator.A4Solution;
 import edu.mit.csail.sdg.translator.A4Tuple;
 import edu.mit.csail.sdg.translator.A4TupleSet;
@@ -27,6 +26,21 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class AlloyInvariantEvaluator {
+    private final AlloyExecutionConfig executionConfig;
+
+    public AlloyInvariantEvaluator() {
+        this(AlloyExecutionConfig.frozen());
+    }
+
+    public AlloyInvariantEvaluator(AlloyExecutionConfig executionConfig) {
+        executionConfig.requireSupported();
+        this.executionConfig = executionConfig;
+    }
+
+    public AlloyExecutionConfig executionConfig() {
+        return executionConfig;
+    }
+
     public List<Decision> evaluateAll(Observation observation, String alloyModel) {
         InvariantRegistry registry = InvariantRegistry.load();
         Map<String, Decision> decisionsById = new LinkedHashMap<>();
@@ -62,7 +76,7 @@ public final class AlloyInvariantEvaluator {
         for (InvariantDefinition definition : evaluable) {
             try {
                 decisionsById.put(definition.id(), evaluate(
-                        planner.plan(observation, definition), definition, encoder));
+                        planner.plan(observation, definition), definition, encoder, executionConfig));
             } catch (Exception | LinkageError | StackOverflowError failure) {
                 decisionsById.put(definition.id(), notEvaluated(
                         definition, "Alloy work-unit planning failed: " + safeMessage(failure)));
@@ -92,7 +106,8 @@ public final class AlloyInvariantEvaluator {
     private static Decision evaluate(
             List<Observation> workUnits,
             InvariantDefinition definition,
-            ExactAlloyEncoder encoder) {
+            ExactAlloyEncoder encoder,
+            AlloyExecutionConfig executionConfig) {
         List<WitnessTuple> witnesses = new ArrayList<>();
         try {
             for (Observation workUnit : workUnits) {
@@ -100,7 +115,8 @@ public final class AlloyInvariantEvaluator {
                 CompModule module = CompUtil.parseEverything_fromString(new A4Reporter(), model);
                 Command consistencyCommand = findCommand(module, "ObservationConsistency");
                 A4Solution exactSolution = TranslateAlloyToKodkod.execute_command(
-                        new A4Reporter(), module.getAllReachableSigs(), consistencyCommand, new A4Options());
+                        new A4Reporter(), module.getAllReachableSigs(), consistencyCommand,
+                        AlloyOptionsFactory.create(executionConfig));
                 if (!exactSolution.satisfiable()) {
                     return notEvaluated(definition, "An exact Alloy work unit is inconsistent.");
                 }

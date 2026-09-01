@@ -60,6 +60,18 @@ class ConformancePipelineTest {
     }
 
     @Test
+    void rejectsCapsuleExecutionConfigurationDrift() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("acyclic"), temporary.resolve("configuration-drift"), Set.of());
+        String capsule = Files.readString(result.capsulePath());
+        String changed = capsule.replace("\"symmetry\" : 20", "\"symmetry\" : 0");
+        assertFalse(capsule.equals(changed));
+        Files.writeString(result.capsulePath(), changed);
+
+        assertFalse(new CapsuleVerifier().verify(result.capsulePath()).valid());
+    }
+
+    @Test
     void emitsReplayableNotEvaluatedArtifactsForParseDiagnostics() throws Exception {
         PipelineResult result = pipeline.analyze(
                 fixture("parse-error"), temporary.resolve("parse-error"), Set.of());

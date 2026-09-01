@@ -46,7 +46,10 @@ java -jar target/metamodel-conformance-pipeline-next-0.6.0-SNAPSHOT.jar \
 ```
 
 The same input and tool version produce byte-identical `observation.xmi`, Alloy
-model, and capsule. Wall-clock timestamps are intentionally excluded. Invariant
+model, and capsule. Capsule format v6 archives the exact Alloy 6.2.0/SAT4J
+execution profile, including symmetry, skolemization, overflow, unrolling, core,
+and decomposition options. Replay rejects any missing or changed option before
+interpreting the artifacts. Wall-clock timestamps are intentionally excluded. Invariant
 metadata and evidence requirements come from one registry; all invariant semantics
 come from one Alloy resource. For each evaluable invariant, the registry declares
 which observed relations connect an exact solver work unit and which atom kind

@@ -2,6 +2,7 @@ package metamodel.conformance.pipeline.capsule;
 
 import metamodel.conformance.pipeline.alloy.AlloyInvariantEvaluator;
 import metamodel.conformance.pipeline.alloy.ExactAlloyEncoder;
+import metamodel.conformance.pipeline.alloy.AlloyExecutionConfig;
 import metamodel.conformance.pipeline.emf.ObservationXmiReader;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -26,8 +27,11 @@ public final class CapsuleVerifier {
                 return invalid("capsule is not a regular file or exceeds the size limit");
             }
             VerificationCapsule capsule = CapsuleJson.MAPPER.readValue(capsuleFile.toFile(), VerificationCapsule.class);
-            if (!"5".equals(capsule.formatVersion()) || capsule.decisions().isEmpty()) {
+            if (!"6".equals(capsule.formatVersion()) || capsule.decisions().isEmpty()) {
                 return invalid("unsupported or empty capsule format");
+            }
+            if (capsule.alloyExecution() == null || !capsule.alloyExecution().supported()) {
+                return invalid("unsupported or missing Alloy execution configuration");
             }
             Path root = capsuleFile.getParent().toRealPath(LinkOption.NOFOLLOW_LINKS);
             Path observationPath = resolveArtifact(root, capsule.observationPath());
@@ -59,7 +63,8 @@ public final class CapsuleVerifier {
             if (!regeneratedAlloy.equals(alloy)) {
                 return invalid(describeAlloyDrift(alloy, regeneratedAlloy));
             }
-            var repeated = new AlloyInvariantEvaluator().evaluateAll(observation, alloy);
+            var repeated = new AlloyInvariantEvaluator(capsule.alloyExecution())
+                    .evaluateAll(observation, alloy);
             if (!repeated.equals(capsule.decisions())) {
                 return invalid("repeated Alloy decisions do not match capsule");
             }
