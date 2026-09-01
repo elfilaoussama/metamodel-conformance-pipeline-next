@@ -63,7 +63,7 @@ public final class ObservationXmiReader {
         List<SourceUnit> units = new ArrayList<>();
         for (EObject unit : (EList<EObject>) value(root, "units")) {
             units.add(new SourceUnit(
-                    Language.valueOf(enumName(unit, "language")),
+                    Language.valueOf(value(unit, "language").toString()),
                     string(unit, "path"),
                     string(unit, "sha256")));
         }
