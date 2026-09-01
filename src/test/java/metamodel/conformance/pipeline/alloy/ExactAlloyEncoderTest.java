@@ -70,4 +70,3 @@ class ExactAlloyEncoderTest {
         assertFalse(overloaded.contains("SignatureToken"));
     }
 }
-
