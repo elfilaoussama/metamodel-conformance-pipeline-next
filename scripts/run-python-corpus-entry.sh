@@ -2,7 +2,7 @@
 set -u -o pipefail
 
 if [[ $# -ne 3 ]]; then
-  echo "usage: run-corpus-entry.sh owner/repository commit output-directory" >&2
+  echo "usage: run-python-corpus-entry.sh owner/repository commit output-directory" >&2
   exit 64
 fi
 
@@ -38,22 +38,23 @@ if [[ ${clone_exit} -eq 0 ]]; then
     >>"${output_root}/clone.log" 2>&1 || clone_exit=$?
 fi
 
-java_files=0
+python_files=0
 discovery_exit=99
 analysis_exit=99
 verification_exit=99
 external_parent_count=0
 
 if [[ ${clone_exit} -eq 0 ]]; then
-  java_files="$(find "${source_root}" -type f -name '*.java' | wc -l)"
+  python_files="$(find "${source_root}" -type f -name '*.py' | wc -l)"
 
   java -jar "${pipeline_jar}" analyze \
+    --language python \
     --source "${source_root}" \
     --output "${discovery_root}" \
     >"${output_root}/discovery.log" 2>&1
   discovery_exit=$?
 
-  sed -n '/^Unresolved parents:/,/^Capsule:/ {
+  sed -n '/^Unresolved parents:/,/^Observation diagnostics:/ {
     /^  / s/^  \([^ ]*\) (.*$/\1/p
   }' "${output_root}/discovery.log" | sort -u >"${output_root}/external-parents.txt"
 
@@ -67,6 +68,7 @@ if [[ ${clone_exit} -eq 0 ]]; then
   external_parent_count="$((external_parent_count / 2))"
 
   java -jar "${pipeline_jar}" analyze \
+    --language python \
     --source "${source_root}" \
     --output "${result_root}" \
     "${external_args[@]}" \
@@ -88,19 +90,19 @@ if [[ -f "${result_root}/verification-capsule.json" ]]; then
     --argjson discoveryExit "${discovery_exit}" \
     --argjson analysisExit "${analysis_exit}" \
     --argjson verificationExit "${verification_exit}" \
-    --argjson javaFiles "${java_files}" \
+    --argjson pythonFiles "${python_files}" \
     --argjson externalParents "${external_parent_count}" \
     '{
       repository: $repository,
       commit: $commit,
-      javaFiles: $javaFiles,
+      pythonFiles: $pythonFiles,
       externalParents: $externalParents,
       cloneExit: $cloneExit,
       discoveryExit: $discoveryExit,
       analysisExit: $analysisExit,
       verificationExit: $verificationExit,
       toolOutcome: (if $verificationExit == 0 then "ANALYZED" else "CAPSULE_INVALID" end),
-      observationDiagnostics: [.observationDiagnostics[] | {
+      observationDiagnostics: [.observationDiagnostics[]? | {
         kind,
         sourcePath,
         line,
@@ -118,19 +120,20 @@ else
     --argjson cloneExit "${clone_exit}" \
     --argjson discoveryExit "${discovery_exit}" \
     --argjson analysisExit "${analysis_exit}" \
-    --argjson javaFiles "${java_files}" \
+    --argjson pythonFiles "${python_files}" \
     '{
       repository: $repository,
       commit: $commit,
-      javaFiles: $javaFiles,
+      pythonFiles: $pythonFiles,
       cloneExit: $cloneExit,
       discoveryExit: $discoveryExit,
       analysisExit: $analysisExit,
       verificationExit: 99,
       toolOutcome: "TOOL_FAILURE",
+      observationDiagnostics: [],
       decisions: []
     }' >"${output_root}/report.json"
 fi
 
-jq -c . "${output_root}/report.json" | sed 's/^/CORPUS_RESULT /'
+jq -c . "${output_root}/report.json" | sed 's/^/PYTHON_CORPUS_RESULT /'
 exit 0

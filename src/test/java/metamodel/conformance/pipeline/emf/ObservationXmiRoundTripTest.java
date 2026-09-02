@@ -20,7 +20,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void roundTripsAndSerializesDeterministically() throws Exception {
-        Observation observation = TestObservations.inheritedViewConformant();
+        Observation observation = schema8(TestObservations.inheritedViewConformant());
         Path first = temporary.resolve("first.xmi");
         Path second = temporary.resolve("second.xmi");
 
@@ -34,7 +34,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void preservesRepeatedOrderedParameterTypes() throws Exception {
-        Observation observation = TestObservations.repeatedParameterTypes();
+        Observation observation = schema8(TestObservations.repeatedParameterTypes());
         Path xmi = temporary.resolve("repeated-parameters.xmi");
 
         new ObservationXmiWriter().write(observation, xmi);
@@ -47,7 +47,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void preservesContextualAccessibilityAndEvidenceDiagnostics() throws Exception {
-        Observation base = TestObservations.inheritedViewConformant();
+        Observation base = schema8(TestObservations.inheritedViewConformant());
         Observation observation = new Observation(
                 base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
                 base.completeEvidence(), base.units(), base.classifiers(), base.members(),
@@ -62,5 +62,12 @@ class ObservationXmiRoundTripTest {
         assertEquals(observation, replayed);
         assertEquals(base.classifiers().get(0).packageName(), replayed.classifiers().get(0).packageName());
         assertEquals(base.members().get(0).visibility(), replayed.members().get(0).visibility());
+    }
+
+    private static Observation schema8(Observation base) {
+        return new Observation(
+                "8", base.adapterId(), base.adapterVersion(), base.externalParents(),
+                base.completeEvidence(), base.units(), base.classifiers(), base.members(),
+                base.unresolvedParents(), base.diagnostics());
     }
 }

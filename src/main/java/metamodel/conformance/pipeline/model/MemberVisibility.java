@@ -4,5 +4,6 @@ public enum MemberVisibility {
     PUBLIC,
     PROTECTED,
     PACKAGE,
-    PRIVATE
+    PRIVATE,
+    UNKNOWN
 }

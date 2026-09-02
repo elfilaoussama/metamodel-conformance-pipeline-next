@@ -18,6 +18,9 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress verify
       - name: Verify pinned real repository
@@ -26,3 +29,7 @@ jobs:
   frozen-java-corpus:
     needs: build
     uses: ./.github/workflows/random-java-corpus-20.yml
+
+  frozen-python-corpus:
+    needs: build
+    uses: ./.github/workflows/python-corpus-6.yml

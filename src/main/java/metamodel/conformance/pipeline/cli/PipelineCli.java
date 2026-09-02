@@ -2,10 +2,12 @@ package metamodel.conformance.pipeline.cli;
 
 import metamodel.conformance.pipeline.ConformancePipeline;
 import metamodel.conformance.pipeline.PipelineResult;
-import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
+import metamodel.conformance.pipeline.adapter.SourceObserver;
+import metamodel.conformance.pipeline.adapter.SourceObserverFactory;
 import metamodel.conformance.pipeline.capsule.CapsuleVerification;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.decision.DecisionStatus;
 
@@ -56,11 +58,16 @@ public final class PipelineCli {
 
     private static int analyze(String[] args) throws Exception {
         ParsedOptions options = ParsedOptions.parse(
-                args, Set.of("source", "output"), Set.of("external-parent", "dependency-jar"));
+                args,
+                Set.of("source", "output"),
+                Set.of("language"),
+                Set.of("external-parent", "dependency-jar"));
         Path source = Path.of(options.one("source"));
         Path output = Path.of(options.one("output"));
         List<Path> dependencyArchives = options.many("dependency-jar").stream().map(Path::of).toList();
-        PipelineResult result = new ConformancePipeline(new SpoonJavaObserver(dependencyArchives))
+        Language language = SourceObserverFactory.parseLanguage(options.optional("language"));
+        SourceObserver observer = SourceObserverFactory.create(language, dependencyArchives);
+        PipelineResult result = new ConformancePipeline(observer)
                 .analyze(source, output, new HashSet<>(options.many("external-parent")));
         result.decisions().forEach(decision ->
                 System.out.println(decision.invariantId() + " " + decision.status() + ": " + decision.message()));
@@ -107,7 +114,8 @@ public final class PipelineCli {
     }
 
     private static int verifyCapsule(String[] args) {
-        ParsedOptions options = ParsedOptions.parse(args, Set.of("capsule"), Set.of());
+        ParsedOptions options = ParsedOptions.parse(
+                args, Set.of("capsule"), Set.of(), Set.of());
         CapsuleVerification verification = new CapsuleVerifier().verify(Path.of(options.one("capsule")));
         System.out.println((verification.valid() ? "VALID: " : "INVALID: ") + verification.message());
         return verification.valid() ? 0 : 3;
@@ -120,26 +128,34 @@ public final class PipelineCli {
     private static void usage() {
         System.out.println("""
                 Usage:
-                  analyze --source <dir> --output <dir> [--external-parent <qualified-name>]...
-                          [--dependency-jar <path>]...
+                  analyze --source <dir> --output <dir> [--language <java|python|cpp>]
+                          [--external-parent <qualified-name>]... [--dependency-jar <path>]...
                   verify-capsule --capsule <verification-capsule.json>
+
+                Java remains the default source language. Python currently supports conservative
+                module-level classifier hierarchy observation. C++ remains reserved for its
+                dedicated observer and fails explicitly until that adapter is implemented.
 
                 Exit codes: 0 conformant/valid, 2 non-conformant, 3 not-evaluated/invalid, 64 usage.
                 """);
     }
 
     private record ParsedOptions(Map<String, List<String>> values) {
-        static ParsedOptions parse(String[] args, Set<String> required, Set<String> repeatable) {
+        static ParsedOptions parse(
+                String[] args,
+                Set<String> required,
+                Set<String> optional,
+                Set<String> repeatable) {
             Map<String, List<String>> values = new HashMap<>();
             for (int index = 0; index < args.length; index += 2) {
                 if (!args[index].startsWith("--") || index + 1 >= args.length) {
                     throw new IllegalArgumentException("options must be --name value pairs");
                 }
                 String name = args[index].substring(2);
-                if (!required.contains(name) && !repeatable.contains(name)) {
+                if (!required.contains(name) && !optional.contains(name) && !repeatable.contains(name)) {
                     throw new IllegalArgumentException("unknown option --" + name);
                 }
-                if (required.contains(name) && values.containsKey(name)) {
+                if ((required.contains(name) || optional.contains(name)) && values.containsKey(name)) {
                     throw new IllegalArgumentException("option --" + name + " may appear only once");
                 }
                 values.computeIfAbsent(name, ignored -> new ArrayList<>()).add(args[index + 1]);
@@ -149,11 +165,21 @@ public final class PipelineCli {
                     throw new IllegalArgumentException("missing --" + name);
                 }
             }
+            for (Map.Entry<String, List<String>> entry : values.entrySet()) {
+                if (entry.getValue().stream().anyMatch(String::isBlank)) {
+                    throw new IllegalArgumentException("blank value for --" + entry.getKey());
+                }
+            }
             return new ParsedOptions(values);
         }
 
         String one(String name) {
             return values.get(name).get(0);
+        }
+
+        String optional(String name) {
+            List<String> items = values.get(name);
+            return items == null ? null : items.get(0);
         }
 
         List<String> many(String name) {

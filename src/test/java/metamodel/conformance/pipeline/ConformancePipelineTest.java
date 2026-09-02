@@ -159,7 +159,7 @@ class ConformancePipelineTest {
         PipelineResult result = pipeline.analyze(
                 fixture("acyclic"), temporary.resolve("producer-drift"), Set.of());
         String capsule = Files.readString(result.capsulePath());
-        String changed = capsule.replace("\"toolVersion\" : \"0.9.0\"", "\"toolVersion\" : \"9.9.9\"");
+        String changed = capsule.replace("\"toolVersion\" : \"0.10.0\"", "\"toolVersion\" : \"9.9.9\"");
         assertFalse(capsule.equals(changed));
         Files.writeString(result.capsulePath(), changed);
 
