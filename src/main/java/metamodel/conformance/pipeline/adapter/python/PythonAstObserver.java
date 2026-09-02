@@ -16,6 +16,7 @@ import metamodel.conformance.pipeline.util.ArtifactLimits;
 import metamodel.conformance.pipeline.util.Hashing;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -32,17 +33,19 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Conservative Python observer for module-level classifier hierarchy.
+ * Conservative source-only Python observer for classifier hierarchy.
  *
  * <p>The bridge uses CPython's standard {@code ast} module and never imports or executes
- * the observed source. Member-dependent evidence deliberately remains incomplete until
+ * the observed source. It observes module-level, nested, and local class declarations with
+ * lexical source identities. Member-dependent evidence deliberately remains incomplete until
  * Python-specific visibility/signature/inheritance semantics are represented explicitly.</p>
  */
 public final class PythonAstObserver implements SourceObserver {
     public static final String ADAPTER_ID = "python-ast";
-    public static final String ADAPTER_VERSION = "0.1.0";
+    public static final String ADAPTER_VERSION = "0.2.0";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_BRIDGE_BYTES = (int) ArtifactLimits.MAX_XMI_BYTES;
+    private static final String BRIDGE_SCRIPT = loadBridgeScript();
     private final String pythonExecutable;
 
     public PythonAstObserver() {
@@ -108,7 +111,7 @@ public final class PythonAstObserver implements SourceObserver {
                     diagnostics.add(new ObservationDiagnostic(
                             DiagnosticKind.EVIDENCE_INCOMPLETE,
                             first.path(), first.line(),
-                            "duplicate Python qualified classifier identity: " + entry.getKey()));
+                            "duplicate Python lexical classifier identity: " + entry.getKey()));
                 }
             }
 
@@ -284,6 +287,18 @@ public final class PythonAstObserver implements SourceObserver {
         return values == null ? List.of() : values;
     }
 
+    private static String loadBridgeScript() {
+        try (InputStream input = PythonAstObserver.class
+                .getResourceAsStream("/python/ast_hierarchy_bridge.py")) {
+            if (input == null) {
+                throw new IllegalStateException("bundled Python AST bridge is missing");
+            }
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new IllegalStateException("cannot load bundled Python AST bridge", failure);
+        }
+    }
+
     private record TypeDraft(
             String id,
             String qualifiedName,
@@ -323,171 +338,4 @@ public final class PythonAstObserver implements SourceObserver {
             int line,
             String message) {
     }
-
-    private static final String BRIDGE_SCRIPT = """
-            import ast
-            import builtins
-            import json
-            import pathlib
-            import sys
-            import tokenize
-
-            request = json.load(sys.stdin)
-            root = pathlib.Path(request['root'])
-            paths = sorted(request['paths'])
-            classes = []
-            diagnostics = []
-            hierarchy_incomplete = False
-
-            def module_name(rel):
-                parts = list(pathlib.PurePosixPath(rel).parts)
-                stem = parts[-1][:-3]
-                if stem == '__init__':
-                    parts = parts[:-1]
-                else:
-                    parts[-1] = stem
-                return '.'.join(parts) if parts else '<root>'
-
-            def absolute_from(module, is_package, level, imported):
-                if module == '<root>':
-                    package = ''
-                else:
-                    package = module if is_package else module.rpartition('.')[0]
-                parts = [p for p in package.split('.') if p]
-                if level:
-                    up = level - 1
-                    if up > len(parts):
-                        return None
-                    if up:
-                        parts = parts[:-up]
-                if imported:
-                    parts.extend(imported.split('.'))
-                return '.'.join(parts)
-
-            def dotted(expr):
-                while isinstance(expr, ast.Subscript):
-                    expr = expr.value
-                if isinstance(expr, ast.Name):
-                    return expr.id
-                if isinstance(expr, ast.Attribute):
-                    left = dotted(expr.value)
-                    return None if left is None else left + '.' + expr.attr
-                return None
-
-            def resolve_base(expr, bindings):
-                raw = dotted(expr)
-                display = raw
-                if display is None:
-                    try:
-                        display = ast.unparse(expr)
-                    except Exception:
-                        display = '<dynamic-python-base>'
-                    return {'raw': display, 'candidate': None, 'builtinCandidate': None,
-                            'line': getattr(expr, 'lineno', 1)}
-                parts = raw.split('.')
-                bound = bindings.get(parts[0])
-                if bound is not None:
-                    kind, target = bound
-                    if kind != 'qualified':
-                        return {'raw': raw, 'candidate': None, 'builtinCandidate': None,
-                                'line': getattr(expr, 'lineno', 1)}
-                    candidate = target + ('.' + '.'.join(parts[1:]) if len(parts) > 1 else '')
-                    return {'raw': raw, 'candidate': candidate, 'builtinCandidate': None,
-                            'line': getattr(expr, 'lineno', 1)}
-                if len(parts) == 1:
-                    value = getattr(builtins, raw, None)
-                    if isinstance(value, type):
-                        target = 'builtins.' + raw
-                        return {'raw': raw, 'candidate': target, 'builtinCandidate': target,
-                                'line': getattr(expr, 'lineno', 1)}
-                return {'raw': raw, 'candidate': raw, 'builtinCandidate': None,
-                        'line': getattr(expr, 'lineno', 1)}
-
-            def assigned_names(target):
-                if isinstance(target, ast.Name):
-                    return [target.id]
-                if isinstance(target, (ast.Tuple, ast.List)):
-                    result = []
-                    for element in target.elts:
-                        result.extend(assigned_names(element))
-                    return result
-                return []
-
-            for rel in paths:
-                module = module_name(rel)
-                is_package = pathlib.PurePosixPath(rel).name == '__init__.py'
-                path = root / pathlib.PurePosixPath(rel)
-                try:
-                    with tokenize.open(str(path)) as source:
-                        text = source.read()
-                    tree = ast.parse(text, filename=rel, type_comments=True)
-                except (SyntaxError, UnicodeError) as failure:
-                    hierarchy_incomplete = True
-                    line = getattr(failure, 'lineno', 0) or 0
-                    diagnostics.append({'kind': 'PARSE_ERROR', 'path': rel, 'line': line,
-                                        'message': str(failure)[:4096]})
-                    continue
-
-                direct_class_ids = {id(node) for node in tree.body if isinstance(node, ast.ClassDef)}
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.ClassDef) and id(node) not in direct_class_ids:
-                        hierarchy_incomplete = True
-                        diagnostics.append({'kind': 'EVIDENCE_INCOMPLETE', 'path': rel,
-                                            'line': getattr(node, 'lineno', 0) or 0,
-                                            'message': 'nested or local Python class is outside the current hierarchy observation boundary: '
-                                                       + node.name})
-
-                bindings = {}
-                for node in tree.body:
-                    if isinstance(node, ast.Import):
-                        for alias in node.names:
-                            bound = alias.asname or alias.name.split('.')[0]
-                            target = alias.name if alias.asname else alias.name.split('.')[0]
-                            bindings[bound] = ('qualified', target)
-                    elif isinstance(node, ast.ImportFrom):
-                        absolute = absolute_from(module, is_package, node.level, node.module)
-                        for alias in node.names:
-                            if alias.name == '*':
-                                hierarchy_incomplete = True
-                                diagnostics.append({'kind': 'EVIDENCE_INCOMPLETE', 'path': rel,
-                                                    'line': getattr(node, 'lineno', 0) or 0,
-                                                    'message': 'star import prevents complete static Python base-name resolution'})
-                                continue
-                            bound = alias.asname or alias.name
-                            target = None if absolute is None else (absolute + '.' if absolute else '') + alias.name
-                            bindings[bound] = ('qualified', target) if target else ('dynamic', None)
-                    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        bindings[node.name] = ('dynamic', None)
-                    elif isinstance(node, ast.Assign):
-                        for target in node.targets:
-                            for name in assigned_names(target):
-                                bindings[name] = ('dynamic', None)
-                    elif isinstance(node, ast.AnnAssign):
-                        for name in assigned_names(node.target):
-                            bindings[name] = ('dynamic', None)
-                    elif isinstance(node, ast.AugAssign):
-                        for name in assigned_names(node.target):
-                            bindings[name] = ('dynamic', None)
-                    elif isinstance(node, ast.ClassDef):
-                        qualified = node.name if module == '<root>' else module + '.' + node.name
-                        bases = [resolve_base(base, bindings) for base in node.bases]
-                        if any(base['candidate'] is None for base in bases):
-                            hierarchy_incomplete = True
-                            diagnostics.append({'kind': 'EVIDENCE_INCOMPLETE', 'path': rel,
-                                                'line': getattr(node, 'lineno', 0) or 0,
-                                                'message': 'dynamic or shadowed Python base prevents complete hierarchy resolution: '
-                                                           + qualified})
-                        classes.append({'path': rel, 'moduleName': module,
-                                        'qualifiedName': qualified,
-                                        'line': getattr(node, 'lineno', 1) or 1,
-                                        'endLine': getattr(node, 'end_lineno', None) or getattr(node, 'lineno', 1) or 1,
-                                        'bases': bases})
-                        bindings[node.name] = ('dynamic', None) if node.decorator_list else ('qualified', qualified)
-
-            json.dump({'pythonVersion': '.'.join(map(str, sys.version_info[:3])),
-                       'hierarchyIncomplete': hierarchy_incomplete,
-                       'classes': classes,
-                       'diagnostics': diagnostics}, sys.stdout,
-                      sort_keys=True, separators=(',', ':'))
-            """;
 }

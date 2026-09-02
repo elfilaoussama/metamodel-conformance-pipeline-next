@@ -39,12 +39,59 @@ class PythonAstObserverTest {
         assertFalse(observation.completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
         assertTrue(observation.unresolvedParents().isEmpty());
 
-        var base = observation.classifiers().stream()
-                .filter(item -> item.qualifiedName().equals("models.Base"))
-                .findFirst().orElseThrow();
-        var child = observation.classifiers().stream()
-                .filter(item -> item.qualifiedName().equals("models.Child"))
-                .findFirst().orElseThrow();
+        var base = classifier(observation, "models.Base");
+        var child = classifier(observation, "models.Child");
+        assertEquals(java.util.List.of(base.id()), child.parentIds());
+    }
+
+    @Test
+    void observesNestedAndLocalClassesInsteadOfDiscardingTheirHierarchy() throws Exception {
+        Files.writeString(temp.resolve("models.py"), """
+                class Base:
+                    pass
+
+                class Outer:
+                    class Nested(Base):
+                        pass
+
+                def factory():
+                    class Local(Base):
+                        pass
+                    return Local
+                """);
+
+        Observation observation = new PythonAstObserver().observe(temp, Set.of());
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertEquals(4, observation.classifiers().size());
+        assertTrue(observation.diagnostics().stream()
+                .noneMatch(item -> item.message().startsWith("nested or local Python class")));
+
+        var base = classifier(observation, "models.Base");
+        var nested = classifier(observation, "models.Outer.Nested");
+        var local = classifier(observation, "models.factory.<locals>.Local");
+        assertEquals(java.util.List.of(base.id()), nested.parentIds());
+        assertEquals(java.util.List.of(base.id()), local.parentIds());
+    }
+
+    @Test
+    void resolvesSiblingLocalClassInheritanceWithinFunctionScope() throws Exception {
+        Files.writeString(temp.resolve("models.py"), """
+                def factory():
+                    class LocalBase:
+                        pass
+
+                    class LocalChild(LocalBase):
+                        pass
+
+                    return LocalChild
+                """);
+
+        Observation observation = new PythonAstObserver().observe(temp, Set.of());
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        var base = classifier(observation, "models.factory.<locals>.LocalBase");
+        var child = classifier(observation, "models.factory.<locals>.LocalChild");
         assertEquals(java.util.List.of(base.id()), child.parentIds());
     }
 
@@ -73,5 +120,12 @@ class PythonAstObserverTest {
         assertTrue(observation.completeEvidence().isEmpty());
         assertTrue(observation.diagnostics().stream()
                 .anyMatch(item -> item.kind() == DiagnosticKind.PARSE_ERROR));
+    }
+
+    private static metamodel.conformance.pipeline.model.ClassifierObservation classifier(
+            Observation observation, String qualifiedName) {
+        return observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals(qualifiedName))
+                .findFirst().orElseThrow();
     }
 }
