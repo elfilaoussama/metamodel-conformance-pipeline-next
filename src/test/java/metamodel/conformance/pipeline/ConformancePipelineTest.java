@@ -125,10 +125,11 @@ class ConformancePipelineTest {
         }
         PipelineResult result = new ConformancePipeline(new SpoonJavaObserver(java.util.List.of(dependency)))
                 .analyze(fixture("acyclic"), temporary.resolve("dependency-evidence"), Set.of());
+        String dependencyHash = metamodel.conformance.pipeline.util.Hashing.sha256(dependency);
 
         assertTrue(result.observation().units().stream().anyMatch(unit ->
                 unit.language() == metamodel.conformance.pipeline.model.Language.JAVA_ARCHIVE
-                        && unit.sha256().equals(metamodel.conformance.pipeline.util.Hashing.sha256(dependency))));
+                        && unit.sha256().equals(dependencyHash)));
         assertTrue(Files.readString(result.observationPath()).contains("JAVA_ARCHIVE"));
         assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
     }
