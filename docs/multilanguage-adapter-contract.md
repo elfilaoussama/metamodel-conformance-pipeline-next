@@ -1,7 +1,7 @@
 # Multilanguage adapter contract
 
 This branch extends the source-observation boundary without changing the semantic
-pipeline. Java, Python, and future C++ observers feed the same canonical observation
+pipeline. Java, Python, and C++ observers feed the same canonical observation
 contract:
 
 ```text
@@ -99,12 +99,35 @@ change rather than silently treating runtime behavior as statically observed.
 
 ### C++
 
-The C++ adapter must use a compiler-grade semantic frontend for declarations,
-qualified types, inheritance, visibility, overloads, and overrides. Preprocessor
-configuration, include paths, language standard, and compilation database inputs
-are part of the empirical boundary and must be fingerprinted or otherwise made
-replayable. A parser-only approximation must not be reported as complete semantic
-evidence when macros or compilation options affect the observed program.
+The C++ adapter uses Clang's compiler AST and currently claims only class/struct
+direct hierarchy evidence. It does not implement declaration ownership, signatures,
+visibility, inheritability, override evidence, or independently observed inherited
+membership yet.
+
+The declared C++ profile is C++17 with the repository root available as a project
+include root and the concrete host Clang include environment available for parsing.
+This is intentionally different from the original `-nostdinc/-nostdinc++` prototype:
+real repositories commonly require the C++ standard library even when the modeled
+class hierarchy itself is entirely project-local.
+
+Using host headers does not make them invisible evidence. The observer fingerprints
+the resolved Clang executable and every external header reported by Clang's actual
+dependency set. Project headers reached through successful translation units are
+also represented in the canonical source set. The JSON AST is consumed as a stream
+so standard-library AST size is not an arbitrary observation limit.
+
+This remains a source-profile observer, not a compilation-database observer.
+Project-specific command-line macros, generated include paths, compiler flags, and
+other build-system configuration are never guessed. Non-guard conditional
+preprocessing, compiler failures under the declared profile, ambiguous internal
+base identities, and dependent/template bases keep `HIERARCHY` incomplete. Ordinary
+include guards are treated as structural guards rather than configuration choices;
+nested or independent conditionals still fail closed.
+
+External parent allowlisting can close an explicitly named parent boundary, but it
+cannot hide ambiguous internal identities or template-dependent bases. A future
+compilation-database slice must fingerprint the exact translation-unit commands
+before it can strengthen this evidence boundary.
 
 ## CLI selection
 
@@ -114,9 +137,10 @@ evidence when macros or compilation options affect the observed program.
 --language java|python|cpp
 ```
 
-`java` is the backward-compatible default. Python currently supports conservative
-classifier hierarchy plus source-declaration ownership. C++ remains reserved for
-its dedicated observer and fails explicitly until that adapter is implemented.
+`java` is the backward-compatible default. Python supports conservative classifier
+hierarchy plus source-declaration ownership. C++ uses the compiler-backed Clang
+hierarchy observer described above. Unsupported or configuration-dependent evidence
+remains `NOT_EVALUATED` rather than being guessed.
 
 ## Extension rule
 
