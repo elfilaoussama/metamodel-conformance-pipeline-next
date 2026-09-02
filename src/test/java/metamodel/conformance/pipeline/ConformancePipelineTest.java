@@ -1,7 +1,7 @@
 package metamodel.conformance.pipeline;
 
 import metamodel.conformance.pipeline.adapter.ObservationException;
-import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.decision.DecisionStatus;
 import metamodel.conformance.pipeline.emf.ObservationXmiReader;
@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.jar.JarOutputStream;
 
@@ -24,7 +25,8 @@ class ConformancePipelineTest {
     @TempDir
     Path temporary;
 
-    private final ConformancePipeline pipeline = new ConformancePipeline(new SpoonJavaObserver());
+    private final ConformancePipeline pipeline =
+            new ConformancePipeline(new JavaImplementationSourceObserver(List.of()));
 
     @Test
     void producesByteIdenticalArtifactsForTheSameInput() throws Exception {
@@ -36,6 +38,8 @@ class ConformancePipelineTest {
                 first.invariant("inherited-view-consistency").status());
         assertEquals(DecisionStatus.CONFORMANT,
                 first.invariant("local-inherited-separation").status());
+        assertEquals(DecisionStatus.CONFORMANT,
+                first.invariant("implementation-binding-consistency").status());
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
         assertArrayEquals(Files.readAllBytes(first.capsulePath()), Files.readAllBytes(second.capsulePath()));
@@ -123,7 +127,8 @@ class ConformancePipelineTest {
         try (JarOutputStream ignored = new JarOutputStream(Files.newOutputStream(dependency))) {
             // A valid empty archive is sufficient to audit the dependency boundary.
         }
-        PipelineResult result = new ConformancePipeline(new SpoonJavaObserver(java.util.List.of(dependency)))
+        PipelineResult result = new ConformancePipeline(
+                new JavaImplementationSourceObserver(java.util.List.of(dependency)))
                 .analyze(fixture("acyclic"), temporary.resolve("dependency-evidence"), Set.of());
         String dependencyHash = metamodel.conformance.pipeline.util.Hashing.sha256(dependency);
 
@@ -159,7 +164,7 @@ class ConformancePipelineTest {
         PipelineResult result = pipeline.analyze(
                 fixture("acyclic"), temporary.resolve("producer-drift"), Set.of());
         String capsule = Files.readString(result.capsulePath());
-        String changed = capsule.replace("\"toolVersion\" : \"0.10.0\"", "\"toolVersion\" : \"9.9.9\"");
+        String changed = capsule.replace("\"toolVersion\" : \"0.11.0\"", "\"toolVersion\" : \"9.9.9\"");
         assertFalse(capsule.equals(changed));
         Files.writeString(result.capsulePath(), changed);
 

@@ -4,11 +4,13 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.ImplementationAvailability;
 import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.MemberVisibility;
+import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -39,7 +41,6 @@ public final class ObservationXmiReader {
         if (!Files.isRegularFile(input, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
             throw new IOException("observation is not a regular file");
         }
-        long size = Files.size(input);
         ArtifactLimits.requireFileWithin("canonical XMI", input, ArtifactLimits.MAX_XMI_BYTES);
         String prefix = Files.readString(input, StandardCharsets.UTF_8);
         if (prefix.contains("<!DOCTYPE") || prefix.contains("<!ENTITY")) {
@@ -68,9 +69,21 @@ public final class ObservationXmiReader {
                     string(unit, "path"),
                     string(unit, "sha256")));
         }
+        List<MethodBodyObservation> bodies = new ArrayList<>();
+        for (EObject body : (EList<EObject>) value(root, "methodBodies")) {
+            bodies.add(new MethodBodyObservation(
+                    string(body, "technicalKey"),
+                    string(body, "sourcePath"),
+                    integer(body, "startLine"),
+                    integer(body, "endLine")));
+        }
         List<MemberObservation> members = new ArrayList<>();
         for (EObject member : (EList<EObject>) value(root, "members")) {
             Object observedIdentifier = value(member, "observedIdentifier");
+            List<String> bodyKeys = new ArrayList<>();
+            for (EObject body : (EList<EObject>) value(member, "implementationBodies")) {
+                bodyKeys.add(string(body, "technicalKey"));
+            }
             members.add(new MemberObservation(
                     string(member, "technicalKey"),
                     observedIdentifier instanceof String text && !text.isBlank() ? text : null,
@@ -81,7 +94,9 @@ public final class ObservationXmiReader {
                     string(member, "sourcePath"),
                     integer(member, "startLine"),
                     integer(member, "endLine"),
-                    new ArrayList<>((EList<String>) value(member, "parameterTypes"))));
+                    new ArrayList<>((EList<String>) value(member, "parameterTypes")),
+                    ImplementationAvailability.valueOf(value(member, "implementationAvailability").toString()),
+                    bodyKeys));
         }
         List<ClassifierObservation> classifiers = new ArrayList<>();
         for (EObject classifier : (EList<EObject>) value(root, "classifiers")) {
@@ -139,6 +154,7 @@ public final class ObservationXmiReader {
                 units,
                 classifiers,
                 members,
+                bodies,
                 unresolved,
                 diagnostics);
     }

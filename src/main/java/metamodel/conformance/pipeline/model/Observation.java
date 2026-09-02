@@ -14,6 +14,7 @@ public record Observation(
         List<SourceUnit> units,
         List<ClassifierObservation> classifiers,
         List<MemberObservation> members,
+        List<MethodBodyObservation> methodBodies,
         List<UnresolvedParent> unresolvedParents,
         List<ObservationDiagnostic> diagnostics) {
 
@@ -29,10 +30,12 @@ public record Observation(
                 .sorted(Comparator.comparing(ClassifierObservation::id)).toList();
         members = List.copyOf(members).stream()
                 .sorted(Comparator.comparing(MemberObservation::technicalKey)).toList();
+        methodBodies = methodBodies == null ? List.of() : List.copyOf(methodBodies).stream()
+                .sorted(Comparator.comparing(MethodBodyObservation::technicalKey)).toList();
         unresolvedParents = List.copyOf(unresolvedParents).stream()
                 .sorted(Comparator.comparing(UnresolvedParent::ownerId)
                         .thenComparing(UnresolvedParent::targetName)
-                .thenComparingInt(UnresolvedParent::line))
+                        .thenComparingInt(UnresolvedParent::line))
                 .toList();
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics).stream()
                 .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
@@ -40,7 +43,7 @@ public record Observation(
                         .thenComparing(item -> item.kind().name())
                         .thenComparing(ObservationDiagnostic::message))
                 .toList();
-        validateReferences(units, classifiers, members, unresolvedParents, diagnostics);
+        validateReferences(units, classifiers, members, methodBodies, unresolvedParents, diagnostics);
         if (!unresolvedParents.isEmpty() && completeEvidence.contains(EvidenceKind.HIERARCHY)) {
             throw new IllegalArgumentException("hierarchy evidence cannot be complete with unresolved parents");
         }
@@ -59,9 +62,24 @@ public record Observation(
             List<SourceUnit> units,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
+            List<UnresolvedParent> unresolvedParents,
+            List<ObservationDiagnostic> diagnostics) {
+        this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
+                units, classifiers, members, List.of(), unresolvedParents, diagnostics);
+    }
+
+    public Observation(
+            String schemaVersion,
+            String adapterId,
+            String adapterVersion,
+            List<String> externalParents,
+            Set<EvidenceKind> completeEvidence,
+            List<SourceUnit> units,
+            List<ClassifierObservation> classifiers,
+            List<MemberObservation> members,
             List<UnresolvedParent> unresolvedParents) {
         this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
-                units, classifiers, members, unresolvedParents, List.of());
+                units, classifiers, members, List.of(), unresolvedParents, List.of());
     }
 
     public Observation(
@@ -81,6 +99,7 @@ public record Observation(
                 units,
                 classifiers,
                 List.of(),
+                List.of(),
                 unresolvedParents,
                 List.of());
     }
@@ -95,6 +114,7 @@ public record Observation(
             List<SourceUnit> units,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
+            List<MethodBodyObservation> methodBodies,
             List<UnresolvedParent> unresolvedParents,
             List<ObservationDiagnostic> diagnostics) {
         Set<String> sourcePaths = new HashSet<>();
@@ -123,6 +143,20 @@ public record Observation(
                 throw new IllegalArgumentException("duplicate technical member key: " + member.technicalKey());
             }
             requireSourcePath(sourcePaths, member.sourcePath(), "member");
+        }
+        Set<String> bodyKeys = new HashSet<>();
+        for (MethodBodyObservation body : methodBodies) {
+            if (!bodyKeys.add(body.technicalKey())) {
+                throw new IllegalArgumentException("duplicate technical method-body key: " + body.technicalKey());
+            }
+            requireSourcePath(sourcePaths, body.sourcePath(), "method body");
+        }
+        for (MemberObservation member : members) {
+            for (String bodyKey : member.implementationBodyKeys()) {
+                if (!bodyKeys.contains(bodyKey)) {
+                    throw new IllegalArgumentException("unknown implementation body key: " + bodyKey);
+                }
+            }
         }
         for (ClassifierObservation classifier : classifiers) {
             for (String memberKey : classifier.declaredMemberKeys()) {

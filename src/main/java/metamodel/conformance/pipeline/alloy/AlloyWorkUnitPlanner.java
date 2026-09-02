@@ -5,6 +5,7 @@ import metamodel.conformance.pipeline.invariant.ProjectionRelation;
 import metamodel.conformance.pipeline.invariant.ProjectionRoot;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
 
 import java.util.ArrayDeque;
@@ -20,6 +21,7 @@ final class AlloyWorkUnitPlanner {
     static final int WORK_UNIT_ATOM_TARGET = 256;
     private static final String CLASSIFIER_PREFIX = "C:";
     private static final String MEMBER_PREFIX = "M:";
+    private static final String BODY_PREFIX = "B:";
 
     List<Observation> plan(Observation observation, InvariantDefinition definition) {
         Map<String, Set<String>> graph = graph(observation, definition.partitionRelations());
@@ -58,6 +60,7 @@ final class AlloyWorkUnitPlanner {
         Map<String, Set<String>> graph = new TreeMap<>();
         observation.classifiers().forEach(item -> graph.put(classifierNode(item.id()), new TreeSet<>()));
         observation.members().forEach(item -> graph.put(memberNode(item.technicalKey()), new TreeSet<>()));
+        observation.methodBodies().forEach(item -> graph.put(bodyNode(item.technicalKey()), new TreeSet<>()));
         for (ClassifierObservation classifier : observation.classifiers()) {
             if (relations.contains(ProjectionRelation.PARENTS)) {
                 classifier.parentIds().forEach(parent -> connect(
@@ -70,6 +73,12 @@ final class AlloyWorkUnitPlanner {
             if (relations.contains(ProjectionRelation.OBSERVED_INHERITED_MEMBERS)) {
                 classifier.inheritedMemberKeys().forEach(member -> connect(
                         graph, classifierNode(classifier.id()), memberNode(member)));
+            }
+        }
+        if (relations.contains(ProjectionRelation.IMPLEMENTATION_BODIES)) {
+            for (MemberObservation member : observation.members()) {
+                member.implementationBodyKeys().forEach(body -> connect(
+                        graph, memberNode(member.technicalKey()), bodyNode(body)));
             }
         }
         return graph;
@@ -101,7 +110,8 @@ final class AlloyWorkUnitPlanner {
     private static boolean containsRoot(Set<String> component, Set<ProjectionRoot> roots) {
         return component.stream().anyMatch(node ->
                 roots.contains(ProjectionRoot.CLASSIFIER) && node.startsWith(CLASSIFIER_PREFIX)
-                        || roots.contains(ProjectionRoot.MEMBER) && node.startsWith(MEMBER_PREFIX));
+                        || roots.contains(ProjectionRoot.MEMBER) && node.startsWith(MEMBER_PREFIX)
+                        || roots.contains(ProjectionRoot.BODY) && node.startsWith(BODY_PREFIX));
     }
 
     private static Observation project(
@@ -110,11 +120,14 @@ final class AlloyWorkUnitPlanner {
             Set<ProjectionRelation> relations) {
         Set<String> classifierIds = new HashSet<>();
         Set<String> memberKeys = new HashSet<>();
+        Set<String> bodyKeys = new HashSet<>();
         component.forEach(node -> {
             if (node.startsWith(CLASSIFIER_PREFIX)) {
                 classifierIds.add(node.substring(CLASSIFIER_PREFIX.length()));
             } else if (node.startsWith(MEMBER_PREFIX)) {
                 memberKeys.add(node.substring(MEMBER_PREFIX.length()));
+            } else if (node.startsWith(BODY_PREFIX)) {
+                bodyKeys.add(node.substring(BODY_PREFIX.length()));
             }
         });
 
@@ -132,11 +145,20 @@ final class AlloyWorkUnitPlanner {
                 .toList();
         List<MemberObservation> members = source.members().stream()
                 .filter(item -> memberKeys.contains(item.technicalKey()))
+                .map(item -> new MemberObservation(
+                        item.technicalKey(), item.observedIdentifier(), item.kind(), item.inheritability(),
+                        item.visibility(), item.memberName(), item.sourcePath(), item.startLine(), item.endLine(),
+                        item.parameterTypes(), item.implementationAvailability(),
+                        relations.contains(ProjectionRelation.IMPLEMENTATION_BODIES)
+                                ? retained(item.implementationBodyKeys(), bodyKeys) : List.of()))
+                .toList();
+        List<MethodBodyObservation> bodies = source.methodBodies().stream()
+                .filter(item -> bodyKeys.contains(item.technicalKey()))
                 .toList();
         return new Observation(
                 source.schemaVersion(), source.adapterId(), source.adapterVersion(),
                 source.externalParents(), source.completeEvidence(), source.units(),
-                classifiers, members, List.of(), List.of());
+                classifiers, members, bodies, List.of(), List.of());
     }
 
     private static List<String> retained(List<String> values, Set<String> retained) {
@@ -149,5 +171,9 @@ final class AlloyWorkUnitPlanner {
 
     private static String memberNode(String key) {
         return MEMBER_PREFIX + key;
+    }
+
+    private static String bodyNode(String key) {
+        return BODY_PREFIX + key;
     }
 }

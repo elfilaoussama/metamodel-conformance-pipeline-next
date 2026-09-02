@@ -3,7 +3,7 @@ package metamodel.conformance.pipeline.emf;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
-import metamodel.conformance.pipeline.model.MemberVisibility;
+import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -71,11 +71,24 @@ public final class ObservationXmiWriter {
             units.add(unit);
         }
 
+        Map<String, EObject> bodiesByKey = new LinkedHashMap<>();
+        EList<EObject> methodBodies = (EList<EObject>) root.eGet(feature(root, "methodBodies"));
+        for (MethodBodyObservation source : observation.methodBodies()) {
+            EObject body = ePackage.getEFactoryInstance().create(schema.classifier("MethodBody"));
+            set(body, "technicalKey", source.technicalKey());
+            set(body, "sourcePath", source.sourcePath());
+            set(body, "startLine", source.startLine());
+            set(body, "endLine", source.endLine());
+            methodBodies.add(body);
+            bodiesByKey.put(source.technicalKey(), body);
+        }
+
         Map<String, EObject> membersByKey = new LinkedHashMap<>();
         EList<EObject> members = (EList<EObject>) root.eGet(feature(root, "members"));
         EEnum memberKind = (EEnum) ePackage.getEClassifier("MemberKind");
         EEnum inheritability = (EEnum) ePackage.getEClassifier("Inheritability");
         EEnum visibility = (EEnum) ePackage.getEClassifier("MemberVisibility");
+        EEnum implementationAvailability = (EEnum) ePackage.getEClassifier("ImplementationAvailability");
         for (MemberObservation source : observation.members()) {
             EObject member = ePackage.getEFactoryInstance().create(schema.classifier("Member"));
             set(member, "technicalKey", source.technicalKey());
@@ -92,6 +105,11 @@ public final class ObservationXmiWriter {
             set(member, "startLine", source.startLine());
             set(member, "endLine", source.endLine());
             ((EList<String>) member.eGet(feature(member, "parameterTypes"))).addAll(source.parameterTypes());
+            set(member, "implementationAvailability", implementationAvailability
+                    .getEEnumLiteral(source.implementationAvailability().name()).getInstance());
+            EList<EObject> implementationBodies =
+                    (EList<EObject>) member.eGet(feature(member, "implementationBodies"));
+            source.implementationBodyKeys().forEach(key -> implementationBodies.add(bodiesByKey.get(key)));
             members.add(member);
             membersByKey.put(source.technicalKey(), member);
         }

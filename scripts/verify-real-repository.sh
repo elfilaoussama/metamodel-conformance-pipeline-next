@@ -24,7 +24,7 @@ java -jar "${PIPELINE_JAR}" analyze \
   --external-parent org.eclipse.jgit.lib.ProgressMonitor || analysis_exit=$?
 
 if [[ ${analysis_exit} -ne 3 ]]; then
-  echo "Expected exit 3 because javac cannot close inherited-member evidence for this dependency-rich repository; got ${analysis_exit}" >&2
+  echo "Expected exit 3 because javac cannot close inherited/implementation evidence for this dependency-rich repository; got ${analysis_exit}" >&2
   exit 1
 fi
 
@@ -33,7 +33,7 @@ java -jar "${PIPELINE_JAR}" verify-capsule \
 
 jq --exit-status '
   (.decisions | map({key: .invariantId, value: .status}) | from_entries) as $status |
-  (.decisions | length) == 6 and
+  (.decisions | length) == 7 and
   any(.observationDiagnostics[]; .kind == "EVIDENCE_INCOMPLETE") and
   all(.observationDiagnostics[]; .kind != "PARSE_ERROR") and
   $status["exclusive-declaration-ownership"] == "CONFORMANT" and
@@ -41,5 +41,6 @@ jq --exit-status '
   $status["local-namespace-uniqueness"] == "CONFORMANT" and
   $status["inherited-view-consistency"] == "NOT_EVALUATED" and
   $status["local-inherited-separation"] == "NOT_EVALUATED" and
-  $status["inherited-namespace-uniqueness"] == "NOT_EVALUATED"
+  $status["inherited-namespace-uniqueness"] == "NOT_EVALUATED" and
+  $status["implementation-binding-consistency"] == "NOT_EVALUATED"
 ' "${integration_root}/result/verification-capsule.json" >/dev/null

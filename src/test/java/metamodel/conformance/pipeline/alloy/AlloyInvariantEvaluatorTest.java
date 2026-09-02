@@ -32,6 +32,7 @@ class AlloyInvariantEvaluatorTest {
         assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "acyclic-generalization").status());
         assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "inherited-view-consistency").status());
         assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "local-inherited-separation").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "implementation-binding-consistency").status());
         assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "local-namespace-uniqueness").status());
         assertEquals(DecisionStatus.NOT_EVALUATED,
                 decision(decisions, "inherited-namespace-uniqueness").status());
@@ -161,7 +162,7 @@ class AlloyInvariantEvaluatorTest {
 
         List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
 
-        assertEquals(6, decisions.size());
+        assertEquals(7, decisions.size());
         decisions.forEach(decision -> assertEquals(DecisionStatus.NOT_EVALUATED, decision.status()));
     }
 
@@ -174,7 +175,7 @@ class AlloyInvariantEvaluatorTest {
 
         List<Decision> decisions = runner.evaluateAll(incomplete, "this is deliberately not Alloy");
 
-        assertEquals(6, decisions.size());
+        assertEquals(7, decisions.size());
         decisions.forEach(decision -> {
             assertEquals(DecisionStatus.NOT_EVALUATED, decision.status());
             assertFalse(decision.message().contains("parsing failed"));

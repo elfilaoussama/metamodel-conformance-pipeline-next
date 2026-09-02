@@ -1,6 +1,6 @@
 package metamodel.conformance.pipeline;
 
-import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.util.Hashing;
@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -25,7 +26,7 @@ class EvidenceProvenanceAuditTest {
     @Test
     void everyCycleWitnessResolvesToHashedSourceEvidence() throws Exception {
         Path source = Path.of(getClass().getResource("/fixtures/cyclic").toURI());
-        PipelineResult result = new ConformancePipeline(new SpoonJavaObserver())
+        PipelineResult result = new ConformancePipeline(new JavaImplementationSourceObserver(List.of()))
                 .analyze(source, temporary.resolve("audit"), Set.of());
         Map<String, SourceUnit> units = result.observation().units().stream()
                 .collect(Collectors.toMap(SourceUnit::path, Function.identity()));

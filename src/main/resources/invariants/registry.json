@@ -50,6 +50,18 @@
       "violationMessage": "At least one member atom is both local and inherited in the same classifier."
     },
     {
+      "id": "implementation-binding-consistency",
+      "title": "Implementation binding consistency",
+      "specificationTrace": "O-06",
+      "witnessFunction": "ImplementationBindingViolations",
+      "witnessArity": 1,
+      "requiredEvidence": ["DECLARATION_OWNERSHIP", "METHOD_BODIES", "IMPLEMENTATION_BINDINGS"],
+      "partitionRelations": ["DECLARED_MEMBERS", "IMPLEMENTATION_BODIES"],
+      "partitionRoots": ["MEMBER", "BODY"],
+      "conformanceMessage": "Source method bodies and independently resolved implementation bindings correspond exactly.",
+      "violationMessage": "At least one method or source body has a missing, extra, shared, or invalid implementation binding."
+    },
+    {
       "id": "local-namespace-uniqueness",
       "title": "Local namespace uniqueness",
       "specificationTrace": "O-08-local",

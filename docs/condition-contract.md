@@ -12,16 +12,18 @@ IDs.
 | O-03 | Acyclic generalization | `no c : Classifier \| c in c.^parents` | Classifier | Implemented |
 | O-04 | Inherited view derivation | Frontend-observed inherited view equals the Alloy-derived ancestor view | Classifier/member pair | Implemented when inherited-view evidence is complete |
 | O-05 | Local/inherited separation | Local and frontend-observed inherited member relations are atom-disjoint | Classifier/member pair | Implemented when inherited-view evidence is complete |
-| O-06 | Implementation binding | Bindings connect available declarations to independently observed bodies | Binding/body | Deferred pending defensible body and binding evidence |
-| O-07 | Abstraction and instantiation | Abstractness, direct instances, and unresolved implementations agree | Classifier/member/object | Deferred pending instantiation and binding evidence |
+| O-06 | Implementation binding | Independently observed source bodies correspond exactly to compiler-resolved declaration/body bindings | Member/body | Implemented when method-body and implementation-binding evidence are complete |
+| O-07 | Abstraction and instantiation | Abstractness, direct instances, and unresolved implementations agree | Classifier/member/object | Deferred pending instantiation and implementation-completeness evidence |
 | O-08 | Namespace and conflict | Method key is name plus ordered parameter types; attribute key is name | Conflicting member pair | Local and inherited variants implemented; inherited evaluation requires complete inherited-view evidence |
-| O-09 | Override discipline | Independently resolved overrides satisfy return and implementation policy | Override pair | Deferred pending frontend-resolved override and return-policy evidence |
+| O-09 | Override discipline | Independently resolved overrides satisfy return and implementation policy | Override pair | Deferred pending frontend-resolved override and return-policy evidence; O-06 implementation evidence is now reusable |
 
 ## Non-negotiable rules
 
 - `technicalKey` is generated, unique, and used only for traceability.
 - Any observed identifier used by an invariant must be separate from generated technical identity and must have an independently defensible source meaning.
 - Members are technically contained by the observation root. Declaration ownership is a separate, permissive relation so zero-owner and multi-owner structures remain representable.
+- Method bodies are standalone canonical observations. Their generated body keys encode source location only; they do not encode a declaration owner.
+- Declaration-to-body implementation bindings are independently resolved by the compiler frontend and remain a permissive relation, so missing, extra, shared, and orphan bindings remain representable for Alloy to judge.
 - Parameter types remain an ordered multi-valued structure. They are never flattened into a delimiter-separated signature.
 - `inheritedMembers` is populated only from frontend semantic resolution. Alloy independently derives its expected view from parents, local declarations, member visibility, classifier package, inheritability, local hiding, and nearer-ancestor priority.
 - Each condition is an independent Alloy predicate and violation function, not a global fact. One violation cannot prevent evaluation of another condition.
@@ -29,14 +31,15 @@ IDs.
 
 ## Current executable invariant set
 
-The current registry contains six semantic invariants:
+The current registry contains seven semantic invariants:
 
 1. `exclusive-declaration-ownership` (O-02)
 2. `acyclic-generalization` (O-03)
 3. `inherited-view-consistency` (O-04)
 4. `local-inherited-separation` (O-05)
-5. `local-namespace-uniqueness` (O-08-local)
-6. `inherited-namespace-uniqueness` (O-08-inherited)
+5. `implementation-binding-consistency` (O-06)
+6. `local-namespace-uniqueness` (O-08-local)
+7. `inherited-namespace-uniqueness` (O-08-inherited)
 
-O-01, O-06, O-07, and O-09 remain intentionally deferred until their evidence can
+O-01, O-07, and O-09 remain intentionally deferred until their evidence can
 be observed without circularly deriving it from the invariant being tested.

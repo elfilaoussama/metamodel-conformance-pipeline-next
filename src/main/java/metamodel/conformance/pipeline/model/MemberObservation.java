@@ -13,7 +13,9 @@ public record MemberObservation(
         String sourcePath,
         int startLine,
         int endLine,
-        List<String> parameterTypes) {
+        List<String> parameterTypes,
+        ImplementationAvailability implementationAvailability,
+        List<String> implementationBodyKeys) {
 
     public MemberObservation {
         technicalKey = CanonicalObservationValue.technicalId(
@@ -35,6 +37,29 @@ public record MemberObservation(
         if (parameterTypes.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new IllegalArgumentException("parameter types must not be blank");
         }
+        implementationAvailability = implementationAvailability == null
+                ? ImplementationAvailability.UNKNOWN : implementationAvailability;
+        implementationBodyKeys = implementationBodyKeys == null ? List.of()
+                : implementationBodyKeys.stream()
+                        .map(value -> CanonicalObservationValue.technicalId(
+                                value, "body_", "implementation body key"))
+                        .sorted().distinct().toList();
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            Inheritability inheritability,
+            MemberVisibility visibility,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes) {
+        this(technicalKey, observedIdentifier, kind, inheritability, visibility,
+                memberName, sourcePath, startLine, endLine, parameterTypes,
+                ImplementationAvailability.UNKNOWN, List.of());
     }
 
     public MemberObservation(

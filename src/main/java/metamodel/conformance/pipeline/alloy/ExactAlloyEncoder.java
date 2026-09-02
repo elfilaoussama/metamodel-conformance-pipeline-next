@@ -1,6 +1,7 @@
 package metamodel.conformance.pipeline.alloy;
 
 import metamodel.conformance.pipeline.model.ClassifierObservation;
+import metamodel.conformance.pipeline.model.ImplementationAvailability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.MemberVisibility;
@@ -44,22 +45,29 @@ public final class ExactAlloyEncoder {
                 .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
                 .append("abstract sig MemberVisibility {}\n")
                 .append("one sig PUBLIC, PROTECTED, PACKAGE, PRIVATE, VISIBILITY_UNKNOWN extends MemberVisibility {}\n")
+                .append("abstract sig ImplementationAvailability {}\n")
+                .append("one sig SOURCE_BODY, NO_SOURCE_BODY, IMPLEMENTATION_UNKNOWN extends ImplementationAvailability {}\n")
                 .append("abstract sig PackageToken {}\n")
                 .append("abstract sig NameToken {}\n")
                 .append("abstract sig TypeToken {}\n")
                 .append("abstract sig PositionToken {}\n")
+                .append("abstract sig MethodBody {}\n")
                 .append("abstract sig Member {\n")
                 .append("  kind: one MemberKind,\n")
                 .append("  inheritability: one Inheritability,\n")
                 .append("  visibility: one MemberVisibility,\n")
                 .append("  memberName: one NameToken,\n")
-                .append("  parameterTypeAt: PositionToken -> lone TypeToken\n")
+                .append("  parameterTypeAt: PositionToken -> lone TypeToken,\n")
+                .append("  implementationAvailability: one ImplementationAvailability,\n")
+                .append("  implementationBodies: set MethodBody\n")
                 .append("}\n\n");
 
         observation.classifiers().forEach(item -> alloy.append("one sig ")
                 .append(classifierAtom(item.id())).append(" extends Classifier {}\n"));
         observation.members().forEach(item -> alloy.append("one sig ")
                 .append(memberAtom(item.technicalKey())).append(" extends Member {}\n"));
+        observation.methodBodies().forEach(item -> alloy.append("one sig ")
+                .append(bodyAtom(item.technicalKey())).append(" extends MethodBody {}\n"));
         nameAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
                 .append(" extends NameToken {}\n"));
         typeAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
@@ -80,6 +88,8 @@ public final class ExactAlloyEncoder {
         relation(alloy, "visibility", visibilityEdges(observation));
         relation(alloy, "memberName", nameEdges(observation, nameAtoms));
         relation(alloy, "parameterTypeAt", parameterTypeEdges(observation, typeAtoms));
+        relation(alloy, "implementationAvailability", implementationAvailabilityEdges(observation));
+        relation(alloy, "implementationBodies", implementationBodyEdges(observation));
         alloy.append("}\n\n");
         alloy.append(loadRules()).append('\n');
 
@@ -92,6 +102,7 @@ public final class ExactAlloyEncoder {
         Map<String, String> result = new LinkedHashMap<>();
         observation.classifiers().forEach(item -> result.put(classifierAtom(item.id()), item.id()));
         observation.members().forEach(item -> result.put(memberAtom(item.technicalKey()), item.technicalKey()));
+        observation.methodBodies().forEach(item -> result.put(bodyAtom(item.technicalKey()), item.technicalKey()));
         return Map.copyOf(result);
     }
 
@@ -107,6 +118,13 @@ public final class ExactAlloyEncoder {
             throw new IllegalArgumentException("unsafe or invalid member key: " + technicalKey);
         }
         return "M_" + technicalKey.substring(4);
+    }
+
+    static String bodyAtom(String technicalKey) {
+        if (!technicalKey.matches("body_[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("unsafe or invalid method-body key: " + technicalKey);
+        }
+        return "B_" + technicalKey.substring(5);
     }
 
     private static Map<String, String> tokens(List<String> values, String prefix) {
@@ -143,6 +161,15 @@ public final class ExactAlloyEncoder {
         return edges;
     }
 
+    private static List<String> implementationBodyEdges(Observation observation) {
+        List<String> edges = new ArrayList<>();
+        for (MemberObservation member : observation.members()) {
+            member.implementationBodyKeys().forEach(body -> edges.add(
+                    memberAtom(member.technicalKey()) + "->" + bodyAtom(body)));
+        }
+        return edges;
+    }
+
     private static List<String> kindEdges(Observation observation) {
         return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
                 + (member.kind() == MemberKind.METHOD ? "METHOD" : "ATTRIBUTE")).toList();
@@ -158,8 +185,18 @@ public final class ExactAlloyEncoder {
                 + visibilityAtom(member.visibility())).toList();
     }
 
+    private static List<String> implementationAvailabilityEdges(Observation observation) {
+        return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
+                + implementationAvailabilityAtom(member.implementationAvailability())).toList();
+    }
+
     private static String visibilityAtom(MemberVisibility visibility) {
         return visibility == MemberVisibility.UNKNOWN ? "VISIBILITY_UNKNOWN" : visibility.name();
+    }
+
+    private static String implementationAvailabilityAtom(ImplementationAvailability availability) {
+        return availability == ImplementationAvailability.UNKNOWN
+                ? "IMPLEMENTATION_UNKNOWN" : availability.name();
     }
 
     private static List<String> packageEdges(
@@ -205,7 +242,8 @@ public final class ExactAlloyEncoder {
     private static String scope(
             Observation observation, int nameCount, int typeCount, int packageCount, int positionCount) {
         return "for exactly " + observation.classifiers().size() + " Classifier, exactly "
-                + observation.members().size() + " Member, exactly " + nameCount
+                + observation.members().size() + " Member, exactly "
+                + observation.methodBodies().size() + " MethodBody, exactly " + nameCount
                 + " NameToken, exactly " + typeCount + " TypeToken, exactly "
                 + packageCount + " PackageToken, exactly " + positionCount + " PositionToken";
     }

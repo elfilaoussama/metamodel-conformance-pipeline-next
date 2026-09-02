@@ -1,8 +1,6 @@
 package metamodel.conformance.pipeline.adapter;
 
-import metamodel.conformance.pipeline.adapter.cpp.ClangCppObserver;
-import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
-import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
 import metamodel.conformance.pipeline.model.Language;
 import org.junit.jupiter.api.Test;
 
@@ -34,12 +32,12 @@ class SourceObserverFactoryTest {
     }
 
     @Test
-    void createsAvailableObserversWithoutChangingJavaDefault() {
-        assertInstanceOf(SpoonJavaObserver.class,
+    void createsSchema9ObserversWithoutChangingJavaDefaultLanguage() {
+        assertInstanceOf(JavaImplementationSourceObserver.class,
                 SourceObserverFactory.create(Language.JAVA, List.of()));
-        assertInstanceOf(PythonAstObserver.class,
+        assertInstanceOf(Schema9SourceObserver.class,
                 SourceObserverFactory.create(Language.PYTHON, List.of()));
-        assertInstanceOf(ClangCppObserver.class,
+        assertInstanceOf(Schema9SourceObserver.class,
                 SourceObserverFactory.create(Language.CPP, List.of()));
     }
 

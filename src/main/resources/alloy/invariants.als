@@ -87,3 +87,14 @@ fun InheritedNamespaceUniquenessViolations : Classifier -> Member {
     some m2 : formalInheritedMembers[c] - m1 | sameMemberKey[m1, m2]
   }
 }
+
+fun ImplementationBindingViolations : set univ {
+  { m : Member |
+    (m.kind = ATTRIBUTE and
+      (m.implementationAvailability != IMPLEMENTATION_UNKNOWN or some m.implementationBodies)) or
+    (m.kind = METHOD and m.implementationAvailability = IMPLEMENTATION_UNKNOWN) or
+    (m.kind = METHOD and m.implementationAvailability = SOURCE_BODY and not one m.implementationBodies) or
+    (m.kind = METHOD and m.implementationAvailability = NO_SOURCE_BODY and some m.implementationBodies)
+  } +
+  { b : MethodBody | not one b.~implementationBodies }
+}
