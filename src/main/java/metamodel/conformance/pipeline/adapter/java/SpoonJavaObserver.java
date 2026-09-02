@@ -78,16 +78,21 @@ public final class SpoonJavaObserver implements SourceObserver {
             List<CtType<?>> types = build.types();
             Map<String, TypeDraft> draftsById = new HashMap<>();
             Map<String, List<TypeDraft>> draftsByQualifiedName = new HashMap<>();
+            Map<ScopedTypeName, List<TypeDraft>> draftsByScopedName = new HashMap<>();
             for (CtType<?> type : types) {
                 String path = sourcePath(root, type);
                 ClassifierKind kind = kindOf(type);
                 String id = stableId(path, kind, type.getQualifiedName());
                 SourcePosition position = type.getPosition();
                 TypeDraft draft = new TypeDraft(
-                        type, id, path, packageName(type), kind, position.getLine(), position.getEndLine());
+                        type, id, path, JavaSourceSets.id(path), packageName(type), kind,
+                        position.getLine(), position.getEndLine());
                 draftsById.put(id, draft);
                 draftsByQualifiedName.computeIfAbsent(type.getQualifiedName(), ignored -> new ArrayList<>())
                         .add(draft);
+                draftsByScopedName.computeIfAbsent(
+                        new ScopedTypeName(draft.sourceSet(), type.getQualifiedName()),
+                        ignored -> new ArrayList<>()).add(draft);
             }
 
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
@@ -139,7 +144,8 @@ public final class SpoonJavaObserver implements SourceObserver {
                 LinkedHashSet<String> parentIds = new LinkedHashSet<>();
                 for (CtTypeReference<?> parent : directParents(draft.type())) {
                     String parentName = parent.getQualifiedName();
-                    List<TypeDraft> internalCandidates = draftsByQualifiedName.get(parentName);
+                    List<TypeDraft> internalCandidates = scopedCandidates(
+                            draft, parentName, draftsByScopedName, draftsByQualifiedName);
                     if (internalCandidates != null && internalCandidates.size() == 1) {
                         parentIds.add(internalCandidates.get(0).id());
                     } else if (internalCandidates != null && !internalCandidates.isEmpty()) {
@@ -327,6 +333,26 @@ public final class SpoonJavaObserver implements SourceObserver {
         return value == null || value.isBlank() ? "<default>" : value;
     }
 
+    private static List<TypeDraft> scopedCandidates(
+            TypeDraft owner,
+            String qualifiedName,
+            Map<ScopedTypeName, List<TypeDraft>> scoped,
+            Map<String, List<TypeDraft>> global) {
+        List<TypeDraft> local = scoped.get(new ScopedTypeName(owner.sourceSet(), qualifiedName));
+        if (local != null && !local.isEmpty()) {
+            return local;
+        }
+        String production = JavaSourceSets.productionSibling(owner.sourceSet());
+        if (production != null) {
+            List<TypeDraft> main = scoped.get(new ScopedTypeName(production, qualifiedName));
+            if (main != null && main.size() == 1) {
+                return main;
+            }
+        }
+        List<TypeDraft> candidates = global.get(qualifiedName);
+        return candidates;
+    }
+
     private static int referenceLine(CtTypeReference<?> reference, int fallback) {
         return reference.getPosition().isValidPosition() ? reference.getPosition().getLine() : fallback;
     }
@@ -393,8 +419,11 @@ public final class SpoonJavaObserver implements SourceObserver {
     }
 
     private record TypeDraft(
-            CtType<?> type, String id, String path, String packageName,
+            CtType<?> type, String id, String path, String sourceSet, String packageName,
             ClassifierKind kind, int startLine, int endLine) {
+    }
+
+    private record ScopedTypeName(String sourceSet, String qualifiedName) {
     }
 
     private record BuildResult(List<CtType<?>> types, List<ObservationDiagnostic> diagnostics) {

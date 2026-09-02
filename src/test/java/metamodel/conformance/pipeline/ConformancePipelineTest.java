@@ -106,6 +106,17 @@ class ConformancePipelineTest {
     }
 
     @Test
+    void evaluatesDuplicateQualifiedTypesInSeparateSourceSets() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("duplicate-source-sets"),
+                temporary.resolve("duplicate-source-sets"), Set.of());
+
+        assertTrue(result.observation().unresolvedParents().isEmpty());
+        assertTrue(result.decisions().stream()
+                .allMatch(decision -> decision.status() == DecisionStatus.CONFORMANT));
+    }
+
+    @Test
     void rejectsACorruptedCapsuleArtifact() throws Exception {
         PipelineResult result = pipeline.analyze(fixture("acyclic"), temporary.resolve("tampered"), Set.of());
         Files.writeString(result.alloyPath(), Files.readString(result.alloyPath()) + "\n// modified\n");

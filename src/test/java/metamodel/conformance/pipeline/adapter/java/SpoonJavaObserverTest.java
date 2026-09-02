@@ -57,14 +57,21 @@ class SpoonJavaObserverTest {
         assertEquals(2, duplicates.stream().map(item -> item.sourcePath()).distinct().count());
         assertTrue(observation.completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
         assertTrue(observation.completeEvidence().contains(EvidenceKind.LOCAL_SIGNATURES));
-        assertFalse(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
-        assertEquals(1, observation.unresolvedParents().size());
-        assertEquals("example.Duplicate", observation.unresolvedParents().get(0).targetName());
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observation.unresolvedParents().isEmpty());
+        var child = observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("example.Child"))
+                .findFirst().orElseThrow();
+        var productionDuplicate = duplicates.stream()
+                .filter(item -> item.sourcePath().contains("src/main/java"))
+                .findFirst().orElseThrow();
+        assertEquals(List.of(productionDuplicate.id()), child.parentIds());
 
         Observation allowlisted = observer.observe(
                 fixture("duplicate-source-sets"), Set.of("example.Duplicate"));
-        assertFalse(allowlisted.completeEvidence().contains(EvidenceKind.HIERARCHY));
-        assertEquals(1, allowlisted.unresolvedParents().size());
+        assertTrue(allowlisted.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertTrue(allowlisted.unresolvedParents().isEmpty());
     }
 
     @Test

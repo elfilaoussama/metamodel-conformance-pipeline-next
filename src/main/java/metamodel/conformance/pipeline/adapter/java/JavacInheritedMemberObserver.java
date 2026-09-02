@@ -34,9 +34,48 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Comparator;
+import java.util.TreeMap;
+import java.util.Set;
 
 final class JavacInheritedMemberObserver {
     Result observe(
+            Path root,
+            List<Path> files,
+            List<ClassifierObservation> classifiers,
+            List<MemberObservation> members) {
+        Map<String, List<Path>> filesBySourceSet = new TreeMap<>();
+        for (Path file : files) {
+            String relative = relativePath(root, file);
+            filesBySourceSet.computeIfAbsent(JavaSourceSets.id(relative), ignored -> new ArrayList<>())
+                    .add(file);
+        }
+        Map<String, List<String>> inherited = new HashMap<>();
+        List<ObservationDiagnostic> diagnostics = new ArrayList<>();
+        boolean complete = true;
+        for (Map.Entry<String, List<Path>> entry : filesBySourceSet.entrySet()) {
+            String sourceSet = entry.getKey();
+            List<ClassifierObservation> scopedClassifiers = classifiers.stream()
+                    .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
+            Set<String> scopedPaths = entry.getValue().stream()
+                    .map(path -> relativePath(root, path)).collect(java.util.stream.Collectors.toSet());
+            List<MemberObservation> scopedMembers = members.stream()
+                    .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
+            Result result = observeSourceSet(
+                    root, entry.getValue(), scopedClassifiers, scopedMembers);
+            complete &= result.complete();
+            diagnostics.addAll(result.diagnostics());
+            inherited.putAll(result.inheritedByClassifier());
+        }
+        if (!complete) {
+            inherited.clear();
+        }
+        return new Result(complete, inherited, diagnostics.stream().distinct().sorted(
+                Comparator.comparing(ObservationDiagnostic::sourcePath)
+                        .thenComparingInt(ObservationDiagnostic::line)
+                        .thenComparing(ObservationDiagnostic::message)).toList());
+    }
+
+    private Result observeSourceSet(
             Path root,
             List<Path> files,
             List<ClassifierObservation> classifiers,

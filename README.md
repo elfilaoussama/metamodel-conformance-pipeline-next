@@ -79,6 +79,13 @@ mixed-package ancestor chains. Private and interface-static declarations remain
 non-inheritable. Javac's independently observed inherited view is compared with that
 formal derivation.
 
+Conventional module source sets such as `module/src/main/java` and
+`module/src/test/java` are compiled and resolved independently. Duplicate qualified
+type names in different source sets therefore remain distinct declarations instead
+of poisoning the entire repository observation. An auxiliary source set may resolve
+an otherwise absent parent from its sibling production source set, but a same-set
+declaration always takes precedence.
+
 ## Invariant extensibility
 
 The Java evaluator contains no invariant identifiers and no invariant-specific

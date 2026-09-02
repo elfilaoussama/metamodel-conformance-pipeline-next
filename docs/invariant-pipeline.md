@@ -86,6 +86,12 @@ source locations. These diagnostics may coexist with independently complete evid
 for ownership, hierarchy, or local signatures; only invariants requiring the missing
 inherited view return `NOT_EVALUATED`.
 
+Conventional `src/<set>/java` roots are separate semantic compilation units. Parent
+resolution first uses the declaring source set, then its sibling `src/main/java`,
+and only then a globally unique declaration. This prevents duplicate test and
+production type names from becoming accidental ambiguity while preserving both
+source sets in the canonical observation.
+
 ## Reproducible Alloy execution
 
 Capsule format v6 records the immutable execution configuration actually owned
