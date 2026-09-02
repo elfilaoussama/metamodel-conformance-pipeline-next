@@ -33,11 +33,13 @@ java -jar "${PIPELINE_JAR}" verify-capsule \
 
 jq --exit-status '
   (.decisions | map({key: .invariantId, value: .status}) | from_entries) as $status |
+  (.decisions | length) == 6 and
   any(.observationDiagnostics[]; .kind == "EVIDENCE_INCOMPLETE") and
   all(.observationDiagnostics[]; .kind != "PARSE_ERROR") and
   $status["exclusive-declaration-ownership"] == "CONFORMANT" and
   $status["acyclic-generalization"] == "CONFORMANT" and
   $status["local-namespace-uniqueness"] == "CONFORMANT" and
   $status["inherited-view-consistency"] == "NOT_EVALUATED" and
-  $status["local-inherited-separation"] == "NOT_EVALUATED"
+  $status["local-inherited-separation"] == "NOT_EVALUATED" and
+  $status["inherited-namespace-uniqueness"] == "NOT_EVALUATED"
 ' "${integration_root}/result/verification-capsule.json" >/dev/null
