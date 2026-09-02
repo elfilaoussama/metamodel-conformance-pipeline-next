@@ -5,19 +5,56 @@ import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
+import metamodel.conformance.pipeline.model.Language;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import javax.tools.ToolProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class SpoonJavaObserverTest {
+    @TempDir
+    Path temporary;
+
     private final SpoonJavaObserver observer = new SpoonJavaObserver();
+
+    @Test
+    void usesFingerprintedDependencyArchiveWithoutClaimingUnmaterializedHierarchy() throws Exception {
+        Path source = temporary.resolve("dependency-source");
+        Path classes = temporary.resolve("dependency-classes");
+        Files.createDirectories(source.resolve("dependency"));
+        Files.createDirectories(classes);
+        Path java = source.resolve("dependency/ExternalBase.java");
+        Files.writeString(java, "package dependency; public class ExternalBase { public void work() {} }");
+        int compile = ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "-d", classes.toString(), java.toString());
+        assertEquals(0, compile);
+        Path jar = temporary.resolve("dependency.jar");
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new JarEntry("dependency/ExternalBase.class"));
+            output.write(Files.readAllBytes(classes.resolve("dependency/ExternalBase.class")));
+            output.closeEntry();
+        }
+
+        Observation observation = new SpoonJavaObserver(List.of(jar)).observe(
+                fixture("external-dependency"), Set.of());
+
+        assertTrue(observation.units().stream().anyMatch(unit -> unit.language() == Language.JAVA_ARCHIVE));
+        assertEquals(1, observation.unresolvedParents().size());
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observation.diagnostics().isEmpty());
+    }
 
     @Test
     void observesMultipleInheritanceEdgesDeterministically() throws Exception {

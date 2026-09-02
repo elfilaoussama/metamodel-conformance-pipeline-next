@@ -81,3 +81,9 @@ fun LocalNamespaceUniquenessViolations : set Member {
       some m2 : c.declaredMembers - m1 | sameMemberKey[m1, m2]
   }
 }
+
+fun InheritedNamespaceUniquenessViolations : Classifier -> Member {
+  { c : Classifier, m1 : formalInheritedMembers[c] |
+    some m2 : formalInheritedMembers[c] - m1 | sameMemberKey[m1, m2]
+  }
+}

@@ -144,6 +144,24 @@ public final class TestObservations {
                 List.of(member), inheritedEvidence());
     }
 
+    public static Observation duplicateInheritedMethods() {
+        String left = id("left");
+        String right = id("right");
+        String child = id("child");
+        MemberObservation first = inheritableMethod("inherited-left", "work", List.of("int"));
+        MemberObservation second = inheritableMethod("inherited-right", "work", List.of("int"));
+        return memberObservation(
+                List.of(
+                        new ClassifierObservation(left, "example.Left", ClassifierKind.CLASS,
+                                "example/A.java", 1, 2, List.of(), List.of(first.technicalKey()), List.of()),
+                        new ClassifierObservation(right, "example.Right", ClassifierKind.CLASS,
+                                "example/A.java", 3, 4, List.of(), List.of(second.technicalKey()), List.of()),
+                        new ClassifierObservation(child, "example.Child", ClassifierKind.CLASS,
+                                "example/A.java", 5, 6, List.of(left, right), List.of(),
+                                List.of(first.technicalKey(), second.technicalKey()))),
+                List.of(first, second), inheritedEvidence());
+    }
+
     public static String id(String seed) {
         return "cls_" + Hashing.sha256(seed);
     }
@@ -161,7 +179,7 @@ public final class TestObservations {
     private static Observation observation(
             List<ClassifierObservation> classifiers, List<UnresolvedParent> unresolved) {
         return new Observation(
-                "6", "test-adapter", "1.0.0", List.of(),
+                "7", "test-adapter", "1.0.0", List.of(),
                 sourceUnits(classifiers, List.of()),
                 classifiers,
                 unresolved);
@@ -172,7 +190,7 @@ public final class TestObservations {
             List<MemberObservation> members,
             Set<EvidenceKind> evidence) {
         return new Observation(
-                "6", "test-adapter", "1.0.0", List.of(), evidence,
+                "7", "test-adapter", "1.0.0", List.of(), evidence,
                 sourceUnits(classifiers, members),
                 classifiers, members, List.of());
     }

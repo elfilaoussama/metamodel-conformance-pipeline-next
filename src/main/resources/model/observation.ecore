@@ -4,12 +4,13 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="urn:metamodel-conformance:observation:6"
+    nsURI="urn:metamodel-conformance:observation:7"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
-    <eLiterals name="PYTHON" value="1"/>
-    <eLiterals name="CPP" value="2"/>
+    <eLiterals name="JAVA_ARCHIVE" value="1"/>
+    <eLiterals name="PYTHON" value="2"/>
+    <eLiterals name="CPP" value="3"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="ClassifierKind">
     <eLiterals name="CLASS"/>

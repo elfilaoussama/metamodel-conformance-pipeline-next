@@ -44,8 +44,10 @@ conditions:
     requires: [DECLARATION_OWNERSHIP, LOCAL_SIGNATURES]
     witness: MEMBER
   O-08-inherited:
-    status: DEFERRED
-    reason: Requires the O-04 inherited view.
+    status: EVALUABLE
+    requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, INHERITED_MEMBERS]
+    witness: CLASSIFIER_MEMBER_PAIR
+    reason: Evaluated only when the independent inherited-member view is complete.
   O-09:
     status: DEFERRED
     reason: Requires frontend-resolved override evidence.

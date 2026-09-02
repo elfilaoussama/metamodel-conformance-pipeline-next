@@ -4,13 +4,14 @@ A deterministic, fail-closed pipeline that observes source code as a small EMF
 model, maps extracted evidence to registered invariants, and evaluates those
 invariants with the official Alloy engine.
 
-The current policy profile maps five research conditions to semantic invariants:
+The current policy profile maps six research conditions to semantic invariants:
 
 - `exclusive-declaration-ownership` (trace: O-02);
 - `acyclic-generalization` (trace: O-03);
 - `inherited-view-consistency` (trace: O-04);
-- `local-inherited-separation` (trace: O-05); and
-- `local-namespace-uniqueness` (trace: O-08-local).
+- `local-inherited-separation` (trace: O-05);
+- `local-namespace-uniqueness` (trace: O-08-local); and
+- `inherited-namespace-uniqueness` (trace: O-08-inherited).
 
 ```text
 source -> language observer -> extracted evidence -> canonical observation.xmi
@@ -45,6 +46,12 @@ java -jar target/metamodel-conformance-pipeline-next-0.9.0-SNAPSHOT.jar \
   verify-capsule --capsule build/acyclic/verification-capsule.json
 ```
 
+Projects that require external compile-time types can provide exact dependency
+archives with repeated `--dependency-jar` options. Each accepted JAR is validated
+as a regular non-symbolic-link file, hashed, and included in the canonical source
+set as `JAVA_ARCHIVE` evidence. Dependency archives improve compiler resolution;
+they do not make an unresolved external hierarchy conformant by themselves.
+
 The same input and tool version produce byte-identical `observation.xmi`, Alloy
 model, and capsule. Capsule format v6 archives the exact Alloy 6.2.0/SAT4J
 execution profile, including symmetry, skolemization, overflow, unrolling, core,
@@ -67,8 +74,9 @@ removes any older capsule before publishing new artifacts, so partial output can
 be mistaken for a verified result.
 
 Inherited memberships are observed independently with the JDK compiler's
-`Elements.getAllMembers` API, using annotation processing disabled and an empty
-classpath. Spoon remains responsible for declaration evidence, while source
+`Elements.getAllMembers` API, using annotation processing disabled and either an
+empty classpath or the exact fingerprinted dependency archives supplied by the
+caller. Spoon remains responsible for declaration evidence, while source
 provenance maps javac's semantic members back to the canonical declaration atoms.
 `INHERITED_MEMBERS` is complete only when javac reports no errors and every internal
 type/member mapping is unique. Otherwise only invariants requiring that evidence
@@ -119,7 +127,7 @@ declarations remains unresolved, so hierarchy-dependent invariants are
 `NOT_EVALUATED`; the adapter never chooses a source set implicitly.
 
 Java files rejected by the parser remain in the hashed source set and are recorded
-as normalized, source-path diagnostics in schema-v5 `observation.xmi`. Valid files
+as normalized, source-path diagnostics in schema-v7 `observation.xmi`. Valid files
 may still be preserved as partial observations, but no evidence kind is marked
 complete and every invariant is `NOT_EVALUATED`. The Alloy artifact and capsule are
 still emitted and independently replayable; a parse error is not a missing result.

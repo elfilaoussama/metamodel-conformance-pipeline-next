@@ -55,10 +55,12 @@ public final class PipelineCli {
     }
 
     private static int analyze(String[] args) throws Exception {
-        ParsedOptions options = ParsedOptions.parse(args, Set.of("source", "output"), Set.of("external-parent"));
+        ParsedOptions options = ParsedOptions.parse(
+                args, Set.of("source", "output"), Set.of("external-parent", "dependency-jar"));
         Path source = Path.of(options.one("source"));
         Path output = Path.of(options.one("output"));
-        PipelineResult result = new ConformancePipeline(new SpoonJavaObserver())
+        List<Path> dependencyArchives = options.many("dependency-jar").stream().map(Path::of).toList();
+        PipelineResult result = new ConformancePipeline(new SpoonJavaObserver(dependencyArchives))
                 .analyze(source, output, new HashSet<>(options.many("external-parent")));
         result.decisions().forEach(decision ->
                 System.out.println(decision.invariantId() + " " + decision.status() + ": " + decision.message()));
@@ -119,6 +121,7 @@ public final class PipelineCli {
         System.out.println("""
                 Usage:
                   analyze --source <dir> --output <dir> [--external-parent <qualified-name>]...
+                          [--dependency-jar <path>]...
                   verify-capsule --capsule <verification-capsule.json>
 
                 Exit codes: 0 conformant/valid, 2 non-conformant, 3 not-evaluated/invalid, 64 usage.

@@ -33,6 +33,8 @@ class AlloyInvariantEvaluatorTest {
         assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "inherited-view-consistency").status());
         assertEquals(DecisionStatus.NOT_EVALUATED, decision(decisions, "local-inherited-separation").status());
         assertEquals(DecisionStatus.CONFORMANT, decision(decisions, "local-namespace-uniqueness").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                decision(decisions, "inherited-namespace-uniqueness").status());
     }
 
     @Test
@@ -138,6 +140,20 @@ class AlloyInvariantEvaluatorTest {
     }
 
     @Test
+    void detectsDuplicateInheritedMemberKeys() {
+        Observation observation = TestObservations.duplicateInheritedMethods();
+        Decision decision = decision(
+                runner.evaluateAll(observation, encoder.encode(observation)),
+                "inherited-namespace-uniqueness");
+
+        assertEquals(DecisionStatus.NON_CONFORMANT, decision.status());
+        assertEquals(2, decision.witnesses().size());
+        assertEquals(3, decision.witnessTechnicalKeys().size());
+        assertEquals(1, decision.witnesses().stream()
+                .map(witness -> witness.technicalKeys().get(0)).distinct().count());
+    }
+
+    @Test
     void inconsistentExactObservationCannotProduceConformance() {
         Observation observation = TestObservations.membersConformant();
         String inconsistentModel = encoder.encode(observation)
@@ -145,7 +161,7 @@ class AlloyInvariantEvaluatorTest {
 
         List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
 
-        assertEquals(5, decisions.size());
+        assertEquals(6, decisions.size());
         decisions.forEach(decision -> assertEquals(DecisionStatus.NOT_EVALUATED, decision.status()));
     }
 
@@ -158,7 +174,7 @@ class AlloyInvariantEvaluatorTest {
 
         List<Decision> decisions = runner.evaluateAll(incomplete, "this is deliberately not Alloy");
 
-        assertEquals(5, decisions.size());
+        assertEquals(6, decisions.size());
         decisions.forEach(decision -> {
             assertEquals(DecisionStatus.NOT_EVALUATED, decision.status());
             assertFalse(decision.message().contains("parsing failed"));
@@ -178,7 +194,7 @@ class AlloyInvariantEvaluatorTest {
                 isolatedId, "example.Isolated", ClassifierKind.CLASS,
                 "example/A.java", 3, 3, List.of());
         Observation observation = new Observation(
-                "6", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
+                "7", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
                 List.of(new SourceUnit(
                         Language.JAVA, "example/A.java", Hashing.sha256("source"))),
                 List.of(first, second, isolated), List.of(), List.of());

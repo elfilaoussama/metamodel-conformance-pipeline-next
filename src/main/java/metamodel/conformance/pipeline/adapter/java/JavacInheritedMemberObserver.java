@@ -42,7 +42,8 @@ final class JavacInheritedMemberObserver {
             Path root,
             List<Path> files,
             List<ClassifierObservation> classifiers,
-            List<MemberObservation> members) {
+            List<MemberObservation> members,
+            List<Path> dependencyArchives) {
         Map<String, List<Path>> filesBySourceSet = new TreeMap<>();
         for (Path file : files) {
             String relative = relativePath(root, file);
@@ -61,7 +62,7 @@ final class JavacInheritedMemberObserver {
             List<MemberObservation> scopedMembers = members.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
             Result result = observeSourceSet(
-                    root, entry.getValue(), scopedClassifiers, scopedMembers);
+                    root, entry.getValue(), scopedClassifiers, scopedMembers, dependencyArchives);
             complete &= result.complete();
             diagnostics.addAll(result.diagnostics());
             inherited.putAll(result.inheritedByClassifier());
@@ -79,7 +80,8 @@ final class JavacInheritedMemberObserver {
             Path root,
             List<Path> files,
             List<ClassifierObservation> classifiers,
-            List<MemberObservation> members) {
+            List<MemberObservation> members,
+            List<Path> dependencyArchives) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             return Result.incomplete(relativePath(root, files.get(0)),
@@ -88,7 +90,12 @@ final class JavacInheritedMemberObserver {
         Path emptyClasspath = null;
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try {
-            emptyClasspath = Files.createTempDirectory("metamodel-conformance-javac-");
+            emptyClasspath = dependencyArchives.isEmpty()
+                    ? Files.createTempDirectory("metamodel-conformance-javac-") : null;
+            String classpath = dependencyArchives.isEmpty()
+                    ? emptyClasspath.toString()
+                    : dependencyArchives.stream().map(Path::toString)
+                            .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
             try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
                     diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
                 Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
@@ -100,7 +107,7 @@ final class JavacInheritedMemberObserver {
                                 "-proc:none",
                                 "-implicit:none",
                                 "--release", "17",
-                                "-classpath", emptyClasspath.toString(),
+                                "-classpath", classpath,
                                 "-Xlint:none"),
                         null,
                         sources);

@@ -58,6 +58,15 @@ public final class SpoonJavaObserver implements SourceObserver {
             "java.lang.annotation.Annotation");
     private static final Pattern DIAGNOSTIC_LINE = Pattern.compile("(?i)\\bline\\s+(\\d+)\\b");
     private static final int MAX_DIAGNOSTIC_MESSAGE = 4096;
+    private final List<Path> dependencyArchives;
+
+    public SpoonJavaObserver() {
+        this(List.of());
+    }
+
+    public SpoonJavaObserver(List<Path> dependencyArchives) {
+        this.dependencyArchives = dependencyArchives == null ? List.of() : List.copyOf(dependencyArchives);
+    }
 
     @Override
     public Observation observe(Path sourceRoot, Set<String> externalParents) throws ObservationException {
@@ -73,6 +82,8 @@ public final class SpoonJavaObserver implements SourceObserver {
                 units.add(new SourceUnit(
                         Language.JAVA, relativePath(root, file), Hashing.sha256(file)));
             }
+            JavaDependencyClasspath.Result dependencies = JavaDependencyClasspath.resolve(dependencyArchives);
+            units.addAll(dependencies.units());
 
             BuildResult build = buildTypes(root, files);
             List<CtType<?>> types = build.types();
@@ -163,7 +174,8 @@ public final class SpoonJavaObserver implements SourceObserver {
                         memberKeysByOwner.getOrDefault(draft.id(), List.of())));
             }
             JavacInheritedMemberObserver.Result inherited = build.diagnostics().isEmpty()
-                    ? new JavacInheritedMemberObserver().observe(root, files, classifiers, members)
+                    ? new JavacInheritedMemberObserver().observe(
+                            root, files, classifiers, members, dependencies.paths())
                     : JavacInheritedMemberObserver.Result.incomplete();
             classifiers = classifiers.stream().map(classifier -> new ClassifierObservation(
                     classifier.id(), classifier.qualifiedName(), classifier.packageName(), classifier.kind(),
@@ -183,14 +195,15 @@ public final class SpoonJavaObserver implements SourceObserver {
                 if (localSignaturesComplete) {
                     completeEvidence.add(EvidenceKind.LOCAL_SIGNATURES);
                 }
-                if (inherited.complete()) {
+                if (inherited.complete() && unresolved.isEmpty()) {
                     completeEvidence.add(EvidenceKind.INHERITED_MEMBERS);
                 }
             }
             List<ObservationDiagnostic> diagnostics = new ArrayList<>(build.diagnostics());
             diagnostics.addAll(inherited.diagnostics());
+            dependencies.verifyUnchanged();
             return new Observation(
-                    "6", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    "7", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
                     units, classifiers, members, unresolved, diagnostics);
         } catch (ObservationException exception) {
             throw exception;

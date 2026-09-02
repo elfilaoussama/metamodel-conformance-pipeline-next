@@ -60,6 +60,18 @@
       "partitionRoots": ["CLASSIFIER"],
       "conformanceMessage": "Local method keys and attribute names are unique within each classifier.",
       "violationMessage": "At least one classifier contains a duplicate method key or attribute name."
+    },
+    {
+      "id": "inherited-namespace-uniqueness",
+      "title": "Inherited namespace uniqueness",
+      "specificationTrace": "O-08-inherited",
+      "witnessFunction": "InheritedNamespaceUniquenessViolations",
+      "witnessArity": 2,
+      "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "INHERITED_MEMBERS"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "OBSERVED_INHERITED_MEMBERS"],
+      "partitionRoots": ["CLASSIFIER"],
+      "conformanceMessage": "Inherited method keys and attribute names are unique within each classifier.",
+      "violationMessage": "At least one classifier inherits distinct declarations with the same member key."
     }
   ]
 }

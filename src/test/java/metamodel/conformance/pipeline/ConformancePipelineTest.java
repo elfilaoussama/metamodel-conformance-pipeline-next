@@ -12,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -114,6 +115,22 @@ class ConformancePipelineTest {
         assertTrue(result.observation().unresolvedParents().isEmpty());
         assertTrue(result.decisions().stream()
                 .allMatch(decision -> decision.status() == DecisionStatus.CONFORMANT));
+    }
+
+    @Test
+    void archivesDependencyFingerprintsInCanonicalEvidenceAndCapsuleDigest() throws Exception {
+        Path dependency = temporary.resolve("dependency.jar");
+        try (JarOutputStream ignored = new JarOutputStream(Files.newOutputStream(dependency))) {
+            // A valid empty archive is sufficient to audit the dependency boundary.
+        }
+        PipelineResult result = new ConformancePipeline(new SpoonJavaObserver(java.util.List.of(dependency)))
+                .analyze(fixture("acyclic"), temporary.resolve("dependency-evidence"), Set.of());
+
+        assertTrue(result.observation().units().stream().anyMatch(unit ->
+                unit.language() == metamodel.conformance.pipeline.model.Language.JAVA_ARCHIVE
+                        && unit.sha256().equals(metamodel.conformance.pipeline.util.Hashing.sha256(dependency))));
+        assertTrue(Files.readString(result.observationPath()).contains("JAVA_ARCHIVE"));
+        assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
     }
 
     @Test

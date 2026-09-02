@@ -87,12 +87,51 @@ class AlloyWorkUnitPlannerTest {
         assertTrue(units.get(0).classifiers().isEmpty());
     }
 
+    @Test
+    void partitionsFiveThousandIndependentClassifiersWithoutLoss() {
+        List<ClassifierObservation> classifiers = new ArrayList<>();
+        for (int index = 0; index < 5_000; index++) {
+            classifiers.add(classifier(classifierId("large-" + index), List.of()));
+        }
+        Observation observation = observation(classifiers, List.of(), Set.of(EvidenceKind.HIERARCHY));
+
+        List<Observation> units = planner.plan(
+                observation, InvariantRegistry.load().require("acyclic-generalization"));
+
+        assertTrue(units.size() > 1);
+        assertTrue(units.stream().allMatch(unit ->
+                unit.classifiers().size() <= AlloyWorkUnitPlanner.WORK_UNIT_ATOM_TARGET));
+        assertEquals(5_000, units.stream().mapToInt(unit -> unit.classifiers().size()).sum());
+        assertEquals(5_000, units.stream().flatMap(unit -> unit.classifiers().stream())
+                .map(ClassifierObservation::id).distinct().count());
+    }
+
+    @Test
+    void preservesAnOversizedConnectedHierarchyAsOneExactUnit() {
+        List<ClassifierObservation> classifiers = new ArrayList<>();
+        String parent = null;
+        for (int index = 0; index < 600; index++) {
+            String current = classifierId("chain-" + index);
+            classifiers.add(classifier(current, parent == null ? List.of() : List.of(parent)));
+            parent = current;
+        }
+        Observation observation = observation(classifiers, List.of(), Set.of(EvidenceKind.HIERARCHY));
+
+        List<Observation> units = planner.plan(
+                observation, InvariantRegistry.load().require("acyclic-generalization"));
+
+        assertEquals(1, units.size());
+        assertEquals(600, units.get(0).classifiers().size());
+        assertEquals(599, units.get(0).classifiers().stream()
+                .mapToInt(item -> item.parentIds().size()).sum());
+    }
+
     private static Observation observation(
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
             Set<EvidenceKind> evidence) {
         return new Observation(
-                "6", "test-adapter", "1.0.0", List.of(), evidence,
+                "7", "test-adapter", "1.0.0", List.of(), evidence,
                 List.of(new SourceUnit(
                         Language.JAVA, "example/A.java", Hashing.sha256("source"))),
                 classifiers, members, List.of());
