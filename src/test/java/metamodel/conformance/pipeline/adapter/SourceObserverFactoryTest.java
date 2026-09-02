@@ -1,5 +1,6 @@
 package metamodel.conformance.pipeline.adapter;
 
+import metamodel.conformance.pipeline.adapter.cpp.ClangCppObserver;
 import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
 import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
 import metamodel.conformance.pipeline.model.Language;
@@ -38,6 +39,8 @@ class SourceObserverFactoryTest {
                 SourceObserverFactory.create(Language.JAVA, List.of()));
         assertInstanceOf(PythonAstObserver.class,
                 SourceObserverFactory.create(Language.PYTHON, List.of()));
+        assertInstanceOf(ClangCppObserver.class,
+                SourceObserverFactory.create(Language.CPP, List.of()));
     }
 
     @Test
@@ -45,7 +48,7 @@ class SourceObserverFactoryTest {
         assertThrows(IllegalArgumentException.class,
                 () -> SourceObserverFactory.create(Language.PYTHON, List.of(Path.of("dependency.jar"))));
         assertThrows(IllegalArgumentException.class,
-                () -> SourceObserverFactory.create(Language.CPP, List.of()));
+                () -> SourceObserverFactory.create(Language.CPP, List.of(Path.of("dependency.jar"))));
         assertThrows(IllegalArgumentException.class,
                 () -> SourceObserverFactory.create(Language.JAVA_ARCHIVE, List.of()));
     }
