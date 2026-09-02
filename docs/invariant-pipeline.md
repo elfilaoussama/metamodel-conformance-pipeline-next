@@ -73,12 +73,18 @@ duplicate mapping, compiler failure, or unsupported source shape yields incomple
 evidence and an empty stored inherited relation. The affected invariants then return
 `NOT_EVALUATED`; the adapter never substitutes its own inheritance algorithm.
 
-The current declaration-level inheritability field is intentionally conservative.
-Public and protected declarations are `INHERITABLE`; private declarations and
-interface static methods are `NOT_INHERITABLE`; package-private declarations are
-`UNKNOWN` because their eligibility depends on the descendant package. Any such
-unknown prevents invariants requiring complete `INHERITABILITY` from being
-evaluated until the observation schema carries contextual accessibility.
+Schema v6 records member visibility and classifier package as separate source facts.
+Alloy derives contextual accessibility from those facts: public and protected
+members are accessible along inheritance, private members are not, and
+package-private members require an unbroken same-package inheritance path.
+Interface static methods remain explicitly non-inheritable. Javac independently
+observes the resulting inherited view, so the expected and observed relations do not
+come from the same algorithm.
+
+Javac failures are preserved as `EVIDENCE_INCOMPLETE` diagnostics with canonical
+source locations. These diagnostics may coexist with independently complete evidence
+for ownership, hierarchy, or local signatures; only invariants requiring the missing
+inherited view return `NOT_EVALUATED`.
 
 ## Reproducible Alloy execution
 
@@ -106,7 +112,7 @@ their hashes are finalized.
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves
-member kind, name, inheritability, and complete ordered method-parameter type
+member kind, name, visibility, declaring package, inheritability, and complete ordered method-parameter type
 lists. The exact Alloy model carries those observations structurally through
 `kind`, `memberName`, and `parameterTypeAt` relations. Parameter positions and
 type tokens remain separate atoms, so Java never groups members into semantic

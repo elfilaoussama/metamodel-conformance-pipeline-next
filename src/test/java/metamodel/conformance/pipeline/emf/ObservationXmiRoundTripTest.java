@@ -2,6 +2,8 @@ package metamodel.conformance.pipeline.emf;
 
 import metamodel.conformance.pipeline.TestObservations;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
+import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,5 +43,24 @@ class ObservationXmiRoundTripTest {
         assertEquals(List.of("Type", "Type", "Type", "Type"),
                 replayed.members().get(0).parameterTypes());
         assertEquals(observation, replayed);
+    }
+
+    @Test
+    void preservesContextualAccessibilityAndEvidenceDiagnostics() throws Exception {
+        Observation base = TestObservations.inheritedViewConformant();
+        Observation observation = new Observation(
+                base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
+                base.completeEvidence(), base.units(), base.classifiers(), base.members(),
+                base.unresolvedParents(), List.of(new ObservationDiagnostic(
+                        DiagnosticKind.EVIDENCE_INCOMPLETE,
+                        base.units().get(0).path(), 0, "dependency classpath is incomplete")));
+        Path xmi = temporary.resolve("evidence-diagnostic.xmi");
+
+        new ObservationXmiWriter().write(observation, xmi);
+        Observation replayed = new ObservationXmiReader().read(xmi);
+
+        assertEquals(observation, replayed);
+        assertEquals(base.classifiers().get(0).packageName(), replayed.classifiers().get(0).packageName());
+        assertEquals(base.members().get(0).visibility(), replayed.members().get(0).visibility());
     }
 }

@@ -27,6 +27,7 @@ implemented. Ecore stores observations; Alloy alone defines violations.
   flattened into a delimiter-separated signature.
 - `inheritedMembers` is populated only from frontend semantic resolution. Alloy
   independently derives its expected view from parents, local declarations,
-  inheritability, local hiding, and nearer-ancestor priority.
+  member visibility, classifier package, inheritability, local hiding, and
+  nearer-ancestor priority.
 - Each condition is an independent Alloy predicate and violation function, not
   a global fact. One violation cannot prevent evaluation of another condition.

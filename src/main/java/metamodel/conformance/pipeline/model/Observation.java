@@ -44,7 +44,8 @@ public record Observation(
         if (!unresolvedParents.isEmpty() && completeEvidence.contains(EvidenceKind.HIERARCHY)) {
             throw new IllegalArgumentException("hierarchy evidence cannot be complete with unresolved parents");
         }
-        if (!diagnostics.isEmpty() && !completeEvidence.isEmpty()) {
+        if (diagnostics.stream().anyMatch(item -> item.kind() == DiagnosticKind.PARSE_ERROR)
+                && !completeEvidence.isEmpty()) {
             throw new IllegalArgumentException("parse diagnostics forbid complete evidence claims");
         }
     }

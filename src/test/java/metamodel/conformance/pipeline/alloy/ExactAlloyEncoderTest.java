@@ -19,6 +19,9 @@ class ExactAlloyEncoderTest {
         assertTrue(alloy.contains("abstract sig NameToken"));
         assertTrue(alloy.contains("abstract sig TypeToken"));
         assertTrue(alloy.contains("abstract sig PositionToken"));
+        assertTrue(alloy.contains("abstract sig PackageToken"));
+        assertTrue(alloy.contains("abstract sig MemberVisibility"));
+        assertTrue(alloy.contains("packageName: one PackageToken"));
         assertTrue(alloy.contains("parameterTypeAt: PositionToken -> lone TypeToken"));
         assertFalse(alloy.contains("namespaceKeyRepresentative"));
         assertFalse(alloy.contains("abstract sig Parameter {"));
@@ -38,6 +41,8 @@ class ExactAlloyEncoderTest {
                 + ExactAlloyEncoder.classifierAtom(TestObservations.B) + "->"
                 + ExactAlloyEncoder.memberAtom(observation.members().get(0).technicalKey())));
         assertTrue(alloy.contains("fun formalInheritedMembers[c : Classifier]"));
+        assertTrue(alloy.contains("pred memberAccessibleFrom[c, owner : Classifier, member : Member]"));
+        assertTrue(alloy.contains("pred samePackageInheritancePath[c, owner : Classifier]"));
         assertTrue(alloy.contains("fun InheritedViewConsistencyViolations : Classifier -> Member"));
         assertTrue(alloy.contains("fun LocalInheritedSeparationViolations : Classifier -> Member"));
     }

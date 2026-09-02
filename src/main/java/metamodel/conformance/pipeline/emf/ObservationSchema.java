@@ -11,8 +11,8 @@ import org.eclipse.emf.ecore.xmi.impl.EcoreResourceFactoryImpl;
 import java.net.URL;
 
 final class ObservationSchema {
-    static final String VERSION = "5";
-    static final String NS_URI = "urn:metamodel-conformance:observation:5";
+    static final String VERSION = "6";
+    static final String NS_URI = "urn:metamodel-conformance:observation:6";
 
     private final EPackage ePackage;
 

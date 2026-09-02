@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly REPOSITORY_URL="https://github.com/elfilaoussama/metamodel-conformance-pipeline.git"
 readonly REPOSITORY_COMMIT="25a80241f7514aa0a9e9a5ad2c5ec3fa90277527"
-readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.8.0-SNAPSHOT.jar"
+readonly PIPELINE_JAR="target/metamodel-conformance-pipeline-next-0.9.0-SNAPSHOT.jar"
 
 integration_root="$(mktemp -d)"
 readonly integration_root
@@ -33,6 +33,8 @@ java -jar "${PIPELINE_JAR}" verify-capsule \
 
 jq --exit-status '
   (.decisions | map({key: .invariantId, value: .status}) | from_entries) as $status |
+  any(.observationDiagnostics[]; .kind == "EVIDENCE_INCOMPLETE") and
+  all(.observationDiagnostics[]; .kind != "PARSE_ERROR") and
   $status["exclusive-declaration-ownership"] == "CONFORMANT" and
   $status["acyclic-generalization"] == "CONFORMANT" and
   $status["local-namespace-uniqueness"] == "CONFORMANT" and

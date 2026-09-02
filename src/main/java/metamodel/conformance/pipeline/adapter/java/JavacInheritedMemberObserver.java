@@ -7,8 +7,10 @@ import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
@@ -31,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 
 final class JavacInheritedMemberObserver {
     Result observe(
@@ -40,7 +43,8 @@ final class JavacInheritedMemberObserver {
             List<MemberObservation> members) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
-            return Result.incomplete();
+            return Result.incomplete(relativePath(root, files.get(0)),
+                    "JDK compiler is unavailable; inherited-member evidence was not observed");
         }
         Path emptyClasspath = null;
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
@@ -66,12 +70,13 @@ final class JavacInheritedMemberObserver {
                 task.analyze();
                 if (diagnostics.getDiagnostics().stream()
                         .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
-                    return Result.incomplete();
+                    return new Result(false, Map.of(), evidenceDiagnostics(root, files, diagnostics));
                 }
                 return resolve(root, parsed, task, classifiers, members);
             }
         } catch (IOException | RuntimeException | StackOverflowError failure) {
-            return Result.incomplete();
+            return Result.incomplete(relativePath(root, files.get(0)),
+                    "javac inherited-member observation failed: " + failure.getClass().getSimpleName());
         } finally {
             if (emptyClasspath != null) {
                 try {
@@ -97,7 +102,7 @@ final class JavacInheritedMemberObserver {
         for (ClassifierObservation classifier : classifiers) {
             TypeLocator locator = new TypeLocator(classifier.sourcePath(), classifier.startLine());
             if (classifiersByLocation.put(locator, classifier) != null) {
-                return Result.incomplete();
+                return incomplete(classifiers, "ambiguous classifier source location");
             }
         }
 
@@ -108,7 +113,7 @@ final class JavacInheritedMemberObserver {
             for (String key : classifier.declaredMemberKeys()) {
                 MemberObservation member = membersByKey.get(key);
                 if (member == null) {
-                    return Result.incomplete();
+                    return incomplete(classifiers, "declared member reference could not be mapped");
                 }
                 MemberLocator locator = new MemberLocator(
                         classifier.id(), member.kind(), member.memberName());
@@ -121,7 +126,7 @@ final class JavacInheritedMemberObserver {
             List<TypeElement> candidates = javacTypes.get(
                     new TypeLocator(classifier.sourcePath(), classifier.startLine()));
             if (candidates == null || candidates.size() != 1) {
-                return Result.incomplete();
+                return incomplete(classifiers, "javac classifier could not be mapped uniquely");
             }
             LinkedHashSet<String> inherited = new LinkedHashSet<>();
             for (Element member : elements.getAllMembers(candidates.get(0))) {
@@ -131,7 +136,7 @@ final class JavacInheritedMemberObserver {
                 }
                 Element enclosing = member.getEnclosingElement();
                 if (!(enclosing instanceof TypeElement declaringType)) {
-                    return Result.incomplete();
+                    return incomplete(classifiers, "javac member has no declaring classifier");
                 }
                 SourceLocation ownerLocation = sourceLocation(root, trees, declaringType);
                 if (ownerLocation == null) {
@@ -141,28 +146,75 @@ final class JavacInheritedMemberObserver {
                 ClassifierObservation owner = classifiersByLocation.get(
                         new TypeLocator(ownerLocation.path(), ownerLocation.line()));
                 if (owner == null) {
-                    return Result.incomplete();
+                    return incomplete(classifiers, "javac declaration owner is outside the canonical source graph");
                 }
                 if (owner.id().equals(classifier.id())) {
                     continue;
                 }
                 SourceLocation memberLocation = sourceLocation(root, trees, member);
                 if (memberLocation == null) {
-                    return Result.incomplete();
+                    return incomplete(classifiers, "javac member has no canonical source location");
                 }
                 MemberLocator locator = new MemberLocator(
                         owner.id(), kind, member.getSimpleName().toString());
                 MemberObservation declaration = uniqueDeclaration(
                         membersByLocation.get(locator), member, types);
                 if (declaration == null) {
-                    return Result.incomplete();
+                    return incomplete(classifiers, "javac member declaration could not be mapped uniquely");
                 }
                 inherited.add(declaration.technicalKey());
             }
             inheritedByClassifier.put(
                     classifier.id(), inherited.stream().sorted().toList());
         }
-        return new Result(true, Map.copyOf(inheritedByClassifier));
+        return new Result(true, Map.copyOf(inheritedByClassifier), List.of());
+    }
+
+    private static Result incomplete(List<ClassifierObservation> classifiers, String message) {
+        String sourcePath = classifiers.isEmpty() ? "<unknown>.java" : classifiers.get(0).sourcePath();
+        return Result.incomplete(sourcePath, message);
+    }
+
+    private static List<ObservationDiagnostic> evidenceDiagnostics(
+            Path root,
+            List<Path> files,
+            DiagnosticCollector<JavaFileObject> collector) {
+        String fallback = relativePath(root, files.get(0));
+        return collector.getDiagnostics().stream()
+                .filter(item -> item.getKind() == Diagnostic.Kind.ERROR)
+                .map(item -> new ObservationDiagnostic(
+                        DiagnosticKind.EVIDENCE_INCOMPLETE,
+                        diagnosticPath(root, item.getSource(), fallback),
+                        item.getLineNumber() < 0 ? 0 : Math.toIntExact(item.getLineNumber()),
+                        normalizedMessage(root, item.getMessage(java.util.Locale.ROOT))))
+                .distinct()
+                .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
+                        .thenComparingInt(ObservationDiagnostic::line)
+                        .thenComparing(ObservationDiagnostic::message))
+                .toList();
+    }
+
+    private static String diagnosticPath(Path root, JavaFileObject source, String fallback) {
+        if (source == null) {
+            return fallback;
+        }
+        try {
+            Path path = Path.of(source.toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
+            return path.startsWith(root) ? relativePath(root, path) : fallback;
+        } catch (IOException | RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
+    private static String normalizedMessage(Path root, String message) {
+        String text = message == null || message.isBlank()
+                ? "javac could not complete inherited-member observation" : message;
+        return text.replace(root.toAbsolutePath().normalize().toString(), ".")
+                .replace('\r', ' ').trim();
+    }
+
+    private static String relativePath(Path root, Path path) {
+        return root.relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/');
     }
 
     private static Map<TypeLocator, List<TypeElement>> collectTypes(
@@ -240,13 +292,22 @@ final class JavacInheritedMemberObserver {
         };
     }
 
-    record Result(boolean complete, Map<String, List<String>> inheritedByClassifier) {
+    record Result(
+            boolean complete,
+            Map<String, List<String>> inheritedByClassifier,
+            List<ObservationDiagnostic> diagnostics) {
         Result {
             inheritedByClassifier = Map.copyOf(inheritedByClassifier);
+            diagnostics = List.copyOf(diagnostics);
         }
 
         static Result incomplete() {
-            return new Result(false, Map.of());
+            return new Result(false, Map.of(), List.of());
+        }
+
+        static Result incomplete(String sourcePath, String message) {
+            return new Result(false, Map.of(), List.of(new ObservationDiagnostic(
+                    DiagnosticKind.EVIDENCE_INCOMPLETE, sourcePath, 0, message)));
         }
     }
 

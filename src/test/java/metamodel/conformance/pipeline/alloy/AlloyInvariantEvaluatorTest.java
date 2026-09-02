@@ -178,7 +178,7 @@ class AlloyInvariantEvaluatorTest {
                 isolatedId, "example.Isolated", ClassifierKind.CLASS,
                 "example/A.java", 3, 3, List.of());
         Observation observation = new Observation(
-                "5", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
+                "6", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
                 List.of(new SourceUnit(
                         Language.JAVA, "example/A.java", Hashing.sha256("source"))),
                 List.of(first, second, isolated), List.of(), List.of());

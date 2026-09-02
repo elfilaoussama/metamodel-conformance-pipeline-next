@@ -8,6 +8,7 @@ import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -75,6 +76,7 @@ public final class ObservationXmiReader {
                     observedIdentifier instanceof String text && !text.isBlank() ? text : null,
                     MemberKind.valueOf(value(member, "kind").toString()),
                     Inheritability.valueOf(value(member, "inheritability").toString()),
+                    MemberVisibility.valueOf(value(member, "visibility").toString()),
                     string(member, "memberName"),
                     string(member, "sourcePath"),
                     integer(member, "startLine"),
@@ -98,6 +100,7 @@ public final class ObservationXmiReader {
             classifiers.add(new ClassifierObservation(
                     string(classifier, "id"),
                     string(classifier, "qualifiedName"),
+                    string(classifier, "packageName"),
                     ClassifierKind.valueOf(value(classifier, "kind").toString()),
                     string(classifier, "sourcePath"),
                     integer(classifier, "startLine"),

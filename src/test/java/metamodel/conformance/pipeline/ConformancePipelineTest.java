@@ -71,6 +71,41 @@ class ConformancePipelineTest {
     }
 
     @Test
+    void evaluatesCrossPackageAccessibilityInAlloy() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("package-private-inheritance"),
+                temporary.resolve("package-private-inheritance"), Set.of());
+
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("inherited-view-consistency").status());
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("local-inherited-separation").status());
+        assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
+    }
+
+    @Test
+    void evaluatesSamePackageAccessibilityInAlloy() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("package-private-same-package"),
+                temporary.resolve("package-private-same-package"), Set.of());
+
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("inherited-view-consistency").status());
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("local-inherited-separation").status());
+    }
+
+    @Test
+    void doesNotResurrectPackagePrivateMembersAcrossAPackageBoundary() throws Exception {
+        PipelineResult result = pipeline.analyze(
+                fixture("package-private-broken-chain"),
+                temporary.resolve("package-private-broken-chain"), Set.of());
+
+        assertEquals(DecisionStatus.CONFORMANT,
+                result.invariant("inherited-view-consistency").status());
+    }
+
+    @Test
     void rejectsACorruptedCapsuleArtifact() throws Exception {
         PipelineResult result = pipeline.analyze(fixture("acyclic"), temporary.resolve("tampered"), Set.of());
         Files.writeString(result.alloyPath(), Files.readString(result.alloyPath()) + "\n// modified\n");
@@ -95,7 +130,7 @@ class ConformancePipelineTest {
         PipelineResult result = pipeline.analyze(
                 fixture("acyclic"), temporary.resolve("producer-drift"), Set.of());
         String capsule = Files.readString(result.capsulePath());
-        String changed = capsule.replace("\"toolVersion\" : \"0.8.0\"", "\"toolVersion\" : \"9.9.9\"");
+        String changed = capsule.replace("\"toolVersion\" : \"0.9.0\"", "\"toolVersion\" : \"9.9.9\"");
         assertFalse(capsule.equals(changed));
         Files.writeString(result.capsulePath(), changed);
 

@@ -32,6 +32,11 @@ declarations, while javac's language-model API resolves the inherited view. The
 pipeline does not derive both sides of the inherited-view invariant from the same
 algorithm.
 
+Visibility and package are canonical source facts. Contextual Java accessibility is
+derived in Alloy, including the requirement that package-private inheritance cannot
+cross and later re-enter a package boundary. Compiler failures are retained as
+evidence diagnostics rather than silently collapsing the inherited relation to empty.
+
 ## Security and determinism
 
 - Real paths must remain beneath the declared source root.

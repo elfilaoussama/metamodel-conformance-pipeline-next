@@ -39,9 +39,9 @@ Requirements: JDK 17 and Maven 3.9+.
 ```bash
 mvn verify
 mvn -q -DskipTests package
-java -jar target/metamodel-conformance-pipeline-next-0.8.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.9.0-SNAPSHOT.jar \
   analyze --source examples/acyclic --output build/acyclic
-java -jar target/metamodel-conformance-pipeline-next-0.8.0-SNAPSHOT.jar \
+java -jar target/metamodel-conformance-pipeline-next-0.9.0-SNAPSHOT.jar \
   verify-capsule --capsule build/acyclic/verification-capsule.json
 ```
 
@@ -73,10 +73,11 @@ provenance maps javac's semantic members back to the canonical declaration atoms
 `INHERITED_MEMBERS` is complete only when javac reports no errors and every internal
 type/member mapping is unique. Otherwise only invariants requiring that evidence
 return `NOT_EVALUATED`; an absent tuple is never treated as complete evidence.
-Declaration-level inheritability is complete only for context-independent cases:
-public/protected members are inheritable, private and interface-static members are
-not, and package-private members remain `UNKNOWN` because accessibility depends on
-the descendant package.
+The adapter records declaration visibility and classifier package independently.
+Alloy derives contextual accessibility, including package-private inheritance and
+mixed-package ancestor chains. Private and interface-static declarations remain
+non-inheritable. Javac's independently observed inherited view is compared with that
+formal derivation.
 
 ## Invariant extensibility
 
@@ -91,7 +92,8 @@ result. Java changes are needed only when a genuinely new kind of source evidenc
 or structural projection primitive must be supported—not when an invariant
 formula changes.
 
-The canonical EMF model retains member kind, name, inheritability, and complete
+The canonical EMF model retains member kind, name, visibility, declaring package,
+inheritability, and complete
 ordered parameter-type lists. The exact Alloy model preserves names, parameter
 positions, and parameter types as separate structural relations. Alloy—not
 Java—defines namespace-key equality. Future invariants may reuse this evidence;

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 class ObservationValidationTest {
     @Test
@@ -52,9 +53,31 @@ class ObservationValidationTest {
                 "missing/A.java", 1, 1, List.of());
 
         assertThrows(IllegalArgumentException.class, () -> new Observation(
-                "5", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
+                "6", "test-adapter", "1.0.0", List.of(), Set.of(EvidenceKind.HIERARCHY),
                 List.of(new SourceUnit(
                         Language.JAVA, "present/A.java", Hashing.sha256("source"))),
                 List.of(classifier), List.of(), List.of()));
+    }
+
+    @Test
+    void allowsEvidenceDiagnosticsAlongsideIndependentCompleteEvidence() {
+        Observation base = TestObservations.acyclic();
+        assertDoesNotThrow(() -> new Observation(
+                base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
+                base.completeEvidence(), base.units(), base.classifiers(), base.members(),
+                base.unresolvedParents(), List.of(new ObservationDiagnostic(
+                        DiagnosticKind.EVIDENCE_INCOMPLETE,
+                        base.units().get(0).path(), 0, "inherited view unavailable"))));
+    }
+
+    @Test
+    void parseDiagnosticsStillForbidAllCompletenessClaims() {
+        Observation base = TestObservations.acyclic();
+        assertThrows(IllegalArgumentException.class, () -> new Observation(
+                base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
+                base.completeEvidence(), base.units(), base.classifiers(), base.members(),
+                base.unresolvedParents(), List.of(new ObservationDiagnostic(
+                        DiagnosticKind.PARSE_ERROR,
+                        base.units().get(0).path(), 1, "invalid Java source"))));
     }
 }

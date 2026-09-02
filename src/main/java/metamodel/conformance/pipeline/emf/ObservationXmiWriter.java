@@ -3,6 +3,7 @@ package metamodel.conformance.pipeline.emf;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -74,6 +75,7 @@ public final class ObservationXmiWriter {
         EList<EObject> members = (EList<EObject>) root.eGet(feature(root, "members"));
         EEnum memberKind = (EEnum) ePackage.getEClassifier("MemberKind");
         EEnum inheritability = (EEnum) ePackage.getEClassifier("Inheritability");
+        EEnum visibility = (EEnum) ePackage.getEClassifier("MemberVisibility");
         for (MemberObservation source : observation.members()) {
             EObject member = ePackage.getEFactoryInstance().create(schema.classifier("Member"));
             set(member, "technicalKey", source.technicalKey());
@@ -83,6 +85,8 @@ public final class ObservationXmiWriter {
             set(member, "kind", memberKind.getEEnumLiteral(source.kind().name()).getInstance());
             set(member, "inheritability",
                     inheritability.getEEnumLiteral(source.inheritability().name()).getInstance());
+            set(member, "visibility",
+                    visibility.getEEnumLiteral(source.visibility().name()).getInstance());
             set(member, "memberName", source.memberName());
             set(member, "sourcePath", source.sourcePath());
             set(member, "startLine", source.startLine());
@@ -99,6 +103,7 @@ public final class ObservationXmiWriter {
             EObject classifier = ePackage.getEFactoryInstance().create(schema.classifier("Classifier"));
             set(classifier, "id", source.id());
             set(classifier, "qualifiedName", source.qualifiedName());
+            set(classifier, "packageName", source.packageName());
             set(classifier, "kind", kind.getEEnumLiteral(source.kind().name()).getInstance());
             set(classifier, "sourcePath", source.sourcePath());
             set(classifier, "startLine", source.startLine());

@@ -6,6 +6,7 @@ import java.util.Objects;
 public record ClassifierObservation(
         String id,
         String qualifiedName,
+        String packageName,
         ClassifierKind kind,
         String sourcePath,
         int startLine,
@@ -17,6 +18,7 @@ public record ClassifierObservation(
     public ClassifierObservation {
         id = CanonicalObservationValue.technicalId(id, "cls_", "id");
         qualifiedName = requireText(qualifiedName, "qualifiedName");
+        packageName = requireText(packageName, "packageName");
         kind = Objects.requireNonNull(kind, "kind");
         sourcePath = CanonicalObservationValue.relativePath(sourcePath, "sourcePath");
         if (startLine < 1 || endLine < startLine) {
@@ -38,7 +40,7 @@ public record ClassifierObservation(
             int endLine,
             List<String> parentIds,
             List<String> declaredMemberKeys) {
-        this(id, qualifiedName, kind, sourcePath, startLine, endLine,
+        this(id, qualifiedName, inferredPackage(qualifiedName), kind, sourcePath, startLine, endLine,
                 parentIds, declaredMemberKeys, List.of());
     }
 
@@ -49,9 +51,28 @@ public record ClassifierObservation(
             String sourcePath,
             int startLine,
             int endLine,
+            List<String> parentIds,
+            List<String> declaredMemberKeys,
+            List<String> inheritedMemberKeys) {
+        this(id, qualifiedName, inferredPackage(qualifiedName), kind, sourcePath, startLine, endLine,
+                parentIds, declaredMemberKeys, inheritedMemberKeys);
+    }
+
+    public ClassifierObservation(
+            String id,
+            String qualifiedName,
+            ClassifierKind kind,
+            String sourcePath,
+            int startLine,
+            int endLine,
             List<String> parentIds) {
-        this(id, qualifiedName, kind, sourcePath, startLine, endLine,
+        this(id, qualifiedName, inferredPackage(qualifiedName), kind, sourcePath, startLine, endLine,
                 parentIds, List.of(), List.of());
+    }
+
+    private static String inferredPackage(String qualifiedName) {
+        int separator = qualifiedName == null ? -1 : qualifiedName.lastIndexOf('.');
+        return separator < 0 ? "<default>" : qualifiedName.substring(0, separator);
     }
 
     private static String requireText(String value, String name) {

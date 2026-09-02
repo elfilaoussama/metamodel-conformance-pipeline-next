@@ -9,6 +9,7 @@ import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
@@ -49,7 +50,7 @@ import java.util.stream.Stream;
 
 public final class SpoonJavaObserver implements SourceObserver {
     public static final String ADAPTER_ID = "spoon-java";
-    public static final String ADAPTER_VERSION = "0.8.0";
+    public static final String ADAPTER_VERSION = "0.9.0";
     private static final Set<String> PLATFORM_ROOTS = Set.of(
             "java.lang.Object",
             "java.lang.Record",
@@ -83,7 +84,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                 String id = stableId(path, kind, type.getQualifiedName());
                 SourcePosition position = type.getPosition();
                 TypeDraft draft = new TypeDraft(
-                        type, id, path, kind, position.getLine(), position.getEndLine());
+                        type, id, path, packageName(type), kind, position.getLine(), position.getEndLine());
                 draftsById.put(id, draft);
                 draftsByQualifiedName.computeIfAbsent(type.getQualifiedName(), ignored -> new ArrayList<>())
                         .add(draft);
@@ -113,6 +114,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         MemberObservation member = memberObservation(
                                 root, draft, MemberKind.METHOD, method.getSimpleName(),
                                 inheritability(draft.type(), method),
+                                visibility(draft.type(), method),
                                 method.getPosition(), parameterTypes);
                         inheritabilityComplete &= member.inheritability() != Inheritability.UNKNOWN;
                         members.add(member);
@@ -121,6 +123,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                         MemberObservation member = memberObservation(
                                 root, draft, MemberKind.ATTRIBUTE, field.getSimpleName(),
                                 inheritability(draft.type(), field),
+                                visibility(draft.type(), field),
                                 field.getPosition(), List.of());
                         inheritabilityComplete &= member.inheritability() != Inheritability.UNKNOWN;
                         members.add(member);
@@ -149,7 +152,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                     }
                 }
                 classifiers.add(new ClassifierObservation(
-                        draft.id(), draft.type().getQualifiedName(), draft.kind(), draft.path(),
+                        draft.id(), draft.type().getQualifiedName(), draft.packageName(), draft.kind(), draft.path(),
                         draft.startLine(), draft.endLine(), List.copyOf(parentIds),
                         memberKeysByOwner.getOrDefault(draft.id(), List.of())));
             }
@@ -157,7 +160,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                     ? new JavacInheritedMemberObserver().observe(root, files, classifiers, members)
                     : JavacInheritedMemberObserver.Result.incomplete();
             classifiers = classifiers.stream().map(classifier -> new ClassifierObservation(
-                    classifier.id(), classifier.qualifiedName(), classifier.kind(),
+                    classifier.id(), classifier.qualifiedName(), classifier.packageName(), classifier.kind(),
                     classifier.sourcePath(), classifier.startLine(), classifier.endLine(),
                     classifier.parentIds(), classifier.declaredMemberKeys(),
                     inherited.inheritedByClassifier().getOrDefault(classifier.id(), List.of())))
@@ -178,9 +181,11 @@ public final class SpoonJavaObserver implements SourceObserver {
                     completeEvidence.add(EvidenceKind.INHERITED_MEMBERS);
                 }
             }
+            List<ObservationDiagnostic> diagnostics = new ArrayList<>(build.diagnostics());
+            diagnostics.addAll(inherited.diagnostics());
             return new Observation(
-                    "5", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
-                    units, classifiers, members, unresolved, build.diagnostics());
+                    "6", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    units, classifiers, members, unresolved, diagnostics);
         } catch (ObservationException exception) {
             throw exception;
         } catch (RuntimeException | IOException exception) {
@@ -317,6 +322,11 @@ public final class SpoonJavaObserver implements SourceObserver {
         return relativePath(root, source);
     }
 
+    private static String packageName(CtType<?> type) {
+        String value = type.getPackage() == null ? null : type.getPackage().getQualifiedName();
+        return value == null || value.isBlank() ? "<default>" : value;
+    }
+
     private static int referenceLine(CtTypeReference<?> reference, int fallback) {
         return reference.getPosition().isValidPosition() ? reference.getPosition().getLine() : fallback;
     }
@@ -335,6 +345,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             MemberKind kind,
             String memberName,
             Inheritability inheritability,
+            MemberVisibility visibility,
             SourcePosition position,
             List<String> parameterTypes) throws IOException, ObservationException {
         Path source = position.getFile().toPath().toRealPath(LinkOption.NOFOLLOW_LINKS);
@@ -350,6 +361,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                 null,
                 kind,
                 inheritability,
+                visibility,
                 memberName,
                 path,
                 position.getLine(),
@@ -364,16 +376,25 @@ public final class SpoonJavaObserver implements SourceObserver {
         if (owner instanceof CtInterface<?> && member.hasModifier(ModifierKind.STATIC)) {
             return Inheritability.NOT_INHERITABLE;
         }
-        if (owner instanceof CtInterface<?>
-                || member.hasModifier(ModifierKind.PUBLIC)
-                || member.hasModifier(ModifierKind.PROTECTED)) {
-            return Inheritability.INHERITABLE;
+        return Inheritability.INHERITABLE;
+    }
+
+    private static MemberVisibility visibility(CtType<?> owner, CtModifiable member) {
+        if (member.hasModifier(ModifierKind.PRIVATE)) {
+            return MemberVisibility.PRIVATE;
         }
-        return Inheritability.UNKNOWN;
+        if (member.hasModifier(ModifierKind.PROTECTED)) {
+            return MemberVisibility.PROTECTED;
+        }
+        if (owner instanceof CtInterface<?> || member.hasModifier(ModifierKind.PUBLIC)) {
+            return MemberVisibility.PUBLIC;
+        }
+        return MemberVisibility.PACKAGE;
     }
 
     private record TypeDraft(
-            CtType<?> type, String id, String path, ClassifierKind kind, int startLine, int endLine) {
+            CtType<?> type, String id, String path, String packageName,
+            ClassifierKind kind, int startLine, int endLine) {
     }
 
     private record BuildResult(List<CtType<?>> types, List<ObservationDiagnostic> diagnostics) {

@@ -8,6 +8,7 @@ public record MemberObservation(
         String observedIdentifier,
         MemberKind kind,
         Inheritability inheritability,
+        MemberVisibility visibility,
         String memberName,
         String sourcePath,
         int startLine,
@@ -21,6 +22,7 @@ public record MemberObservation(
                 ? null : observedIdentifier;
         kind = Objects.requireNonNull(kind, "kind");
         inheritability = Objects.requireNonNull(inheritability, "inheritability");
+        visibility = Objects.requireNonNull(visibility, "visibility");
         memberName = requireText(memberName, "memberName");
         sourcePath = CanonicalObservationValue.relativePath(sourcePath, "sourcePath");
         if (startLine < 1 || endLine < startLine) {
@@ -39,12 +41,26 @@ public record MemberObservation(
             String technicalKey,
             String observedIdentifier,
             MemberKind kind,
+            Inheritability inheritability,
             String memberName,
             String sourcePath,
             int startLine,
             int endLine,
             List<String> parameterTypes) {
-        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, memberName,
+        this(technicalKey, observedIdentifier, kind, inheritability, MemberVisibility.PUBLIC,
+                memberName, sourcePath, startLine, endLine, parameterTypes);
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes) {
+        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, MemberVisibility.PUBLIC, memberName,
                 sourcePath, startLine, endLine, parameterTypes);
     }
 

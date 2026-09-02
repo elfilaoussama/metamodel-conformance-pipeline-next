@@ -16,15 +16,33 @@ pred nearerAncestorMemberHides[c, owner : Classifier, inherited : Member] {
   some nearer : c.^parents - owner |
     owner in nearer.^parents and
     some replacement : nearer.declaredMembers |
-      replacement.inheritability = INHERITABLE and
+      memberAccessibleFrom[c, nearer, replacement] and
       sameMemberKey[replacement, inherited]
+}
+
+pred samePackageInheritancePath[c, owner : Classifier] {
+  c.packageName = owner.packageName and
+  owner in c.^({ from, to : Classifier |
+    to in from.parents and
+    from.packageName = owner.packageName and
+    to.packageName = owner.packageName
+  })
+}
+
+pred memberAccessibleFrom[c, owner : Classifier, member : Member] {
+  member.inheritability = INHERITABLE and
+  (
+    member.visibility = PUBLIC or
+    member.visibility = PROTECTED or
+    (member.visibility = PACKAGE and samePackageInheritancePath[c, owner])
+  )
 }
 
 fun formalInheritedMembers[c : Classifier] : set Member {
   { inherited : Member |
     some owner : c.^parents |
       inherited in owner.declaredMembers and
-      inherited.inheritability = INHERITABLE and
+      memberAccessibleFrom[c, owner, inherited] and
       not localMemberHides[c, inherited] and
       not nearerAncestorMemberHides[c, owner, inherited]
   }

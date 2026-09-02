@@ -24,6 +24,8 @@ public final class ExactAlloyEncoder {
                 .map(MemberObservation::memberName).toList(), "N_");
         Map<String, String> typeAtoms = tokens(observation.members().stream()
                 .flatMap(member -> member.parameterTypes().stream()).toList(), "T_");
+        Map<String, String> packageAtoms = tokens(observation.classifiers().stream()
+                .map(ClassifierObservation::packageName).toList(), "PKG_");
         int positionCount = observation.members().stream()
                 .mapToInt(member -> member.parameterTypes().size()).max().orElse(0);
 
@@ -32,18 +34,23 @@ public final class ExactAlloyEncoder {
         alloy.append("abstract sig Classifier {\n")
                 .append("  parents: set Classifier,\n")
                 .append("  declaredMembers: set Member,\n")
-                .append("  observedInheritedMembers: set Member\n")
+                .append("  observedInheritedMembers: set Member,\n")
+                .append("  packageName: one PackageToken\n")
                 .append("}\n");
         alloy.append("abstract sig MemberKind {}\n")
                 .append("one sig METHOD, ATTRIBUTE extends MemberKind {}\n")
                 .append("abstract sig Inheritability {}\n")
                 .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
+                .append("abstract sig MemberVisibility {}\n")
+                .append("one sig PUBLIC, PROTECTED, PACKAGE, PRIVATE extends MemberVisibility {}\n")
+                .append("abstract sig PackageToken {}\n")
                 .append("abstract sig NameToken {}\n")
                 .append("abstract sig TypeToken {}\n")
                 .append("abstract sig PositionToken {}\n")
                 .append("abstract sig Member {\n")
                 .append("  kind: one MemberKind,\n")
                 .append("  inheritability: one Inheritability,\n")
+                .append("  visibility: one MemberVisibility,\n")
                 .append("  memberName: one NameToken,\n")
                 .append("  parameterTypeAt: PositionToken -> lone TypeToken\n")
                 .append("}\n\n");
@@ -56,6 +63,8 @@ public final class ExactAlloyEncoder {
                 .append(" extends NameToken {}\n"));
         typeAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
                 .append(" extends TypeToken {}\n"));
+        packageAtoms.values().forEach(atom -> alloy.append("one sig ").append(atom)
+                .append(" extends PackageToken {}\n"));
         for (int position = 0; position < positionCount; position++) {
             alloy.append("one sig P_").append(position).append(" extends PositionToken {}\n");
         }
@@ -64,14 +73,16 @@ public final class ExactAlloyEncoder {
         relation(alloy, "parents", parentEdges(observation));
         relation(alloy, "declaredMembers", declarationEdges(observation));
         relation(alloy, "observedInheritedMembers", inheritedMembershipEdges(observation));
+        relation(alloy, "packageName", packageEdges(observation, packageAtoms));
         relation(alloy, "kind", kindEdges(observation));
         relation(alloy, "inheritability", inheritabilityEdges(observation));
+        relation(alloy, "visibility", visibilityEdges(observation));
         relation(alloy, "memberName", nameEdges(observation, nameAtoms));
         relation(alloy, "parameterTypeAt", parameterTypeEdges(observation, typeAtoms));
         alloy.append("}\n\n");
         alloy.append(loadRules()).append('\n');
 
-        String scope = scope(observation, nameAtoms.size(), typeAtoms.size(), positionCount);
+        String scope = scope(observation, nameAtoms.size(), typeAtoms.size(), packageAtoms.size(), positionCount);
         alloy.append("run ObservationConsistency ").append(scope).append('\n');
         return alloy.toString();
     }
@@ -141,6 +152,17 @@ public final class ExactAlloyEncoder {
                 + member.inheritability().name()).toList();
     }
 
+    private static List<String> visibilityEdges(Observation observation) {
+        return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
+                + member.visibility().name()).toList();
+    }
+
+    private static List<String> packageEdges(
+            Observation observation, Map<String, String> packageAtoms) {
+        return observation.classifiers().stream().map(classifier -> classifierAtom(classifier.id()) + "->"
+                + packageAtoms.get(classifier.packageName())).toList();
+    }
+
     private static List<String> nameEdges(Observation observation, Map<String, String> nameAtoms) {
         return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
                 + nameAtoms.get(member.memberName())).toList();
@@ -176,11 +198,11 @@ public final class ExactAlloyEncoder {
     }
 
     private static String scope(
-            Observation observation, int nameCount, int typeCount, int positionCount) {
+            Observation observation, int nameCount, int typeCount, int packageCount, int positionCount) {
         return "for exactly " + observation.classifiers().size() + " Classifier, exactly "
                 + observation.members().size() + " Member, exactly " + nameCount
                 + " NameToken, exactly " + typeCount + " TypeToken, exactly "
-                + positionCount + " PositionToken";
+                + packageCount + " PackageToken, exactly " + positionCount + " PositionToken";
     }
 
     private static String loadRules() {

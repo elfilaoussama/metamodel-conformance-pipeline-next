@@ -161,7 +161,7 @@ public final class TestObservations {
     private static Observation observation(
             List<ClassifierObservation> classifiers, List<UnresolvedParent> unresolved) {
         return new Observation(
-                "5", "test-adapter", "1.0.0", List.of(),
+                "6", "test-adapter", "1.0.0", List.of(),
                 sourceUnits(classifiers, List.of()),
                 classifiers,
                 unresolved);
@@ -172,7 +172,7 @@ public final class TestObservations {
             List<MemberObservation> members,
             Set<EvidenceKind> evidence) {
         return new Observation(
-                "5", "test-adapter", "1.0.0", List.of(), evidence,
+                "6", "test-adapter", "1.0.0", List.of(), evidence,
                 sourceUnits(classifiers, members),
                 classifiers, members, List.of());
     }

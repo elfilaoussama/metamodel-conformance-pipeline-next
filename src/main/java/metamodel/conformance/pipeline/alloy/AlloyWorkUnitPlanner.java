@@ -121,7 +121,7 @@ final class AlloyWorkUnitPlanner {
         List<ClassifierObservation> classifiers = source.classifiers().stream()
                 .filter(item -> classifierIds.contains(item.id()))
                 .map(item -> new ClassifierObservation(
-                        item.id(), item.qualifiedName(), item.kind(), item.sourcePath(),
+                        item.id(), item.qualifiedName(), item.packageName(), item.kind(), item.sourcePath(),
                         item.startLine(), item.endLine(),
                         relations.contains(ProjectionRelation.PARENTS)
                                 ? retained(item.parentIds(), classifierIds) : List.of(),

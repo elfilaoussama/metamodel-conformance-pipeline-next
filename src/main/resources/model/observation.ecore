@@ -4,7 +4,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="urn:metamodel-conformance:observation:5"
+    nsURI="urn:metamodel-conformance:observation:6"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
@@ -33,8 +33,15 @@
     <eLiterals name="NOT_INHERITABLE" value="1"/>
     <eLiterals name="UNKNOWN" value="2"/>
   </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="MemberVisibility">
+    <eLiterals name="PUBLIC"/>
+    <eLiterals name="PROTECTED" value="1"/>
+    <eLiterals name="PACKAGE" value="2"/>
+    <eLiterals name="PRIVATE" value="3"/>
+  </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="DiagnosticKind">
     <eLiterals name="PARSE_ERROR"/>
+    <eLiterals name="EVIDENCE_INCOMPLETE" value="1"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="ObservationSet">
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="schemaVersion" lowerBound="1"
@@ -71,6 +78,8 @@
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="qualifiedName" lowerBound="1"
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="packageName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="kind" lowerBound="1"
         eType="#//ClassifierKind"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePath" lowerBound="1"
@@ -95,6 +104,8 @@
         eType="#//MemberKind"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="inheritability" lowerBound="1"
         eType="#//Inheritability"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="visibility" lowerBound="1"
+        eType="#//MemberVisibility"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="memberName" lowerBound="1"
         eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePath" lowerBound="1"

@@ -3,6 +3,8 @@ package metamodel.conformance.pipeline.adapter.java;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
+import metamodel.conformance.pipeline.model.MemberVisibility;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
 import org.junit.jupiter.api.Test;
 
 import java.net.URISyntaxException;
@@ -138,18 +140,51 @@ class SpoonJavaObserverTest {
     }
 
     @Test
-    void withholdsGlobalInheritabilityForPackagePrivateDeclarations() throws Exception {
+    void observesPackagePrivateAccessibilityWithoutGuessingCrossPackageInheritance() throws Exception {
         Observation observation = observer.observe(fixture("package-private-inheritance"), Set.of());
         var child = observation.classifiers().stream()
                 .filter(item -> item.qualifiedName().equals("child.Child"))
                 .findFirst().orElseThrow();
 
         assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
-        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITABILITY));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.INHERITABILITY));
         assertTrue(child.inheritedMemberKeys().isEmpty());
         assertTrue(observation.members().stream()
                 .filter(member -> member.memberName().equals("packageOnly"))
-                .allMatch(member -> member.inheritability() == Inheritability.UNKNOWN));
+                .allMatch(member -> member.inheritability() == Inheritability.INHERITABLE
+                        && member.visibility() == MemberVisibility.PACKAGE));
+        assertEquals("base", observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("base.Base"))
+                .findFirst().orElseThrow().packageName());
+        assertEquals("child", child.packageName());
+    }
+
+    @Test
+    void recordsWhyJavacEvidenceIsIncompleteWithoutDiscardingIndependentFacts() throws Exception {
+        Observation observation = observer.observe(fixture("unresolved"), Set.of());
+
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
+        assertTrue(observation.diagnostics().stream()
+                .anyMatch(item -> item.kind() == DiagnosticKind.EVIDENCE_INCOMPLETE
+                        && !item.message().isBlank()));
+    }
+
+    @Test
+    void observesSamePackagePackagePrivateInheritance() throws Exception {
+        Observation observation = observer.observe(fixture("package-private-same-package"), Set.of());
+        var child = observation.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("example.Child"))
+                .findFirst().orElseThrow();
+        var packageMember = observation.members().stream()
+                .filter(item -> item.memberName().equals("packageOnly"))
+                .findFirst().orElseThrow();
+
+        assertTrue(observation.completeEvidence().containsAll(Set.of(
+                EvidenceKind.HIERARCHY, EvidenceKind.INHERITABILITY, EvidenceKind.INHERITED_MEMBERS)));
+        assertEquals(MemberVisibility.PACKAGE, packageMember.visibility());
+        assertTrue(child.inheritedMemberKeys().contains(packageMember.technicalKey()));
     }
 
     @Test
