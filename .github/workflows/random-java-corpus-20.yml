@@ -76,21 +76,80 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: "??-*"
           path: corpus-artifacts
-      - name: Aggregate all results
+      - name: Aggregate and enforce corpus regression contract
+        shell: bash
         run: |
+          set -euo pipefail
+
           mapfile -d '' reports < <(find corpus-artifacts -name report.json -print0 | sort -z)
           if [[ ${#reports[@]} -ne 20 ]]; then
             echo "expected 20 reports, found ${#reports[@]}" >&2
             exit 1
           fi
+
+          jq -r '.invariants[].id' src/main/resources/invariants/registry.json \
+            | sort > expected-invariants.txt
+
+          failures=0
+          for report in "${reports[@]}"; do
+            repository="$(jq -r '.repository' "${report}")"
+            outcome="$(jq -r '.toolOutcome' "${report}")"
+            verification_exit="$(jq -r '.verificationExit' "${report}")"
+
+            if [[ "${outcome}" != "ANALYZED" || "${verification_exit}" != "0" ]]; then
+              echo "${repository}: expected ANALYZED with a valid replayable capsule; got ${outcome}, verificationExit=${verification_exit}" >&2
+              failures=$((failures + 1))
+            fi
+
+            jq -r '.decisions[].invariantId' "${report}" | sort > actual-invariants.txt
+            if ! diff -u expected-invariants.txt actual-invariants.txt >/dev/null; then
+              echo "${repository}: decision set does not match the current invariant registry" >&2
+              diff -u expected-invariants.txt actual-invariants.txt >&2 || true
+              failures=$((failures + 1))
+            fi
+          done
+
+          if [[ ${failures} -ne 0 ]]; then
+            echo "corpus regression contract failed for ${failures} check(s)" >&2
+            exit 1
+          fi
+
           jq -s 'sort_by(.repository)' "${reports[@]}" > random-java-20-summary.json
+          jq '
+            {
+              repositories: length,
+              javaFiles: (map(.javaFiles) | add),
+              analyzedRepositories: ([.[] | select(.toolOutcome == "ANALYZED")] | length),
+              diagnostics: (
+                [.[] | .observationDiagnostics[]?]
+                | group_by(.kind)
+                | map({key: .[0].kind, value: length})
+                | from_entries
+              ),
+              invariantResults: (
+                [.[] | .decisions[]]
+                | group_by(.invariantId)
+                | map({
+                    invariantId: .[0].invariantId,
+                    conformant: ([.[] | select(.status == "CONFORMANT")] | length),
+                    nonConformant: ([.[] | select(.status == "NON_CONFORMANT")] | length),
+                    notEvaluated: ([.[] | select(.status == "NOT_EVALUATED")] | length)
+                  })
+              )
+            }
+          ' random-java-20-summary.json > random-java-20-metrics.json
+
           jq -c '.[]' random-java-20-summary.json | sed 's/^/CORPUS_SUMMARY /'
+          jq -c . random-java-20-metrics.json | sed 's/^/CORPUS_METRICS /'
       - uses: actions/upload-artifact@v4
         with:
           name: random-java-20-summary
-          path: random-java-20-summary.json
+          path: |
+            random-java-20-summary.json
+            random-java-20-metrics.json
           if-no-files-found: error
