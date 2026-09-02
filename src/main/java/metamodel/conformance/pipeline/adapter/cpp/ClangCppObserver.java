@@ -129,9 +129,6 @@ public final class ClangCppObserver implements SourceObserver {
                         unitsByPath, physicalHashes, coveredProjectFiles);
             }
 
-            // Headers reached by a successful translation unit are already represented by that
-            // compiler invocation. Compile only uncovered headers independently so header-only
-            // libraries and orphan declarations are not silently omitted.
             for (Path header : files.stream()
                     .filter(path -> !isSourcePath(path.getFileName().toString()))
                     .filter(path -> !coveredProjectFiles.contains(path))
@@ -160,12 +157,9 @@ public final class ClangCppObserver implements SourceObserver {
                     if (internal.size() == 1) {
                         parentIds.add(internal.get(0).id());
                     } else if (internal.size() > 1) {
-                        // An external allowlist must never hide an ambiguous internal identity.
                         unresolved.add(new UnresolvedParent(
                                 draft.id(), base.targetName(), draft.path(), positiveLine(base.line(), draft.line())));
                     } else if (base.templateContext()) {
-                        // A template-context base may depend on a template parameter even when its
-                        // textual spelling looks like an ordinary identifier. Do not externalize it.
                         unresolved.add(new UnresolvedParent(
                                 draft.id(), base.targetName(), draft.path(), positiveLine(base.line(), draft.line())));
                         diagnostics.add(new ObservationDiagnostic(
@@ -194,8 +188,7 @@ public final class ClangCppObserver implements SourceObserver {
                 hierarchyIncomplete = true;
             }
 
-            String evidencePath = files.isEmpty() ? unitsByPath.keySet().stream().sorted().findFirst().orElseThrow()
-                    : relativePath(root, files.get(0));
+            String evidencePath = relativePath(root, files.get(0));
             diagnostics.add(new ObservationDiagnostic(
                     DiagnosticKind.EVIDENCE_INCOMPLETE,
                     evidencePath,
@@ -543,8 +536,6 @@ public final class ClangCppObserver implements SourceObserver {
         if (closing < 0 || !onlyCommentsAndWhitespace(text.substring(directives.get(closing).end()))) {
             return -1;
         }
-        // Mark the outer start as ignorable. The scanner still sees and rejects any nested
-        // conditional directives inside the guard body.
         return 0;
     }
 
@@ -781,6 +772,7 @@ public final class ClangCppObserver implements SourceObserver {
         private final List<ObservationDiagnostic> diagnostics;
         private final List<Draft> drafts = new ArrayList<>();
         private final Map<Path, byte[]> bytes = new HashMap<>();
+        private String lastLocationFile;
         private boolean incomplete;
 
         private AstCollector(Path root, List<ObservationDiagnostic> diagnostics) {
@@ -973,7 +965,15 @@ public final class ClangCppObserver implements SourceObserver {
         private String sourceFile(JsonNode location, String inheritedFile) throws IOException {
             String raw = locationFile(location);
             if (raw == null || raw.isBlank()) {
-                return inheritedFile;
+                if (inheritedFile != null) {
+                    return inheritedFile;
+                }
+                raw = lastLocationFile;
+            } else {
+                lastLocationFile = raw;
+            }
+            if (raw == null || raw.isBlank()) {
+                return null;
             }
             if (raw.startsWith("<") && raw.endsWith(">")) {
                 return null;
