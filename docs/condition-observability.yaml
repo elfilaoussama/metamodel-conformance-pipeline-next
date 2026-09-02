@@ -1,0 +1,53 @@
+schemaVersion: "2"
+evidence:
+  HIERARCHY:
+    description: Direct parent edges are complete for the declared source boundary.
+  DECLARATION_OWNERSHIP:
+    description: Every parsed member declaration and declaring classifier association was observed.
+  LOCAL_SIGNATURES:
+    description: Member names and ordered method parameter types were observed canonically.
+  INHERITABILITY:
+    description: The frontend classified whether each declaration participates in inheritance.
+  INHERITED_MEMBERS:
+    description: The frontend independently resolved inherited member memberships within the configured source boundary.
+
+conditions:
+  O-01:
+    status: DEFERRED
+    reason: Extractor-generated technical keys are not independent source identities.
+  O-02:
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP]
+    witness: MEMBER
+  O-03:
+    status: EVALUABLE
+    requires: [HIERARCHY]
+    witness: CLASSIFIER
+  O-04:
+    status: EVALUABLE
+    requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, INHERITED_MEMBERS]
+    witness: CLASSIFIER_MEMBER_PAIR
+    reason: Evaluated only when the independent javac inherited-member observation is complete.
+  O-05:
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP, INHERITED_MEMBERS]
+    witness: CLASSIFIER_MEMBER_PAIR
+    reason: Evaluated only when the independent javac inherited-member observation is complete.
+  O-06:
+    status: DEFERRED
+    reason: Requires independently observed bodies and implementation bindings.
+  O-07:
+    status: DEFERRED
+    reason: Requires direct-instance and implementation-completeness evidence.
+  O-08-local:
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP, LOCAL_SIGNATURES]
+    witness: MEMBER
+  O-08-inherited:
+    status: EVALUABLE
+    requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, INHERITED_MEMBERS]
+    witness: CLASSIFIER_MEMBER_PAIR
+    reason: Evaluated only when the independent inherited-member view is complete.
+  O-09:
+    status: DEFERRED
+    reason: Requires frontend-resolved override evidence.
