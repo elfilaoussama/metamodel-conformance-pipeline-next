@@ -1,5 +1,6 @@
 package metamodel.conformance.pipeline.adapter;
 
+import metamodel.conformance.pipeline.adapter.cpp.ClangCppObserver;
 import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
 import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
 import metamodel.conformance.pipeline.model.Language;
@@ -32,18 +33,21 @@ public final class SourceObserverFactory {
         return switch (language) {
             case JAVA -> new SpoonJavaObserver(dependencies);
             case PYTHON -> {
-                if (!dependencies.isEmpty()) {
-                    throw new IllegalArgumentException("--dependency-jar is only supported for Java sources");
-                }
+                rejectJavaDependencies(dependencies, "Python");
                 yield new PythonAstObserver();
             }
-            case CPP -> throw unavailable("cpp");
+            case CPP -> {
+                rejectJavaDependencies(dependencies, "C++");
+                yield new ClangCppObserver();
+            }
             case JAVA_ARCHIVE -> throw new IllegalArgumentException(
                     "JAVA_ARCHIVE is dependency evidence, not a source language");
         };
     }
 
-    private static IllegalArgumentException unavailable(String language) {
-        return new IllegalArgumentException("source observer unavailable for language: " + language);
+    private static void rejectJavaDependencies(List<Path> dependencies, String language) {
+        if (!dependencies.isEmpty()) {
+            throw new IllegalArgumentException("--dependency-jar is not supported for " + language + " sources");
+        }
     }
 }
