@@ -132,9 +132,10 @@ public final class PipelineCli {
                           [--external-parent <qualified-name>]... [--dependency-jar <path>]...
                   verify-capsule --capsule <verification-capsule.json>
 
-                Java remains the default source language. Python currently supports conservative
-                module-level classifier hierarchy observation. C++ remains reserved for its
-                dedicated observer and fails explicitly until that adapter is implemented.
+                Java remains the default source language. Python observes lexical class hierarchy
+                and source declaration ownership conservatively. C++ uses Clang under a fixed
+                C++17 source-only profile and currently claims only class/struct direct hierarchy.
+                Unsupported or configuration-dependent evidence remains NOT_EVALUATED.
 
                 Exit codes: 0 conformant/valid, 2 non-conformant, 3 not-evaluated/invalid, 64 usage.
                 """);

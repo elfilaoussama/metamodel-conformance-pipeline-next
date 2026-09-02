@@ -35,3 +35,7 @@ jobs:
   frozen-python-corpus:
     needs: build
     uses: ./.github/workflows/python-corpus-6.yml
+
+  frozen-cpp-corpus:
+    needs: build
+    uses: ./.github/workflows/cpp-corpus-4.yml
