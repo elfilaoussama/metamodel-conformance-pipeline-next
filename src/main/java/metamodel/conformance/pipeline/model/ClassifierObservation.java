@@ -34,6 +34,20 @@ public record ClassifierObservation(
     public ClassifierObservation(
             String id,
             String qualifiedName,
+            String packageName,
+            ClassifierKind kind,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parentIds,
+            List<String> declaredMemberKeys) {
+        this(id, qualifiedName, packageName, kind, sourcePath, startLine, endLine,
+                parentIds, declaredMemberKeys, List.of());
+    }
+
+    public ClassifierObservation(
+            String id,
+            String qualifiedName,
             ClassifierKind kind,
             String sourcePath,
             int startLine,
