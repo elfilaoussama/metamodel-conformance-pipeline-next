@@ -36,13 +36,14 @@ import java.util.stream.Stream;
  * Conservative source-only Python observer for classifier hierarchy.
  *
  * <p>The bridge uses CPython's standard {@code ast} module and never imports or executes
- * the observed source. It observes module-level, nested, and local class declarations with
- * lexical source identities. Member-dependent evidence deliberately remains incomplete until
- * Python-specific visibility/signature/inheritance semantics are represented explicitly.</p>
+ * the observed source. Source declarations have independent definition identities; runtime
+ * name bindings are tracked separately so aliases and straight-line redefinitions can be
+ * resolved without collapsing distinct declarations. Member-dependent evidence deliberately
+ * remains incomplete until Python-specific semantics are represented explicitly.</p>
  */
 public final class PythonAstObserver implements SourceObserver {
     public static final String ADAPTER_ID = "python-ast";
-    public static final String ADAPTER_VERSION = "0.2.0";
+    public static final String ADAPTER_VERSION = "0.3.0";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_BRIDGE_BYTES = (int) ArtifactLimits.MAX_XMI_BYTES;
     private static final String BRIDGE_SCRIPT = loadBridgeScript();
@@ -84,11 +85,14 @@ public final class PythonAstObserver implements SourceObserver {
                         diagnostic.path(), diagnostic.line(), diagnostic.message()));
             }
 
+            Map<String, TypeDraft> byDefinitionKey = new HashMap<>();
             Map<String, List<TypeDraft>> byQualifiedName = new HashMap<>();
             List<TypeDraft> drafts = new ArrayList<>();
+            boolean hierarchyIncomplete = bridge.hierarchyIncomplete();
             for (BridgeClass item : safe(bridge.classes())) {
                 String id = stableId(item.path(), item.line(), item.qualifiedName());
                 TypeDraft draft = new TypeDraft(
+                        item.definitionKey(),
                         id,
                         item.qualifiedName(),
                         item.moduleName() == null || item.moduleName().isBlank()
@@ -98,21 +102,15 @@ public final class PythonAstObserver implements SourceObserver {
                         Math.max(item.line(), item.endLine()),
                         safe(item.bases()));
                 drafts.add(draft);
-                byQualifiedName.computeIfAbsent(draft.qualifiedName(), ignored -> new ArrayList<>()).add(draft);
-            }
-
-            boolean hierarchyIncomplete = bridge.hierarchyIncomplete();
-            for (Map.Entry<String, List<TypeDraft>> entry : byQualifiedName.entrySet()) {
-                if (entry.getValue().size() > 1) {
+                if (draft.definitionKey() == null || draft.definitionKey().isBlank()
+                        || byDefinitionKey.putIfAbsent(draft.definitionKey(), draft) != null) {
                     hierarchyIncomplete = true;
-                    TypeDraft first = entry.getValue().stream()
-                            .min(Comparator.comparing(TypeDraft::path).thenComparingInt(TypeDraft::line))
-                            .orElseThrow();
                     diagnostics.add(new ObservationDiagnostic(
                             DiagnosticKind.EVIDENCE_INCOMPLETE,
-                            first.path(), first.line(),
-                            "duplicate Python lexical classifier identity: " + entry.getKey()));
+                            draft.path(), draft.line(),
+                            "duplicate or missing Python source-definition identity"));
                 }
+                byQualifiedName.computeIfAbsent(draft.qualifiedName(), ignored -> new ArrayList<>()).add(draft);
             }
 
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
@@ -122,18 +120,33 @@ public final class PythonAstObserver implements SourceObserver {
                     .sorted(Comparator.comparing(TypeDraft::id)).toList()) {
                 LinkedHashSet<String> parentIds = new LinkedHashSet<>();
                 for (BridgeBase base : draft.bases()) {
-                    List<TypeDraft> internal = base.candidate() == null
-                            ? List.of() : byQualifiedName.getOrDefault(base.candidate(), List.of());
+                    if (base.definitionCandidate() != null) {
+                        TypeDraft internal = byDefinitionKey.get(base.definitionCandidate());
+                        if (internal != null) {
+                            parentIds.add(internal.id());
+                        } else {
+                            unresolved.add(new UnresolvedParent(
+                                    draft.id(), targetName(base), draft.path(),
+                                    positiveLine(base.line(), draft.line())));
+                        }
+                        continue;
+                    }
+
+                    List<TypeDraft> internal = base.qualifiedCandidate() == null
+                            ? List.of() : byQualifiedName.getOrDefault(base.qualifiedCandidate(), List.of());
                     if (internal.size() == 1) {
                         parentIds.add(internal.get(0).id());
                     } else if (internal.size() > 1) {
+                        // An external allowlist must never hide an ambiguous internal runtime binding.
                         unresolved.add(new UnresolvedParent(
-                                draft.id(), targetName(base), draft.path(), positiveLine(base.line(), draft.line())));
+                                draft.id(), targetName(base), draft.path(),
+                                positiveLine(base.line(), draft.line())));
                     } else if (base.builtinCandidate() != null) {
                         // CPython built-in types are platform roots, analogous to Java platform roots.
                     } else if (!allowedExternal(base, allowed)) {
                         unresolved.add(new UnresolvedParent(
-                                draft.id(), targetName(base), draft.path(), positiveLine(base.line(), draft.line())));
+                                draft.id(), targetName(base), draft.path(),
+                                positiveLine(base.line(), draft.line())));
                     }
                 }
                 classifiers.add(new ClassifierObservation(
@@ -265,13 +278,13 @@ public final class PythonAstObserver implements SourceObserver {
     }
 
     private static boolean allowedExternal(BridgeBase base, Set<String> allowed) {
-        return (base.candidate() != null && allowed.contains(base.candidate()))
+        return (base.qualifiedCandidate() != null && allowed.contains(base.qualifiedCandidate()))
                 || (base.raw() != null && allowed.contains(base.raw()));
     }
 
     private static String targetName(BridgeBase base) {
-        if (base.candidate() != null && !base.candidate().isBlank()) {
-            return base.candidate();
+        if (base.qualifiedCandidate() != null && !base.qualifiedCandidate().isBlank()) {
+            return base.qualifiedCandidate();
         }
         if (base.raw() != null && !base.raw().isBlank()) {
             return base.raw();
@@ -300,6 +313,7 @@ public final class PythonAstObserver implements SourceObserver {
     }
 
     private record TypeDraft(
+            String definitionKey,
             String id,
             String qualifiedName,
             String packageName,
@@ -317,6 +331,7 @@ public final class PythonAstObserver implements SourceObserver {
     }
 
     private record BridgeClass(
+            String definitionKey,
             String path,
             String moduleName,
             String qualifiedName,
@@ -327,7 +342,8 @@ public final class PythonAstObserver implements SourceObserver {
 
     private record BridgeBase(
             String raw,
-            String candidate,
+            String definitionCandidate,
+            String qualifiedCandidate,
             String builtinCandidate,
             int line) {
     }

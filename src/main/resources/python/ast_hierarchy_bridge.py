@@ -29,6 +29,10 @@ def child_name(prefix, name):
     return prefix + "." + name
 
 
+def definition_key(rel, node, qualified):
+    return rel + "\0" + str(getattr(node, "lineno", 1) or 1) + "\0" + qualified
+
+
 def absolute_from(module, is_package, level, imported):
     if module == "<root>":
         package = ""
@@ -57,6 +61,48 @@ def dotted(expr):
     return None
 
 
+def dynamic_binding():
+    return ("dynamic", None, None)
+
+
+def qualified_binding(target):
+    return ("qualified", None, target)
+
+
+def definition_binding(key, qualified):
+    return ("definition", key, qualified)
+
+
+def builtin_binding(target):
+    return ("builtin", None, target)
+
+
+def resolve_reference(expr, bindings, star_imported=False):
+    raw = dotted(expr)
+    if raw is None:
+        return dynamic_binding()
+
+    parts = raw.split(".")
+    bound = bindings.get(parts[0])
+    if bound is not None:
+        kind, key, target = bound
+        if kind == "dynamic" or target is None:
+            return dynamic_binding()
+        if len(parts) == 1:
+            return bound
+        suffix = "." + ".".join(parts[1:])
+        return qualified_binding(target + suffix)
+
+    if len(parts) == 1:
+        value = getattr(builtins, raw, None)
+        if isinstance(value, type):
+            return builtin_binding("builtins." + raw)
+        if star_imported:
+            return dynamic_binding()
+
+    return qualified_binding(raw)
+
+
 def resolve_base(expr, bindings, star_imported):
     raw = dotted(expr)
     if raw is None:
@@ -66,51 +112,41 @@ def resolve_base(expr, bindings, star_imported):
             display = "<dynamic-python-base>"
         return {
             "raw": display,
-            "candidate": None,
+            "definitionCandidate": None,
+            "qualifiedCandidate": None,
             "builtinCandidate": None,
             "line": getattr(expr, "lineno", 1),
         }
 
-    parts = raw.split(".")
-    bound = bindings.get(parts[0])
-    if bound is not None:
-        kind, target = bound
-        if kind != "qualified" or target is None:
-            return {
-                "raw": raw,
-                "candidate": None,
-                "builtinCandidate": None,
-                "line": getattr(expr, "lineno", 1),
-            }
-        candidate = target + ("." + ".".join(parts[1:]) if len(parts) > 1 else "")
+    kind, key, target = resolve_reference(expr, bindings, star_imported)
+    if kind == "definition":
         return {
             "raw": raw,
-            "candidate": candidate,
+            "definitionCandidate": key,
+            "qualifiedCandidate": target,
             "builtinCandidate": None,
             "line": getattr(expr, "lineno", 1),
         }
-
-    if len(parts) == 1:
-        value = getattr(builtins, raw, None)
-        if isinstance(value, type):
-            target = "builtins." + raw
-            return {
-                "raw": raw,
-                "candidate": target,
-                "builtinCandidate": target,
-                "line": getattr(expr, "lineno", 1),
-            }
-        if star_imported:
-            return {
-                "raw": raw,
-                "candidate": None,
-                "builtinCandidate": None,
-                "line": getattr(expr, "lineno", 1),
-            }
-
+    if kind == "qualified":
+        return {
+            "raw": raw,
+            "definitionCandidate": None,
+            "qualifiedCandidate": target,
+            "builtinCandidate": None,
+            "line": getattr(expr, "lineno", 1),
+        }
+    if kind == "builtin":
+        return {
+            "raw": raw,
+            "definitionCandidate": None,
+            "qualifiedCandidate": target,
+            "builtinCandidate": target,
+            "line": getattr(expr, "lineno", 1),
+        }
     return {
         "raw": raw,
-        "candidate": raw,
+        "definitionCandidate": None,
+        "qualifiedCandidate": None,
         "builtinCandidate": None,
         "line": getattr(expr, "lineno", 1),
     }
@@ -125,6 +161,12 @@ def assigned_names(target):
             result.extend(assigned_names(element))
         return result
     return []
+
+
+def alias_binding(value, bindings, star_imported):
+    if value is None or not isinstance(value, (ast.Name, ast.Attribute)):
+        return dynamic_binding()
+    return resolve_reference(value, bindings, star_imported)
 
 
 def scope_local_names(body):
@@ -174,6 +216,33 @@ def function_parameter_names(node):
     return result
 
 
+def is_literal_false(node):
+    return isinstance(node, ast.Constant) and node.value is False
+
+
+def dataclass_decorator_preserves_identity(decorator, bindings, star_imported):
+    call = decorator if isinstance(decorator, ast.Call) else None
+    target_expr = call.func if call is not None else decorator
+    kind, _, target = resolve_reference(target_expr, bindings, star_imported)
+    if kind != "qualified" or target != "dataclasses.dataclass":
+        return False
+    if call is None:
+        return True
+    if call.args:
+        return False
+    for keyword in call.keywords:
+        if keyword.arg is None:
+            return False
+        if keyword.arg == "slots" and not is_literal_false(keyword.value):
+            return False
+    return True
+
+
+def decorators_preserve_identity(decorators, bindings, star_imported):
+    return all(dataclass_decorator_preserves_identity(item, bindings, star_imported)
+               for item in decorators)
+
+
 def process_branch(body, prefix, bindings, module, is_package, scope_kind, star_imported):
     branch_bindings = dict(bindings)
     process_body(body, prefix, branch_bindings, module, is_package, scope_kind, star_imported)
@@ -187,7 +256,7 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
             for alias in node.names:
                 bound = alias.asname or alias.name.split(".")[0]
                 target = alias.name if alias.asname else alias.name.split(".")[0]
-                bindings[bound] = ("qualified", target)
+                bindings[bound] = qualified_binding(target)
 
         elif isinstance(node, ast.ImportFrom):
             absolute = absolute_from(module, is_package, node.level, node.module)
@@ -197,13 +266,13 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
                     continue
                 bound = alias.asname or alias.name
                 target = None if absolute is None else (absolute + "." if absolute else "") + alias.name
-                bindings[bound] = ("qualified", target) if target else ("dynamic", None)
+                bindings[bound] = qualified_binding(target) if target else dynamic_binding()
 
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             function_qualified = child_name(prefix, node.name)
             function_bindings = dict(bindings)
             for local_name in scope_local_names(node.body) | function_parameter_names(node):
-                function_bindings[local_name] = ("dynamic", None)
+                function_bindings[local_name] = dynamic_binding()
             process_body(
                 node.body,
                 function_qualified + ".<locals>",
@@ -213,12 +282,15 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
                 "function",
                 star_imported,
             )
-            bindings[node.name] = ("dynamic", None)
+            bindings[node.name] = dynamic_binding()
 
         elif isinstance(node, ast.ClassDef):
             qualified = child_name(prefix, node.name)
+            key = definition_key(current_rel, node, qualified)
             bases = [resolve_base(base, bindings, star_imported) for base in node.bases]
-            if any(base["candidate"] is None for base in bases):
+            if any(base["definitionCandidate"] is None
+                   and base["qualifiedCandidate"] is None
+                   and base["builtinCandidate"] is None for base in bases):
                 hierarchy_incomplete = True
                 diagnostics.append({
                     "kind": "EVIDENCE_INCOMPLETE",
@@ -227,6 +299,7 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
                     "message": "dynamic or shadowed Python base prevents complete hierarchy resolution: " + qualified,
                 })
             classes.append({
+                "definitionKey": key,
                 "path": current_rel,
                 "moduleName": module,
                 "qualifiedName": qualified,
@@ -244,25 +317,30 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
                 "class",
                 star_imported,
             )
-            bindings[node.name] = ("dynamic", None) if node.decorator_list else ("qualified", qualified)
+            if decorators_preserve_identity(node.decorator_list, bindings, star_imported):
+                bindings[node.name] = definition_binding(key, qualified)
+            else:
+                bindings[node.name] = dynamic_binding()
 
         elif isinstance(node, ast.Assign):
+            binding = alias_binding(node.value, bindings, star_imported)
             for target in node.targets:
                 for name in assigned_names(target):
-                    bindings[name] = ("dynamic", None)
+                    bindings[name] = binding
 
         elif isinstance(node, ast.AnnAssign):
+            binding = alias_binding(node.value, bindings, star_imported)
             for name in assigned_names(node.target):
-                bindings[name] = ("dynamic", None)
+                bindings[name] = binding
 
         elif isinstance(node, ast.AugAssign):
             for name in assigned_names(node.target):
-                bindings[name] = ("dynamic", None)
+                bindings[name] = dynamic_binding()
 
         elif isinstance(node, (ast.For, ast.AsyncFor)):
             branch = dict(bindings)
             for name in assigned_names(node.target):
-                branch[name] = ("dynamic", None)
+                branch[name] = dynamic_binding()
             process_body(node.body, prefix, branch, module, is_package, scope_kind, star_imported)
             process_branch(node.orelse, prefix, bindings, module, is_package, scope_kind, star_imported)
 
@@ -279,7 +357,7 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
             for item in node.items:
                 if item.optional_vars is not None:
                     for name in assigned_names(item.optional_vars):
-                        branch[name] = ("dynamic", None)
+                        branch[name] = dynamic_binding()
             process_body(node.body, prefix, branch, module, is_package, scope_kind, star_imported)
 
         elif isinstance(node, (ast.Try, getattr(ast, "TryStar", ast.Try))):
@@ -287,7 +365,7 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
             for handler in node.handlers:
                 branch = dict(bindings)
                 if handler.name:
-                    branch[handler.name] = ("dynamic", None)
+                    branch[handler.name] = dynamic_binding()
                 process_body(handler.body, prefix, branch, module, is_package, scope_kind, star_imported)
             process_branch(node.orelse, prefix, bindings, module, is_package, scope_kind, star_imported)
             process_branch(node.finalbody, prefix, bindings, module, is_package, scope_kind, star_imported)
