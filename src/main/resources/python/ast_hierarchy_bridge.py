@@ -34,17 +34,18 @@ def definition_key(rel, node, qualified):
 
 
 def absolute_from(module, is_package, level, imported):
+    if not level:
+        return imported or ""
     if module == "<root>":
         package = ""
     else:
         package = module if is_package else module.rpartition(".")[0]
     parts = [p for p in package.split(".") if p]
-    if level:
-        up = level - 1
-        if up > len(parts):
-            return None
-        if up:
-            parts = parts[:-up]
+    up = level - 1
+    if up > len(parts):
+        return None
+    if up:
+        parts = parts[:-up]
     if imported:
         parts.extend(imported.split("."))
     return ".".join(parts)
