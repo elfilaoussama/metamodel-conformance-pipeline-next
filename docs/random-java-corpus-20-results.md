@@ -1,96 +1,123 @@
-# Random Java corpus: 20-repository result
+# Random Java corpus: 20-repository validation
 
-This report records the first cross-repository execution of the pipeline. It is
-an engineering validation, not a population estimate for Java repositories.
+This report records the frozen 20-repository engineering validation of the
+metamodel-conformance pipeline. It is not a population estimate for Java
+repositories. The corpus is intentionally pinned so architectural regressions can
+be distinguished from changes in external repositories.
 
 ## Reproducibility
 
-- Pipeline commit: `45c3eabd5ebc5f2757365405ae73c4646dd8e2b0`
-- GitHub Actions run: [33335401769](https://github.com/elfilaoussama/metamodel-conformance-pipeline-next/actions/runs/33335401769)
-- Run date: 2026-08-30
+- Current validated pipeline commit: `e68ef12007578403798b1596d55a934d78b272aa`
+- Current GitHub Actions run: `33629584804`
+- Run date: 2026-09-02
 - Manifest: `corpus/random-java-20.tsv`
 - Sampling seed: `mcp-corpus-2026-08-30-v1`
 - Sampling frame: the first 100 GitHub search results documented in
   `corpus/README.md`; repositories were ranked by
   `SHA-256(seed NUL repository_full_name)` and the first 20 were selected.
-- Every repository was checked out at the commit recorded in the manifest.
-- Repository code was neither built nor executed.
+- Every repository was checked out at the immutable commit recorded in the
+  manifest.
+- Repository code and build scripts were not executed.
 
-The run processed 2,466 Java files. All 20 matrix entries produced a report,
-and the summary job refused to succeed unless exactly 20 reports were present.
+The current run processed exactly **2,466 Java files**. All **20/20** repositories
+completed pipeline analysis and produced independently replayable verification
+capsules. CI now rejects the corpus if any repository loses that property or if its
+decision set diverges from the current invariant registry.
 
-## Outcome
+## Current outcome after architectural corrections
 
-| Repository | Java files | Outcome | Detail |
-|---|---:|---|---|
-| AnJiaoDe/TabLayoutNiubility | 71 | NON_CONFORMANT | O-04: 292 witnesses |
-| BitgetLimited/proof-of-reserves | 12 | CONFORMANT | All five implemented conditions |
-| Enigmatis/graphql-java-annotations | 177 | INDETERMINATE | Alloy ternary-relation translation capacity exceeded at 1,743 atoms |
-| ManishK4514/Strivers-A2Z-DSA-Sheet | 382 | TOOL_FAILURE | Duplicate type identity `Node` reported by Spoon |
-| MaxToyberman/react-native-ssl-pinning | 4 | CONFORMANT | All five implemented conditions |
-| Tickaroo/tikxml | 242 | TOOL_FAILURE | Duplicate type identity `WeekTest` reported by Spoon |
-| alpha037/data-structures-and-algorithms | 373 | INDETERMINATE | Alloy ternary-relation translation capacity exceeded at 2,004 atoms |
-| eduardo-mior/URI-Online-Judge-Solutions | 315 | TOOL_FAILURE | Duplicate type identity `URI` reported by Spoon |
-| ekoz/kbase-doc | 68 | CONFORMANT | All five implemented conditions |
-| ggsava/block-this | 21 | CONFORMANT | All five implemented conditions |
-| hearsilent/DiscreteSlider | 12 | CONFORMANT | All five implemented conditions |
-| kymjs/CJFrameForAndroid | 25 | CONFORMANT | All five implemented conditions |
-| librespot-org/librespot-java | 148 | INDETERMINATE | Stack overflow while Alloy parsed the exact instance |
-| rayokota/kareldb | 106 | INDETERMINATE | Stack overflow while Alloy parsed the exact instance |
-| reveny/Android-GUI-Injector | 33 | CONFORMANT | All five implemented conditions |
-| shamanland/floating-action-button | 8 | CONFORMANT | All five implemented conditions |
-| t0thkr1s/allsafe-android | 20 | CONFORMANT | All five implemented conditions |
-| tpcstld/2048 | 12 | CONFORMANT | All five implemented conditions |
-| wellzhi/springboot-flowable | 46 | CONFORMANT | All five implemented conditions |
-| yjjdick/sdb-mall | 391 | INDETERMINATE | Stack overflow while Alloy parsed the exact instance |
+The principal architectural failures found by the first corpus execution are now
+closed:
 
-Aggregate repository outcomes:
+| Previous failure class | Baseline | Current run | Status |
+|---|---:|---:|---|
+| Duplicate qualified type identity causing tool failure | 3 repositories | 0 | Resolved by source-set-aware path identity |
+| Alloy parser stack overflow on monolithic exact instance | 3 repositories | 0 | Resolved by deterministic semantic work-unit partitioning |
+| Alloy ternary-relation translation capacity failure | 2 repositories | 0 | Resolved by deterministic semantic work-unit partitioning |
+| Repositories producing a report but no valid capsule | 8 repositories | 0 | Resolved |
 
-- 11 fully conformant;
-- 1 nonconformant;
-- 5 indeterminate;
-- 3 tool failures.
+Current aggregate tool outcome:
 
-Across the 17 repositories that reached condition evaluation, the condition
-counts were:
+- **20 analyzed repositories**;
+- **20 valid replayable capsules**;
+- **0 tool failures**;
+- **0 Alloy representation/capacity failures**.
 
-| Condition | Conformant | Nonconformant | Indeterminate |
+## Invariant outcomes
+
+The current registry contains six semantic invariants. Their repository-level
+results are:
+
+| Invariant | Conformant | Nonconformant | Not evaluated |
 |---|---:|---:|---:|
-| O-02 | 12 | 0 | 5 |
-| O-03 | 12 | 0 | 5 |
-| O-04 | 11 | 1 | 5 |
-| O-05 | 12 | 0 | 5 |
-| O-08-local | 12 | 0 | 5 |
+| `exclusive-declaration-ownership` | 19 | 0 | 1 |
+| `acyclic-generalization` | 19 | 0 | 1 |
+| `local-namespace-uniqueness` | 19 | 0 | 1 |
+| `inherited-view-consistency` | 1 | 0 | 19 |
+| `local-inherited-separation` | 1 | 0 | 19 |
+| `inherited-namespace-uniqueness` | 1 | 0 | 19 |
 
-## What the exceptional results mean
+`alpha037/data-structures-and-algorithms` is the current corpus entry for which all
+six registered invariants have complete evidence and all six are conformant.
 
-The three tool failures are an input-identity problem. A repository may contain
-colliding type identities in separate source sets, examples, or alternative
-implementations. The current adapter submits the entire repository to one Spoon
-model and cannot represent those source-set boundaries, so it produces no
-observation or decision.
+`ManishK4514/Strivers-A2Z-DSA-Sheet` contains source units that the Java parser
+rejects. The pipeline preserves those diagnostics and therefore marks all six
+invariants `NOT_EVALUATED`; it does not silently discard the rejected files.
 
-The five indeterminate outcomes are Alloy representation problems, not imposed
-classifier, RAM, or harness limits. Three exact generated modules caused an
-Alloy parser `StackOverflowError`. Two larger universes exceeded Alloy's fixed
-capacity for representing ternary relations. The pipeline preserved these as
-`INDETERMINATE`; it did not convert them to violations or successful checks.
+For the other 18 repositories, declaration ownership, hierarchy, and local
+signature evidence are sufficient for the three local/core invariants, but the
+independent `javac` inherited-member observation is incomplete because the frozen
+source checkout does not include a complete compile-time dependency environment.
+Those inherited-evidence-dependent invariants therefore remain `NOT_EVALUATED`.
 
-The O-04 result is a genuine disagreement between the two independently
-constructed inherited-member relations. For `TabLayoutNiubility`, Spoon's
-`getAllMethods`-based observation contained 144 relations absent from the
-formal nearest-declaration view and omitted 148 relations required by that
-view. The typical pattern is an interface declaration shadowed by a nearer
-class implementation. Therefore, the finding identifies an adapter-semantics
-defect or an unresolved policy choice; it must not be reported as a defect in
-the sampled repository.
+## Evidence diagnostics
 
-## Decision
+The current run records:
 
-The vertical slice is deterministic and correctly preserves evidence and
-three-valued outcomes, but it is not yet reusable at arbitrary repository
-scale. The next implementation boundary should be a canonical, source-set-aware
-observation model followed by bounded semantic partitioning of the exact Alloy
-instance. Partitioning must preserve cross-partition inheritance facts and
-produce one aggregate decision per obligation; merely increasing memory or
-silently dropping declarations would invalidate the result.
+- 3,857 `EVIDENCE_INCOMPLETE` diagnostics, overwhelmingly from missing third-party
+  compile-time types such as Android, JUnit, SLF4J, generated project types, and
+  other dependency classes;
+- 11 `PARSE_ERROR` diagnostics in the standalone algorithm corpus entry.
+
+These diagnostics are evidence-boundary findings, not invariant violations. The
+corpus harness deliberately does not execute Maven/Gradle or repository code to
+manufacture a build environment. Exact dependency archives can be supplied to the
+pipeline explicitly and are hashed into the canonical source set.
+
+## Historical baseline: first corpus execution
+
+The first run on 2026-08-30 used pipeline commit
+`45c3eabd5ebc5f2757365405ae73c4646dd8e2b0` and GitHub Actions run
+`33335401769`. It found:
+
+- 11 fully conformant repositories under the then-five-condition implementation;
+- 1 apparent O-04 nonconformance;
+- 5 indeterminate Alloy representation failures;
+- 3 source-identity tool failures.
+
+The apparent O-04 result on `AnJiaoDe/TabLayoutNiubility` contained 144
+Spoon-only and 148 Alloy-only inherited memberships. That result was correctly
+interpreted as an adapter-semantics problem rather than a defect in the sampled
+repository. The current architecture no longer uses Spoon's inherited-member view
+as the independent empirical authority: declaration facts come from Spoon, while
+inherited membership is independently observed with the JDK compiler and compared
+with the Alloy-derived formal view.
+
+Because the current corpus checkout lacks that repository's full dependency
+classpath, O-04 is now correctly `NOT_EVALUATED` rather than reproducing or hiding
+the old disagreement.
+
+## Scientific conclusion of this validation phase
+
+The frozen corpus now supports the following claim:
+
+> The core pipeline is deterministic and fail-closed across the 20 pinned Java
+> repositories, including source-set collisions and models that previously
+> exceeded the monolithic Alloy representation. Every repository produces a
+> replayable capsule, and missing empirical evidence remains explicit as
+> `NOT_EVALUATED`.
+
+It does **not** support the stronger claim that inherited-member evidence is
+complete for arbitrary dependency-rich repositories without an explicit compile
+classpath. That boundary is intentional and must remain visible in later empirical
+experiments.
