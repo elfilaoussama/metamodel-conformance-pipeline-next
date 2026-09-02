@@ -160,7 +160,6 @@ public final class SpoonJavaObserver implements SourceObserver {
                     if (internalCandidates != null && internalCandidates.size() == 1) {
                         parentIds.add(internalCandidates.get(0).id());
                     } else if (internalCandidates != null && !internalCandidates.isEmpty()) {
-                        // An external allowlist must never hide an ambiguous internal identity.
                         unresolved.add(new UnresolvedParent(
                                 draft.id(), parentName, draft.path(), referenceLine(parent, draft.startLine())));
                     } else if (!PLATFORM_ROOTS.contains(parentName) && !allowed.contains(parentName)) {
@@ -203,7 +202,7 @@ public final class SpoonJavaObserver implements SourceObserver {
             diagnostics.addAll(inherited.diagnostics());
             dependencies.verifyUnchanged();
             return new Observation(
-                    "7", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
+                    "8", ADAPTER_ID, ADAPTER_VERSION, List.copyOf(allowed), completeEvidence,
                     units, classifiers, members, unresolved, diagnostics);
         } catch (ObservationException exception) {
             throw exception;
@@ -362,8 +361,7 @@ public final class SpoonJavaObserver implements SourceObserver {
                 return main;
             }
         }
-        List<TypeDraft> candidates = global.get(qualifiedName);
-        return candidates;
+        return global.get(qualifiedName);
     }
 
     private static int referenceLine(CtTypeReference<?> reference, int fallback) {

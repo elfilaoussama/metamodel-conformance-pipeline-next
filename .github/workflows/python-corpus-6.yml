@@ -100,6 +100,17 @@ jobs:
               diff -u expected-invariants.txt actual-invariants.txt >&2 || true
               failures=$((failures + 1))
             fi
+
+            parse_errors="$(jq '[.observationDiagnostics[]? | select(.kind == "PARSE_ERROR")] | length' "${report}")"
+            ownership_status="$(jq -r '([.decisions[] | select(.invariantId == "exclusive-declaration-ownership")] | .[0].status) // "MISSING"' "${report}")"
+            if [[ "${parse_errors}" == "0" && "${ownership_status}" != "CONFORMANT" ]]; then
+              echo "${repository}: parse-clean Python source must evaluate declaration ownership; got ${ownership_status}" >&2
+              failures=$((failures + 1))
+            fi
+            if [[ "${parse_errors}" != "0" && "${ownership_status}" != "NOT_EVALUATED" ]]; then
+              echo "${repository}: parse diagnostics must fail closed for declaration ownership; got ${ownership_status}" >&2
+              failures=$((failures + 1))
+            fi
           done
 
           if [[ ${failures} -ne 0 ]]; then
@@ -120,6 +131,11 @@ jobs:
                 | map({key: .[0].kind, value: length})
                 | from_entries
               ),
+              declarationOwnership: {
+                conformant: ([.[] | .decisions[] | select(.invariantId == "exclusive-declaration-ownership" and .status == "CONFORMANT")] | length),
+                nonConformant: ([.[] | .decisions[] | select(.invariantId == "exclusive-declaration-ownership" and .status == "NON_CONFORMANT")] | length),
+                notEvaluated: ([.[] | .decisions[] | select(.invariantId == "exclusive-declaration-ownership" and .status == "NOT_EVALUATED")] | length)
+              },
               hierarchy: {
                 conformant: ([.[] | .decisions[] | select(.invariantId == "acyclic-generalization" and .status == "CONFORMANT")] | length),
                 nonConformant: ([.[] | .decisions[] | select(.invariantId == "acyclic-generalization" and .status == "NON_CONFORMANT")] | length),

@@ -35,12 +35,12 @@ class PythonAstObserverTest {
         Observation observation = new PythonAstObserver().observe(temp, Set.of());
 
         assertEquals("python-ast", observation.adapterId());
-        assertTrue(observation.adapterVersion().startsWith("0.3.0/python-"));
+        assertTrue(observation.adapterVersion().startsWith("0.4.0/python-"));
         assertEquals(1, observation.units().size());
         assertEquals(Language.PYTHON, observation.units().get(0).language());
         assertEquals(2, observation.classifiers().size());
         assertTrue(observation.completeEvidence().contains(EvidenceKind.HIERARCHY));
-        assertFalse(observation.completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
         assertTrue(observation.unresolvedParents().isEmpty());
 
         var base = classifier(observation, "models.Base");

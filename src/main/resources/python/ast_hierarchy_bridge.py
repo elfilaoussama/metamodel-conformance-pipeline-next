@@ -33,6 +33,19 @@ def definition_key(rel, node, qualified):
     return rel + "\0" + str(getattr(node, "lineno", 1) or 1) + "\0" + qualified
 
 
+def member_definition_key(rel, node, owner, kind, name):
+    return "\0".join(
+        [
+            rel,
+            str(getattr(node, "lineno", 1) or 1),
+            str(getattr(node, "col_offset", 0) or 0),
+            owner,
+            kind,
+            name,
+        ]
+    )
+
+
 def absolute_from(module, is_package, level, imported):
     if not level:
         return imported or ""
@@ -164,6 +177,56 @@ def assigned_names(target):
     return []
 
 
+def class_members(body, owner):
+    result = []
+
+    def add(node, kind, name):
+        result.append(
+            {
+                "definitionKey": member_definition_key(current_rel, node, owner, kind, name),
+                "kind": kind,
+                "name": name,
+                "line": getattr(node, "lineno", 1) or 1,
+                "endLine": getattr(node, "end_lineno", None)
+                or getattr(node, "lineno", 1)
+                or 1,
+            }
+        )
+
+    def walk(statements):
+        for statement in statements:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                add(statement, "METHOD", statement.name)
+            elif isinstance(statement, ast.Assign):
+                names = []
+                for target in statement.targets:
+                    names.extend(assigned_names(target))
+                for name in dict.fromkeys(names):
+                    add(statement, "ATTRIBUTE", name)
+            elif isinstance(statement, ast.AnnAssign):
+                for name in dict.fromkeys(assigned_names(statement.target)):
+                    add(statement, "ATTRIBUTE", name)
+            elif isinstance(statement, (ast.If, ast.While, ast.For, ast.AsyncFor)):
+                walk(statement.body)
+                walk(statement.orelse)
+            elif isinstance(statement, (ast.With, ast.AsyncWith)):
+                walk(statement.body)
+            elif isinstance(statement, (ast.Try, getattr(ast, "TryStar", ast.Try))):
+                walk(statement.body)
+                for handler in statement.handlers:
+                    walk(handler.body)
+                walk(statement.orelse)
+                walk(statement.finalbody)
+            elif hasattr(ast, "Match") and isinstance(statement, ast.Match):
+                for case in statement.cases:
+                    walk(case.body)
+            # Nested classes are classifiers in their own right. Their declarations are
+            # collected when that ClassDef is processed, not as members of the outer class.
+
+    walk(body)
+    return result
+
+
 def alias_binding(value, bindings, star_imported):
     if value is None or not isinstance(value, (ast.Name, ast.Attribute)):
         return dynamic_binding()
@@ -240,8 +303,10 @@ def dataclass_decorator_preserves_identity(decorator, bindings, star_imported):
 
 
 def decorators_preserve_identity(decorators, bindings, star_imported):
-    return all(dataclass_decorator_preserves_identity(item, bindings, star_imported)
-               for item in decorators)
+    return all(
+        dataclass_decorator_preserves_identity(item, bindings, star_imported)
+        for item in decorators
+    )
 
 
 def process_branch(body, prefix, bindings, module, is_package, scope_kind, star_imported):
@@ -266,7 +331,11 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
                     star_imported = True
                     continue
                 bound = alias.asname or alias.name
-                target = None if absolute is None else (absolute + "." if absolute else "") + alias.name
+                target = (
+                    None
+                    if absolute is None
+                    else (absolute + "." if absolute else "") + alias.name
+                )
                 bindings[bound] = qualified_binding(target) if target else dynamic_binding()
 
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -289,25 +358,36 @@ def process_body(body, prefix, bindings, module, is_package, scope_kind, star_im
             qualified = child_name(prefix, node.name)
             key = definition_key(current_rel, node, qualified)
             bases = [resolve_base(base, bindings, star_imported) for base in node.bases]
-            if any(base["definitionCandidate"] is None
-                   and base["qualifiedCandidate"] is None
-                   and base["builtinCandidate"] is None for base in bases):
+            if any(
+                base["definitionCandidate"] is None
+                and base["qualifiedCandidate"] is None
+                and base["builtinCandidate"] is None
+                for base in bases
+            ):
                 hierarchy_incomplete = True
-                diagnostics.append({
-                    "kind": "EVIDENCE_INCOMPLETE",
+                diagnostics.append(
+                    {
+                        "kind": "EVIDENCE_INCOMPLETE",
+                        "path": current_rel,
+                        "line": getattr(node, "lineno", 0) or 0,
+                        "message": "dynamic or shadowed Python base prevents complete hierarchy resolution: "
+                        + qualified,
+                    }
+                )
+            classes.append(
+                {
+                    "definitionKey": key,
                     "path": current_rel,
-                    "line": getattr(node, "lineno", 0) or 0,
-                    "message": "dynamic or shadowed Python base prevents complete hierarchy resolution: " + qualified,
-                })
-            classes.append({
-                "definitionKey": key,
-                "path": current_rel,
-                "moduleName": module,
-                "qualifiedName": qualified,
-                "line": getattr(node, "lineno", 1) or 1,
-                "endLine": getattr(node, "end_lineno", None) or getattr(node, "lineno", 1) or 1,
-                "bases": bases,
-            })
+                    "moduleName": module,
+                    "qualifiedName": qualified,
+                    "line": getattr(node, "lineno", 1) or 1,
+                    "endLine": getattr(node, "end_lineno", None)
+                    or getattr(node, "lineno", 1)
+                    or 1,
+                    "bases": bases,
+                    "members": class_members(node.body, qualified),
+                }
+            )
             class_bindings = dict(bindings)
             process_body(
                 node.body,
@@ -387,12 +467,14 @@ for current_rel in paths:
     except (SyntaxError, UnicodeError) as failure:
         hierarchy_incomplete = True
         line = getattr(failure, "lineno", 0) or 0
-        diagnostics.append({
-            "kind": "PARSE_ERROR",
-            "path": current_rel,
-            "line": line,
-            "message": str(failure)[:4096],
-        })
+        diagnostics.append(
+            {
+                "kind": "PARSE_ERROR",
+                "path": current_rel,
+                "line": line,
+                "message": str(failure)[:4096],
+            }
+        )
         continue
 
     process_body(tree.body, module, {}, module, is_package, "module")

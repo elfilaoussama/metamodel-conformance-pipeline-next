@@ -7,7 +7,11 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
+import metamodel.conformance.pipeline.model.MemberKind;
+import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -26,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,17 +38,19 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Conservative source-only Python observer for classifier hierarchy.
+ * Conservative source-only Python observer for classifier hierarchy and declaration ownership.
  *
  * <p>The bridge uses CPython's standard {@code ast} module and never imports or executes
  * the observed source. Source declarations have independent definition identities; runtime
  * name bindings are tracked separately so aliases and straight-line redefinitions can be
- * resolved without collapsing distinct declarations. Member-dependent evidence deliberately
- * remains incomplete until Python-specific semantics are represented explicitly.</p>
+ * resolved without collapsing distinct declarations. Source-declared methods and assignment/
+ * annotation attributes are mapped to canonical members with unknown visibility and
+ * inheritability. Signature, language-specific visibility/inheritability, and inherited-member
+ * evidence deliberately remain incomplete.</p>
  */
 public final class PythonAstObserver implements SourceObserver {
     public static final String ADAPTER_ID = "python-ast";
-    public static final String ADAPTER_VERSION = "0.3.0";
+    public static final String ADAPTER_VERSION = "0.4.0";
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int MAX_BRIDGE_BYTES = (int) ArtifactLimits.MAX_XMI_BYTES;
     private static final String BRIDGE_SCRIPT = loadBridgeScript();
@@ -100,7 +107,8 @@ public final class PythonAstObserver implements SourceObserver {
                         item.path(),
                         item.line(),
                         Math.max(item.line(), item.endLine()),
-                        safe(item.bases()));
+                        safe(item.bases()),
+                        safe(item.members()));
                 drafts.add(draft);
                 if (draft.definitionKey() == null || draft.definitionKey().isBlank()
                         || byDefinitionKey.putIfAbsent(draft.definitionKey(), draft) != null) {
@@ -111,6 +119,60 @@ public final class PythonAstObserver implements SourceObserver {
                             "duplicate or missing Python source-definition identity"));
                 }
                 byQualifiedName.computeIfAbsent(draft.qualifiedName(), ignored -> new ArrayList<>()).add(draft);
+            }
+
+            List<MemberObservation> members = new ArrayList<>();
+            Map<String, List<String>> memberKeysByOwner = new HashMap<>();
+            Set<String> memberTechnicalKeys = new HashSet<>();
+            boolean declarationIncomplete = false;
+            for (TypeDraft draft : drafts.stream().sorted(Comparator.comparing(TypeDraft::id)).toList()) {
+                List<String> keys = new ArrayList<>();
+                for (BridgeMember source : draft.members()) {
+                    if (source.definitionKey() == null || source.definitionKey().isBlank()
+                            || source.name() == null || source.name().isBlank()
+                            || source.line() < 1 || source.endLine() < source.line()) {
+                        declarationIncomplete = true;
+                        diagnostics.add(new ObservationDiagnostic(
+                                DiagnosticKind.EVIDENCE_INCOMPLETE,
+                                draft.path(), Math.max(0, source.line()),
+                                "invalid Python source-member declaration identity"));
+                        continue;
+                    }
+                    MemberKind kind;
+                    try {
+                        kind = MemberKind.valueOf(source.kind());
+                    } catch (IllegalArgumentException invalidKind) {
+                        declarationIncomplete = true;
+                        diagnostics.add(new ObservationDiagnostic(
+                                DiagnosticKind.EVIDENCE_INCOMPLETE,
+                                draft.path(), source.line(),
+                                "unsupported Python source-member kind: " + source.kind()));
+                        continue;
+                    }
+                    String technicalKey = stableMemberKey(draft.path(), source.definitionKey());
+                    if (!memberTechnicalKeys.add(technicalKey)) {
+                        declarationIncomplete = true;
+                        diagnostics.add(new ObservationDiagnostic(
+                                DiagnosticKind.EVIDENCE_INCOMPLETE,
+                                draft.path(), source.line(),
+                                "duplicate Python source-member definition identity"));
+                        continue;
+                    }
+                    MemberObservation member = new MemberObservation(
+                            technicalKey,
+                            null,
+                            kind,
+                            Inheritability.UNKNOWN,
+                            MemberVisibility.UNKNOWN,
+                            source.name(),
+                            draft.path(),
+                            source.line(),
+                            source.endLine(),
+                            List.of());
+                    members.add(member);
+                    keys.add(member.technicalKey());
+                }
+                memberKeysByOwner.put(draft.id(), List.copyOf(keys));
             }
 
             Set<String> allowed = externalParents == null ? Set.of() : Set.copyOf(externalParents);
@@ -151,32 +213,37 @@ public final class PythonAstObserver implements SourceObserver {
                 }
                 classifiers.add(new ClassifierObservation(
                         draft.id(), draft.qualifiedName(), draft.packageName(), ClassifierKind.CLASS,
-                        draft.path(), draft.line(), draft.endLine(), List.copyOf(parentIds), List.of()));
+                        draft.path(), draft.line(), draft.endLine(), List.copyOf(parentIds),
+                        memberKeysByOwner.getOrDefault(draft.id(), List.of())));
             }
 
             String evidencePath = units.get(0).path();
             diagnostics.add(new ObservationDiagnostic(
                     DiagnosticKind.EVIDENCE_INCOMPLETE,
                     evidencePath, 0,
-                    "Python adapter currently observes classifier hierarchy only; declaration/member, "
-                            + "signature, inheritability, and inherited-member evidence are incomplete."));
+                    "Python adapter observes classifier hierarchy and source-declared method/attribute ownership; "
+                            + "local signatures, language-specific visibility/inheritability, and inherited-member "
+                            + "evidence remain incomplete."));
 
             boolean parseError = diagnostics.stream()
                     .anyMatch(item -> item.kind() == DiagnosticKind.PARSE_ERROR);
             EnumSet<EvidenceKind> completeEvidence = EnumSet.noneOf(EvidenceKind.class);
+            if (!parseError && !declarationIncomplete) {
+                completeEvidence.add(EvidenceKind.DECLARATION_OWNERSHIP);
+            }
             if (!parseError && !hierarchyIncomplete && unresolved.isEmpty()) {
                 completeEvidence.add(EvidenceKind.HIERARCHY);
             }
 
             return new Observation(
-                    "7",
+                    "8",
                     ADAPTER_ID,
                     ADAPTER_VERSION + "/python-" + bridge.pythonVersion(),
                     List.copyOf(allowed),
                     completeEvidence,
                     units,
                     classifiers,
-                    List.of(),
+                    members,
                     unresolved,
                     diagnostics);
         } catch (ObservationException exception) {
@@ -277,6 +344,10 @@ public final class PythonAstObserver implements SourceObserver {
         return "cls_" + Hashing.sha256("python\0" + path + "\0" + line + "\0" + qualifiedName);
     }
 
+    private static String stableMemberKey(String path, String definitionKey) {
+        return "mem_" + Hashing.sha256("python\0member\0" + path + "\0" + definitionKey);
+    }
+
     private static boolean allowedExternal(BridgeBase base, Set<String> allowed) {
         return (base.qualifiedCandidate() != null && allowed.contains(base.qualifiedCandidate()))
                 || (base.raw() != null && allowed.contains(base.raw()));
@@ -320,7 +391,8 @@ public final class PythonAstObserver implements SourceObserver {
             String path,
             int line,
             int endLine,
-            List<BridgeBase> bases) {
+            List<BridgeBase> bases,
+            List<BridgeMember> members) {
     }
 
     private record BridgeResult(
@@ -337,7 +409,16 @@ public final class PythonAstObserver implements SourceObserver {
             String qualifiedName,
             int line,
             int endLine,
-            List<BridgeBase> bases) {
+            List<BridgeBase> bases,
+            List<BridgeMember> members) {
+    }
+
+    private record BridgeMember(
+            String definitionKey,
+            String kind,
+            String name,
+            int line,
+            int endLine) {
     }
 
     private record BridgeBase(

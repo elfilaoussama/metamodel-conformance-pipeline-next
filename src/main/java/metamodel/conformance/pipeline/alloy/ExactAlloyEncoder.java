@@ -3,6 +3,7 @@ package metamodel.conformance.pipeline.alloy;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.util.Hashing;
 
@@ -42,7 +43,7 @@ public final class ExactAlloyEncoder {
                 .append("abstract sig Inheritability {}\n")
                 .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
                 .append("abstract sig MemberVisibility {}\n")
-                .append("one sig PUBLIC, PROTECTED, PACKAGE, PRIVATE extends MemberVisibility {}\n")
+                .append("one sig PUBLIC, PROTECTED, PACKAGE, PRIVATE, VISIBILITY_UNKNOWN extends MemberVisibility {}\n")
                 .append("abstract sig PackageToken {}\n")
                 .append("abstract sig NameToken {}\n")
                 .append("abstract sig TypeToken {}\n")
@@ -154,7 +155,11 @@ public final class ExactAlloyEncoder {
 
     private static List<String> visibilityEdges(Observation observation) {
         return observation.members().stream().map(member -> memberAtom(member.technicalKey()) + "->"
-                + member.visibility().name()).toList();
+                + visibilityAtom(member.visibility())).toList();
+    }
+
+    private static String visibilityAtom(MemberVisibility visibility) {
+        return visibility == MemberVisibility.UNKNOWN ? "VISIBILITY_UNKNOWN" : visibility.name();
     }
 
     private static List<String> packageEdges(

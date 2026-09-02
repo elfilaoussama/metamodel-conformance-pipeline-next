@@ -4,7 +4,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="urn:metamodel-conformance:observation:7"
+    nsURI="urn:metamodel-conformance:observation:8"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
@@ -39,6 +39,7 @@
     <eLiterals name="PROTECTED" value="1"/>
     <eLiterals name="PACKAGE" value="2"/>
     <eLiterals name="PRIVATE" value="3"/>
+    <eLiterals name="UNKNOWN" value="4"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="DiagnosticKind">
     <eLiterals name="PARSE_ERROR"/>
