@@ -1,6 +1,7 @@
 package metamodel.conformance.pipeline.adapter;
 
 import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
+import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
 import metamodel.conformance.pipeline.model.Language;
 
 import java.nio.file.Path;
@@ -30,7 +31,12 @@ public final class SourceObserverFactory {
         List<Path> dependencies = dependencyArchives == null ? List.of() : List.copyOf(dependencyArchives);
         return switch (language) {
             case JAVA -> new SpoonJavaObserver(dependencies);
-            case PYTHON -> throw unavailable("python");
+            case PYTHON -> {
+                if (!dependencies.isEmpty()) {
+                    throw new IllegalArgumentException("--dependency-jar is only supported for Java sources");
+                }
+                yield new PythonAstObserver();
+            }
             case CPP -> throw unavailable("cpp");
             case JAVA_ARCHIVE -> throw new IllegalArgumentException(
                     "JAVA_ARCHIVE is dependency evidence, not a source language");
