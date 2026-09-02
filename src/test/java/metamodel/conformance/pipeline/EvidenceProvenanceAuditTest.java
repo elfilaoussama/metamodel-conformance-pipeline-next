@@ -30,12 +30,21 @@ class EvidenceProvenanceAuditTest {
         Map<String, SourceUnit> units = result.observation().units().stream()
                 .collect(Collectors.toMap(SourceUnit::path, Function.identity()));
 
+        Map<String, String> actualHashes = units.values().stream()
+                .collect(Collectors.toMap(SourceUnit::path, unit -> {
+                    try {
+                        return Hashing.sha256(source.resolve(unit.path()));
+                    } catch (java.io.IOException failure) {
+                        throw new java.io.UncheckedIOException(failure);
+                    }
+                }));
+
         result.invariant("acyclic-generalization").witnessTechnicalKeys().forEach(key -> {
             var classifier = result.observation().classifiers().stream()
                     .filter(item -> item.id().equals(key)).findFirst().orElseThrow();
             SourceUnit unit = units.get(classifier.sourcePath());
             assertTrue(unit != null);
-            assertEquals(unit.sha256(), Hashing.sha256(source.resolve(unit.path())));
+            assertEquals(unit.sha256(), actualHashes.get(unit.path()));
         });
         assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
 
