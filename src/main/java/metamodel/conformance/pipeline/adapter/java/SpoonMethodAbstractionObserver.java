@@ -22,7 +22,7 @@ import java.util.Map;
 
 /**
  * Observes source-level method abstraction independently of the Alloy policy.
- * This class records modifiers/body form only; it never decides O-06 or O-07.
+ * This class records modifiers and source-body form only; it never decides an invariant.
  */
 final class SpoonMethodAbstractionObserver {
     Result observe(Path root, List<Path> files, List<MemberObservation> canonicalMembers) {

@@ -84,7 +84,7 @@ class PythonDeclarationOwnershipTest {
                 SourceObserverFactory.create(Language.PYTHON, List.of()))
                 .analyze(temporary, output, Set.of());
 
-        assertEquals("9", result.observation().schemaVersion());
+        assertEquals("10", result.observation().schemaVersion());
         assertTrue(result.observation().completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
         assertFalse(result.observation().completeEvidence().contains(EvidenceKind.HIERARCHY));
         assertEquals(DecisionStatus.CONFORMANT,
