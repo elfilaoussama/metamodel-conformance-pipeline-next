@@ -196,17 +196,22 @@ final class JavacImplementationObserver {
                         || !(element instanceof ExecutableElement method)) {
                     continue;
                 }
+                Tree tree = trees.getTree(method);
+                if (tree == null) {
+                    // javac exposes compiler-synthesized members such as enum values()/valueOf().
+                    // They have no source tree and therefore are outside the source-observation domain.
+                    continue;
+                }
+                if (!(tree instanceof MethodTree methodTree)) {
+                    return incomplete(classifiers, "javac source method tree is unavailable");
+                }
                 MemberObservation declaration = uniqueDeclaration(
                         membersByLocation.get(new MemberLocator(
                                 classifier.id(), method.getSimpleName().toString())),
                         method, types);
                 if (declaration == null || !mappedMethods.add(declaration.technicalKey())) {
                     return incomplete(classifiers,
-                            "javac method declaration could not be mapped uniquely");
-                }
-                Tree tree = trees.getTree(method);
-                if (!(tree instanceof MethodTree methodTree)) {
-                    return incomplete(classifiers, "javac method tree is unavailable");
+                            "javac source method declaration could not be mapped uniquely");
                 }
                 if (methodTree.getBody() == null) {
                     availability.put(declaration.technicalKey(),
@@ -235,7 +240,7 @@ final class JavacImplementationObserver {
                 .filter(member -> member.kind() == MemberKind.METHOD).count();
         if (mappedMethods.size() != canonicalMethodCount) {
             return incomplete(classifiers,
-                    "not every canonical method was independently mapped by javac");
+                    "not every canonical source method was independently mapped by javac");
         }
         return new Result(true, availability, bindings, List.of());
     }
