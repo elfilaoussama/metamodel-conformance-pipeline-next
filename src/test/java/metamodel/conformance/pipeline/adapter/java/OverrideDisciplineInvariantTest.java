@@ -88,6 +88,70 @@ class OverrideDisciplineInvariantTest {
     }
 
     @Test
+    void treatsOverloadAsDistinctFromOverride() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("overload"));
+        Files.writeString(source.resolve("Base.java"), """
+                class Base {
+                    Number value(Number input) { return input; }
+                }
+                """);
+        Files.writeString(source.resolve("Child.java"), """
+                class Child extends Base {
+                    Number value(Integer input) { return input; }
+                }
+                """);
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
+        assertEquals(0, observation.members().stream()
+                .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
+        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+    }
+
+    @Test
+    void acceptsInterfaceMethodOverrideWithEqualReturnType() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("interface-override"));
+        Files.writeString(source.resolve("Contract.java"), """
+                interface Contract {
+                    Number value();
+                }
+                """);
+        Files.writeString(source.resolve("Implementation.java"), """
+                class Implementation implements Contract {
+                    @Override public Number value() { return 1; }
+                }
+                """);
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
+        assertEquals(1, observation.members().stream()
+                .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
+        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+    }
+
+    @Test
+    void doesNotInventOverrideAcrossInaccessiblePackagePrivateBoundary() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("package-private-boundary"));
+        Path basePackage = Files.createDirectories(source.resolve("base"));
+        Path childPackage = Files.createDirectories(source.resolve("child"));
+        Files.writeString(basePackage.resolve("Base.java"), """
+                package base;
+                public class Base {
+                    Number value() { return 1; }
+                }
+                """);
+        Files.writeString(childPackage.resolve("Child.java"), """
+                package child;
+                public class Child extends base.Base {
+                    public Number value() { return 2; }
+                }
+                """);
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
+        assertEquals(0, observation.members().stream()
+                .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
+        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+    }
+
+    @Test
     void missingCompilerEvidenceMakesOverrideConditionNotEvaluated() throws Exception {
         Path source = Files.createDirectory(temporary.resolve("missing-dependency"));
         Files.writeString(source.resolve("Uses.java"), """
