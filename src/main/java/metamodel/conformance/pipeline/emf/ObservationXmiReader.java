@@ -1,5 +1,6 @@
 package metamodel.conformance.pipeline.emf;
 
+import metamodel.conformance.pipeline.model.ClassifierAbstraction;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
@@ -9,6 +10,7 @@ import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberScope;
 import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.MethodAbstraction;
 import metamodel.conformance.pipeline.model.MethodBodyObservation;
@@ -86,7 +88,8 @@ public final class ObservationXmiReader {
                     string(member, "memberName"), string(member, "sourcePath"),
                     integer(member, "startLine"), integer(member, "endLine"),
                     new ArrayList<>((EList<String>) value(member, "parameterTypes")),
-                    MethodAbstraction.valueOf(value(member, "abstraction").toString())));
+                    MethodAbstraction.valueOf(value(member, "abstraction").toString()),
+                    MemberScope.valueOf(value(member, "scope").toString())));
         }
         List<ClassifierObservation> classifiers = new ArrayList<>();
         for (EObject classifier : (EList<EObject>) value(root, "classifiers")) {
@@ -106,7 +109,8 @@ public final class ObservationXmiReader {
                     string(classifier, "id"), string(classifier, "qualifiedName"),
                     string(classifier, "packageName"), ClassifierKind.valueOf(value(classifier, "kind").toString()),
                     string(classifier, "sourcePath"), integer(classifier, "startLine"), integer(classifier, "endLine"),
-                    parentIds, declaredMemberKeys, inheritedMemberKeys));
+                    parentIds, declaredMemberKeys, inheritedMemberKeys,
+                    ClassifierAbstraction.valueOf(value(classifier, "abstraction").toString())));
         }
         List<ImplementationBindingObservation> bindings = new ArrayList<>();
         for (EObject binding : (EList<EObject>) value(root, "implementationBindings")) {
