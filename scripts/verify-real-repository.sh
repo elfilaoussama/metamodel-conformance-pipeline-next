@@ -46,7 +46,7 @@ java -jar "${pipeline_jar}" verify-capsule \
 
 jq --exit-status '
   (.decisions | map({key: .invariantId, value: .status}) | from_entries) as $status |
-  (.decisions | length) == 7 and
+  (.decisions | length) == 9 and
   any(.observationDiagnostics[]; .kind == "EVIDENCE_INCOMPLETE") and
   all(.observationDiagnostics[]; .kind != "PARSE_ERROR") and
   $status["exclusive-declaration-ownership"] == "CONFORMANT" and
@@ -55,5 +55,7 @@ jq --exit-status '
   $status["inherited-view-consistency"] == "NOT_EVALUATED" and
   $status["local-inherited-separation"] == "NOT_EVALUATED" and
   $status["inherited-namespace-uniqueness"] == "NOT_EVALUATED" and
-  $status["implementation-binding-consistency"] == "NOT_EVALUATED"
+  $status["implementation-binding-consistency"] == "NOT_EVALUATED" and
+  $status["abstraction-implementation-consistency"] == "NOT_EVALUATED" and
+  $status["static-abstract-method-separation"] == "CONFORMANT"
 ' "${integration_root}/result/verification-capsule.json" >/dev/null

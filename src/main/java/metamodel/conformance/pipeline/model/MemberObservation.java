@@ -14,7 +14,8 @@ public record MemberObservation(
         int startLine,
         int endLine,
         List<String> parameterTypes,
-        MethodAbstraction abstraction) {
+        MethodAbstraction abstraction,
+        MemberScope scope) {
 
     public MemberObservation {
         technicalKey = CanonicalObservationValue.technicalId(
@@ -37,9 +38,30 @@ public record MemberObservation(
             throw new IllegalArgumentException("parameter types must not be blank");
         }
         abstraction = abstraction == null ? MethodAbstraction.UNKNOWN : abstraction;
+        scope = scope == null ? MemberScope.UNKNOWN : scope;
         if (kind == MemberKind.ATTRIBUTE && abstraction != MethodAbstraction.UNKNOWN) {
             throw new IllegalArgumentException("attributes cannot carry method abstraction evidence");
         }
+        if (kind == MemberKind.ATTRIBUTE && scope != MemberScope.UNKNOWN) {
+            throw new IllegalArgumentException("attributes cannot carry method scope evidence");
+        }
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            Inheritability inheritability,
+            MemberVisibility visibility,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes,
+            MethodAbstraction abstraction) {
+        this(technicalKey, observedIdentifier, kind, inheritability, visibility,
+                memberName, sourcePath, startLine, endLine, parameterTypes,
+                abstraction, MemberScope.UNKNOWN);
     }
 
     public MemberObservation(
@@ -55,7 +77,7 @@ public record MemberObservation(
             List<String> parameterTypes) {
         this(technicalKey, observedIdentifier, kind, inheritability, visibility,
                 memberName, sourcePath, startLine, endLine, parameterTypes,
-                MethodAbstraction.UNKNOWN);
+                MethodAbstraction.UNKNOWN, MemberScope.UNKNOWN);
     }
 
     public MemberObservation(

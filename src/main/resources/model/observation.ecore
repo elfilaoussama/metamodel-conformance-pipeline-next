@@ -4,7 +4,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="urn:metamodel-conformance:observation:10"
+    nsURI="urn:metamodel-conformance:observation:11"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
@@ -17,6 +17,11 @@
     <eLiterals name="INTERFACE" value="1"/>
     <eLiterals name="ENUM" value="2"/>
     <eLiterals name="ANNOTATION" value="3"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="ClassifierAbstraction">
+    <eLiterals name="ABSTRACT"/>
+    <eLiterals name="CONCRETE" value="1"/>
+    <eLiterals name="UNKNOWN" value="2"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="MemberKind">
     <eLiterals name="METHOD"/>
@@ -31,6 +36,8 @@
     <eLiterals name="METHOD_BODIES" value="5"/>
     <eLiterals name="METHOD_ABSTRACTION" value="6"/>
     <eLiterals name="IMPLEMENTATION_BINDINGS" value="7"/>
+    <eLiterals name="CLASSIFIER_ABSTRACTION" value="8"/>
+    <eLiterals name="METHOD_SCOPE" value="9"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="Inheritability">
     <eLiterals name="INHERITABLE"/>
@@ -47,6 +54,11 @@
   <eClassifiers xsi:type="ecore:EEnum" name="MethodAbstraction">
     <eLiterals name="ABSTRACT"/>
     <eLiterals name="CONCRETE" value="1"/>
+    <eLiterals name="UNKNOWN" value="2"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="MemberScope">
+    <eLiterals name="INSTANCE"/>
+    <eLiterals name="STATIC" value="1"/>
     <eLiterals name="UNKNOWN" value="2"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="DiagnosticKind">
@@ -83,6 +95,7 @@
     <eStructuralFeatures xsi:type="ecore:EReference" name="parents" upperBound="-1" eType="#//Classifier"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="declaredMembers" upperBound="-1" eType="#//Member"/>
     <eStructuralFeatures xsi:type="ecore:EReference" name="inheritedMembers" upperBound="-1" eType="#//Member"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="abstraction" lowerBound="1" eType="#//ClassifierAbstraction"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="Member">
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="technicalKey" lowerBound="1" iD="true" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
@@ -96,6 +109,7 @@
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="endLine" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="parameterTypes" upperBound="-1" ordered="true" unique="false" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="abstraction" lowerBound="1" eType="#//MethodAbstraction"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="scope" lowerBound="1" eType="#//MemberScope"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="MethodBody">
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="technicalKey" lowerBound="1" iD="true" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>

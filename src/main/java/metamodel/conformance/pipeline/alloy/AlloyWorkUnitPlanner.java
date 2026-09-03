@@ -123,14 +123,15 @@ final class AlloyWorkUnitPlanner {
                         item.startLine(), item.endLine(),
                         relations.contains(ProjectionRelation.PARENTS) ? retained(item.parentIds(), classifierIds) : List.of(),
                         relations.contains(ProjectionRelation.DECLARED_MEMBERS) ? retained(item.declaredMemberKeys(), memberKeys) : List.of(),
-                        relations.contains(ProjectionRelation.OBSERVED_INHERITED_MEMBERS) ? retained(item.inheritedMemberKeys(), memberKeys) : List.of()))
+                        relations.contains(ProjectionRelation.OBSERVED_INHERITED_MEMBERS) ? retained(item.inheritedMemberKeys(), memberKeys) : List.of(),
+                        item.abstraction()))
                 .toList();
         List<MemberObservation> members = source.members().stream()
                 .filter(item -> memberKeys.contains(item.technicalKey()))
                 .map(item -> new MemberObservation(
                         item.technicalKey(), item.observedIdentifier(), item.kind(), item.inheritability(),
                         item.visibility(), item.memberName(), item.sourcePath(), item.startLine(), item.endLine(),
-                        item.parameterTypes(), item.abstraction()))
+                        item.parameterTypes(), item.abstraction(), item.scope()))
                 .toList();
         List<MethodBodyObservation> bodies = source.methodBodies().stream()
                 .filter(item -> bodyKeys.contains(item.technicalKey())).toList();

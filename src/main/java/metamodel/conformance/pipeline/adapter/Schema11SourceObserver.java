@@ -6,11 +6,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
-/** Upgrades frontends that do not yet emit schema-10 implementation evidence. */
-final class Schema10SourceObserver implements SourceObserver {
+/** Upgrades frontends that do not yet emit schema-11 implementation/abstraction evidence. */
+final class Schema11SourceObserver implements SourceObserver {
     private final SourceObserver delegate;
 
-    Schema10SourceObserver(SourceObserver delegate) {
+    Schema11SourceObserver(SourceObserver delegate) {
         this.delegate = delegate;
     }
 
@@ -18,7 +18,7 @@ final class Schema10SourceObserver implements SourceObserver {
     public Observation observe(Path sourceRoot, Set<String> externalParents) throws ObservationException {
         Observation base = delegate.observe(sourceRoot, externalParents);
         return new Observation(
-                "10",
+                "11",
                 base.adapterId(),
                 base.adapterVersion(),
                 base.externalParents(),

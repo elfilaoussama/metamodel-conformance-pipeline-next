@@ -13,7 +13,8 @@ public record ClassifierObservation(
         int endLine,
         List<String> parentIds,
         List<String> declaredMemberKeys,
-        List<String> inheritedMemberKeys) {
+        List<String> inheritedMemberKeys,
+        ClassifierAbstraction abstraction) {
 
     public ClassifierObservation {
         id = CanonicalObservationValue.technicalId(id, "cls_", "id");
@@ -29,6 +30,22 @@ public record ClassifierObservation(
                 ? List.of() : declaredMemberKeys.stream().sorted().distinct().toList();
         inheritedMemberKeys = inheritedMemberKeys == null
                 ? List.of() : inheritedMemberKeys.stream().sorted().distinct().toList();
+        abstraction = abstraction == null ? ClassifierAbstraction.UNKNOWN : abstraction;
+    }
+
+    public ClassifierObservation(
+            String id,
+            String qualifiedName,
+            String packageName,
+            ClassifierKind kind,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parentIds,
+            List<String> declaredMemberKeys,
+            List<String> inheritedMemberKeys) {
+        this(id, qualifiedName, packageName, kind, sourcePath, startLine, endLine,
+                parentIds, declaredMemberKeys, inheritedMemberKeys, ClassifierAbstraction.UNKNOWN);
     }
 
     public ClassifierObservation(
@@ -42,7 +59,7 @@ public record ClassifierObservation(
             List<String> parentIds,
             List<String> declaredMemberKeys) {
         this(id, qualifiedName, packageName, kind, sourcePath, startLine, endLine,
-                parentIds, declaredMemberKeys, List.of());
+                parentIds, declaredMemberKeys, List.of(), ClassifierAbstraction.UNKNOWN);
     }
 
     public ClassifierObservation(
@@ -55,7 +72,7 @@ public record ClassifierObservation(
             List<String> parentIds,
             List<String> declaredMemberKeys) {
         this(id, qualifiedName, inferredPackage(qualifiedName), kind, sourcePath, startLine, endLine,
-                parentIds, declaredMemberKeys, List.of());
+                parentIds, declaredMemberKeys, List.of(), ClassifierAbstraction.UNKNOWN);
     }
 
     public ClassifierObservation(
@@ -69,7 +86,7 @@ public record ClassifierObservation(
             List<String> declaredMemberKeys,
             List<String> inheritedMemberKeys) {
         this(id, qualifiedName, inferredPackage(qualifiedName), kind, sourcePath, startLine, endLine,
-                parentIds, declaredMemberKeys, inheritedMemberKeys);
+                parentIds, declaredMemberKeys, inheritedMemberKeys, ClassifierAbstraction.UNKNOWN);
     }
 
     public ClassifierObservation(
@@ -81,7 +98,7 @@ public record ClassifierObservation(
             int endLine,
             List<String> parentIds) {
         this(id, qualifiedName, inferredPackage(qualifiedName), kind, sourcePath, startLine, endLine,
-                parentIds, List.of(), List.of());
+                parentIds, List.of(), List.of(), ClassifierAbstraction.UNKNOWN);
     }
 
     private static String inferredPackage(String qualifiedName) {

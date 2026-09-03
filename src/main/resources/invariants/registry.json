@@ -62,6 +62,30 @@
       "violationMessage": "At least one implementation binding has an unavailable target, duplicate class-method binding, orphan/shared body, or invalid abstract/concrete local disposition."
     },
     {
+      "id": "abstraction-implementation-consistency",
+      "title": "Abstraction and unresolved implementation consistency",
+      "specificationTrace": "O-07",
+      "witnessFunction": "AbstractionImplementationViolations",
+      "witnessArity": 1,
+      "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "METHOD_BODIES", "METHOD_ABSTRACTION", "IMPLEMENTATION_BINDINGS", "CLASSIFIER_ABSTRACTION"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "IMPLEMENTATION_BINDINGS"],
+      "partitionRoots": ["CLASSIFIER", "MEMBER", "BODY"],
+      "conformanceMessage": "Every classifier with an unresolved visible method is explicitly abstract.",
+      "violationMessage": "At least one classifier has unresolved visible implementation obligations without being explicitly abstract, or lacks abstraction evidence."
+    },
+    {
+      "id": "static-abstract-method-separation",
+      "title": "Static and abstract method separation",
+      "specificationTrace": "O-07",
+      "witnessFunction": "StaticAbstractMethodViolations",
+      "witnessArity": 1,
+      "requiredEvidence": ["DECLARATION_OWNERSHIP", "METHOD_ABSTRACTION", "METHOD_SCOPE"],
+      "partitionRelations": ["DECLARED_MEMBERS"],
+      "partitionRoots": ["MEMBER"],
+      "conformanceMessage": "No source method is simultaneously static and abstract.",
+      "violationMessage": "At least one source method is simultaneously static and abstract, or lacks required abstraction/scope evidence."
+    },
+    {
       "id": "local-namespace-uniqueness",
       "title": "Local namespace uniqueness",
       "specificationTrace": "O-08-local",

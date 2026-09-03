@@ -1,9 +1,11 @@
 package metamodel.conformance.pipeline.alloy;
 
+import metamodel.conformance.pipeline.model.ClassifierAbstraction;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.ImplementationBindingObservation;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberScope;
 import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.MethodAbstraction;
 import metamodel.conformance.pipeline.model.Observation;
@@ -34,13 +36,16 @@ public final class ExactAlloyEncoder {
 
         StringBuilder alloy = new StringBuilder();
         alloy.append("module repository_instance\n\n");
-        alloy.append("abstract sig Classifier {\n")
+        alloy.append("abstract sig ClassifierAbstraction {}\n")
+                .append("one sig CLASSIFIER_ABSTRACT, CLASSIFIER_CONCRETE, CLASSIFIER_ABSTRACTION_UNKNOWN extends ClassifierAbstraction {}\n")
+                .append("abstract sig Classifier {\n")
                 .append("  parents: set Classifier,\n")
                 .append("  declaredMembers: set Member,\n")
                 .append("  observedInheritedMembers: set Member,\n")
-                .append("  packageName: one PackageToken\n")
-                .append("}\n");
-        alloy.append("abstract sig MemberKind {}\n")
+                .append("  packageName: one PackageToken,\n")
+                .append("  classifierAbstraction: one ClassifierAbstraction\n")
+                .append("}\n")
+                .append("abstract sig MemberKind {}\n")
                 .append("one sig METHOD, ATTRIBUTE extends MemberKind {}\n")
                 .append("abstract sig Inheritability {}\n")
                 .append("one sig INHERITABLE, NOT_INHERITABLE, UNKNOWN extends Inheritability {}\n")
@@ -48,6 +53,8 @@ public final class ExactAlloyEncoder {
                 .append("one sig PUBLIC, PROTECTED, PACKAGE, PRIVATE, VISIBILITY_UNKNOWN extends MemberVisibility {}\n")
                 .append("abstract sig MethodAbstraction {}\n")
                 .append("one sig ABSTRACT, CONCRETE, ABSTRACTION_UNKNOWN extends MethodAbstraction {}\n")
+                .append("abstract sig MemberScope {}\n")
+                .append("one sig INSTANCE_SCOPE, STATIC_SCOPE, SCOPE_UNKNOWN extends MemberScope {}\n")
                 .append("abstract sig PackageToken {}\n")
                 .append("abstract sig NameToken {}\n")
                 .append("abstract sig TypeToken {}\n")
@@ -59,7 +66,8 @@ public final class ExactAlloyEncoder {
                 .append("  visibility: one MemberVisibility,\n")
                 .append("  memberName: one NameToken,\n")
                 .append("  parameterTypeAt: PositionToken -> lone TypeToken,\n")
-                .append("  abstraction: one MethodAbstraction\n")
+                .append("  abstraction: one MethodAbstraction,\n")
+                .append("  memberScope: one MemberScope\n")
                 .append("}\n")
                 .append("abstract sig ImplementationBinding {\n")
                 .append("  implementer: one Classifier,\n")
@@ -87,12 +95,14 @@ public final class ExactAlloyEncoder {
         relation(alloy, "declaredMembers", declarationEdges(observation));
         relation(alloy, "observedInheritedMembers", inheritedMembershipEdges(observation));
         relation(alloy, "packageName", packageEdges(observation, packageAtoms));
+        relation(alloy, "classifierAbstraction", classifierAbstractionEdges(observation));
         relation(alloy, "kind", kindEdges(observation));
         relation(alloy, "inheritability", inheritabilityEdges(observation));
         relation(alloy, "visibility", visibilityEdges(observation));
         relation(alloy, "memberName", nameEdges(observation, nameAtoms));
         relation(alloy, "parameterTypeAt", parameterTypeEdges(observation, typeAtoms));
         relation(alloy, "abstraction", abstractionEdges(observation));
+        relation(alloy, "memberScope", memberScopeEdges(observation));
         relation(alloy, "implementer", implementerEdges(observation));
         relation(alloy, "target", targetEdges(observation));
         relation(alloy, "body", bodyEdges(observation));
@@ -158,6 +168,14 @@ public final class ExactAlloyEncoder {
         return edges;
     }
 
+    private static List<String> classifierAbstractionEdges(Observation o) {
+        return o.classifiers().stream().map(c -> classifierAtom(c.id()) + "->" + switch (c.abstraction()) {
+            case ABSTRACT -> "CLASSIFIER_ABSTRACT";
+            case CONCRETE -> "CLASSIFIER_CONCRETE";
+            case UNKNOWN -> "CLASSIFIER_ABSTRACTION_UNKNOWN";
+        }).toList();
+    }
+
     private static List<String> kindEdges(Observation o) {
         return o.members().stream().map(m -> memberAtom(m.technicalKey()) + "->" + (m.kind() == MemberKind.METHOD ? "METHOD" : "ATTRIBUTE")).toList();
     }
@@ -172,6 +190,14 @@ public final class ExactAlloyEncoder {
 
     private static List<String> abstractionEdges(Observation o) {
         return o.members().stream().map(m -> memberAtom(m.technicalKey()) + "->" + (m.abstraction() == MethodAbstraction.UNKNOWN ? "ABSTRACTION_UNKNOWN" : m.abstraction().name())).toList();
+    }
+
+    private static List<String> memberScopeEdges(Observation o) {
+        return o.members().stream().map(m -> memberAtom(m.technicalKey()) + "->" + switch (m.scope()) {
+            case INSTANCE -> "INSTANCE_SCOPE";
+            case STATIC -> "STATIC_SCOPE";
+            case UNKNOWN -> "SCOPE_UNKNOWN";
+        }).toList();
     }
 
     private static List<String> implementerEdges(Observation o) {

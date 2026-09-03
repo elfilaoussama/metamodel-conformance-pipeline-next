@@ -1,45 +1,63 @@
-# O-01–O-09 condition contract
+# O-01–O-09 research condition contract
 
-This contract fixes the semantic source of truth before additional adapters are
-implemented. Ecore stores observations; Alloy alone defines violations. O-numbers
-are research-specification trace labels only; executable code uses semantic invariant
-IDs.
+This contract defines the empirical meaning of each formal condition before a language frontend is allowed to claim it as evaluable. The project separates **observation** from **judgment**: source-language frontends collect independently defensible facts, Ecore/XMI preserves those facts, and Alloy alone defines conformance or violation. O-numbers are manuscript trace labels; executable code uses semantic invariant IDs.
 
-| ID | Condition | Formal relation or key | Witness unit | Current empirical status |
+A condition is not made executable merely because its Alloy formula exists. It becomes executable for an observation only when every evidence kind required by that semantic check is complete. Missing evidence yields `NOT_EVALUATED` rather than guessed conformance.
+
+| Trace | Condition | Formal/empirical correspondence | Witness | Repository profile |
 |---|---|---|---|---|
-| O-01 | Independent identity | Distinct carriers have distinct independently observed identifiers | Carrier pair | Deferred: source-observed identity is not yet justified independently of generated technical keys |
-| O-02 | Exclusive declaration ownership | Every method and attribute occurs in exactly one classifier's local-member relation | Member | Implemented |
-| O-03 | Acyclic generalization | `no c : Classifier \| c in c.^parents` | Classifier | Implemented |
-| O-04 | Inherited view derivation | Frontend-observed inherited view equals the Alloy-derived ancestor view | Classifier/member pair | Implemented when inherited-view evidence is complete |
-| O-05 | Local/inherited separation | Local and frontend-observed inherited member relations are atom-disjoint | Classifier/member pair | Implemented when inherited-view evidence is complete |
-| O-06 | Implementation binding | Independently observed source bodies correspond exactly to compiler-resolved declaration/body bindings | Member/body | Implemented when method-body and implementation-binding evidence are complete |
-| O-07 | Abstraction and instantiation | Abstractness, direct instances, and unresolved implementations agree | Classifier/member/object | Deferred pending instantiation and implementation-completeness evidence |
-| O-08 | Namespace and conflict | Method key is name plus ordered parameter types; attribute key is name | Conflicting member pair | Local and inherited variants implemented; inherited evaluation requires complete inherited-view evidence |
-| O-09 | Override discipline | Independently resolved overrides satisfy return and implementation policy | Override pair | Deferred pending frontend-resolved override and return-policy evidence; O-06 implementation evidence is now reusable |
+| O-01 | Independent identity | Distinct carriers require independently observed identifiers, not generated technical keys | Carrier pair | Deferred: independent source identity is not yet justified |
+| O-02 | Exclusive declaration ownership | Every observed method/attribute occurs in exactly one local-member relation | Member | Executable |
+| O-03 | Acyclic generalization | `no c : Classifier \| c in c.^parents` over the exact observed hierarchy | Classifier | Executable when hierarchy evidence is complete |
+| O-04 | Inherited view derivation | Frontend-resolved inherited membership must equal the Alloy-derived ancestor view | Classifier/member pair | Executable when inherited-view evidence is complete |
+| O-05 | Local/inherited separation | Local and independently observed inherited membership are atom-disjoint | Classifier/member pair | Executable when inherited-view evidence is complete |
+| O-06 | Implementation binding | Standalone source bodies and compiler-resolved declaration/body correspondence form explicit implementer-target-body bindings | Member or body | Executable when implementation evidence is complete |
+| O-07 | Abstraction and instantiation | Classifier abstractness must agree with unresolved visible implementations; static methods are separated from abstract method declarations; the formal direct-instance clause additionally requires object evidence | Classifier or member; object for the deferred clause | **Repository-observable abstraction subprofile executable; direct-instance subclause deferred** |
+| O-08 | Namespace/conflict | Method key = name + ordered parameter types; attribute key = name | Conflicting member(s) | Local and inherited variants executable under their evidence requirements |
+| O-09 | Override discipline | Independently resolved override relationships must satisfy signature/return/implementation policy | Override pair | Deferred pending override/return evidence; O-06 evidence is reusable |
 
-## Non-negotiable rules
+## Evidence and modeling rules
 
-- `technicalKey` is generated, unique, and used only for traceability.
-- Any observed identifier used by an invariant must be separate from generated technical identity and must have an independently defensible source meaning.
-- Members are technically contained by the observation root. Declaration ownership is a separate, permissive relation so zero-owner and multi-owner structures remain representable.
-- Method bodies are standalone canonical observations. Their generated body keys encode source location only; they do not encode a declaration owner.
-- Declaration-to-body implementation bindings are independently resolved by the compiler frontend and remain a permissive relation, so missing, extra, shared, and orphan bindings remain representable for Alloy to judge.
-- Parameter types remain an ordered multi-valued structure. They are never flattened into a delimiter-separated signature.
-- `inheritedMembers` is populated only from frontend semantic resolution. Alloy independently derives its expected view from parents, local declarations, member visibility, classifier package, inheritability, local hiding, and nearer-ancestor priority.
-- Each condition is an independent Alloy predicate and violation function, not a global fact. One violation cannot prevent evaluation of another condition.
-- Missing required evidence yields `NOT_EVALUATED`; the pipeline never manufactures facts to turn an incomplete observation into conformance.
+- `technicalKey` and classifier IDs are deterministic generated trace keys. They are not independent semantic identities and cannot satisfy O-01.
+- Members and method bodies are technically contained by the observation root, while declaration ownership and implementation binding are explicit relations. This keeps malformed states representable so Alloy can detect them.
+- Method-body keys encode source location only; they do not encode a declaring classifier or target method.
+- Implementation bindings are ternary observations: **implementer classifier + target method + body**. The schema can therefore represent an implementation whose implementer differs from the target method's declaring classifier.
+- Spoon observes standalone Java bodies and source modifiers. javac independently resolves source declarations/body correspondence. Neither frontend decides O-06 or O-07.
+- Classifier abstraction (`ABSTRACT`, `CONCRETE`, `UNKNOWN`) and method scope (`INSTANCE`, `STATIC`, `UNKNOWN`) are explicit canonical evidence, not booleans inferred inside Alloy from implementation outcomes.
+- Parameter types remain ordered multi-valued observations. They are never flattened into a delimiter-based signature.
+- `inheritedMembers` is populated only from frontend semantic resolution. Alloy independently derives its expected inherited view from parents, declarations, visibility, package, inheritability, hiding, and nearer-ancestor priority.
+- Each semantic condition is evaluated independently. A violation of one condition does not globally invalidate the exact observation or suppress other decisions.
+- `CONFORMANT` means the exact observed facts satisfy that registered check. It does **not** mean unobserved program behavior was proved correct.
+- `NOT_EVALUATED` is a first-class research result indicating that the configured observation boundary cannot justify all required evidence.
 
-## Current executable invariant set
+## O-07 repository-observable profile
 
-The current registry contains seven semantic invariants:
+The current repository experiment does not observe runtime/model objects. Therefore it does not reinterpret Java allocation syntax (`new C(...)`) as a formal `Object` or `directInstances` relation. Doing so would change the manuscript semantics and create an unjustified correspondence claim.
+
+The repository-observable O-07 profile instead evaluates two independently registered checks:
+
+1. `abstraction-implementation-consistency`
+   - Alloy reuses the O-06 binding relation and derives `unresolvedMethod` itself.
+   - If a classifier has any unresolved visible method, the observed classifier must be explicitly abstract.
+   - A fully implemented classifier is still allowed to be abstract; the implication is intentionally one-way.
+2. `static-abstract-method-separation`
+   - Source-observed method abstraction and source-observed static/instance scope are compared in Alloy.
+   - A method observed as both static and abstract is a violation.
+
+The formal direct-instance clause remains documented but deferred until an explicit object-observation experiment is defined and independently justified.
+
+## Current executable registry
+
+The registry contains nine semantic checks:
 
 1. `exclusive-declaration-ownership` (O-02)
 2. `acyclic-generalization` (O-03)
 3. `inherited-view-consistency` (O-04)
 4. `local-inherited-separation` (O-05)
 5. `implementation-binding-consistency` (O-06)
-6. `local-namespace-uniqueness` (O-08-local)
-7. `inherited-namespace-uniqueness` (O-08-inherited)
+6. `abstraction-implementation-consistency` (O-07 repository profile)
+7. `static-abstract-method-separation` (O-07 repository profile)
+8. `local-namespace-uniqueness` (O-08-local)
+9. `inherited-namespace-uniqueness` (O-08-inherited)
 
-O-01, O-07, and O-09 remain intentionally deferred until their evidence can
-be observed without circularly deriving it from the invariant being tested.
+O-01 and O-09 remain deferred. The O-07 direct-instance subclause also remains deferred even though the repository-observable abstraction subprofile is executable.
