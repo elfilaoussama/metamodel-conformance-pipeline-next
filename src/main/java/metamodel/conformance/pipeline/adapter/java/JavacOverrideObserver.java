@@ -26,13 +26,13 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -68,8 +68,42 @@ final class JavacOverrideObserver {
                     .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
             List<MemberObservation> scopedMembers = members.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
-            Result result = observeSourceSet(
-                    root, entry.getValue(), scopedClassifiers, scopedMembers, dependencyArchives);
+            Result result;
+            try (JavacSourceSetContext context = JavacSourceSetContext.prepare(
+                    root, sourceSet, filesBySourceSet, dependencyArchives)) {
+                if (!context.complete()) {
+                    result = new Result(false, Map.of(), Map.of(), context.diagnostics());
+                } else {
+                    String productionSourceSet = context.productionSourceSet();
+                    List<ClassifierObservation> productionClassifiers = productionSourceSet == null
+                            ? List.of()
+                            : classifiers.stream()
+                                    .filter(item -> JavaSourceSets.id(item.sourcePath())
+                                            .equals(productionSourceSet))
+                                    .toList();
+                    Set<String> productionPaths = productionClassifiers.stream()
+                            .map(ClassifierObservation::sourcePath)
+                            .collect(java.util.stream.Collectors.toSet());
+                    List<MemberObservation> productionMembers = productionSourceSet == null
+                            ? List.of()
+                            : members.stream()
+                                    .filter(item -> productionPaths.contains(item.sourcePath()))
+                                    .toList();
+                    result = observeSourceSet(
+                            root,
+                            entry.getValue(),
+                            scopedClassifiers,
+                            scopedMembers,
+                            productionClassifiers,
+                            productionMembers,
+                            context.classpath());
+                }
+            } catch (IOException | RuntimeException failure) {
+                result = Result.incomplete(
+                        relativePath(root, entry.getValue().get(0)),
+                        "javac source-set context failed for override/return-type evidence: "
+                                + failure.getClass().getSimpleName());
+            }
             complete &= result.complete();
             diagnostics.addAll(result.diagnostics());
             returnTypes.putAll(result.returnTypesByMember());
@@ -94,58 +128,50 @@ final class JavacOverrideObserver {
             List<Path> files,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<Path> dependencyArchives) {
+            List<ClassifierObservation> productionClassifiers,
+            List<MemberObservation> productionMembers,
+            String classpath) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             return Result.incomplete(relativePath(root, files.get(0)),
                     "JDK compiler is unavailable; override/return-type evidence was not observed");
         }
-        Path emptyClasspath = null;
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        try {
-            emptyClasspath = dependencyArchives.isEmpty()
-                    ? Files.createTempDirectory("metamodel-conformance-javac-override-") : null;
-            String classpath = dependencyArchives.isEmpty()
-                    ? emptyClasspath.toString()
-                    : dependencyArchives.stream().map(Path::toString)
-                            .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
-            try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
-                    diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
-                Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
-                JavacTask task = (JavacTask) compiler.getTask(
-                        null,
-                        fileManager,
-                        diagnostics,
-                        List.of(
-                                "-proc:none",
-                                "-implicit:none",
-                                "--release", "17",
-                                "-classpath", classpath,
-                                "-Xlint:none"),
-                        null,
-                        sources);
-                List<CompilationUnitTree> parsed = new ArrayList<>();
-                task.parse().forEach(parsed::add);
-                task.analyze();
-                if (diagnostics.getDiagnostics().stream()
-                        .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
-                    return new Result(false, Map.of(), Map.of(),
-                            evidenceDiagnostics(root, files, diagnostics));
-                }
-                return resolve(root, parsed, task, classifiers, members);
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
+                diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
+            Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
+            JavacTask task = (JavacTask) compiler.getTask(
+                    null,
+                    fileManager,
+                    diagnostics,
+                    List.of(
+                            "-proc:none",
+                            "-implicit:none",
+                            "--release", "17",
+                            "-classpath", classpath,
+                            "-Xlint:none"),
+                    null,
+                    sources);
+            List<CompilationUnitTree> parsed = new ArrayList<>();
+            task.parse().forEach(parsed::add);
+            task.analyze();
+            if (diagnostics.getDiagnostics().stream()
+                    .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
+                return new Result(false, Map.of(), Map.of(),
+                        evidenceDiagnostics(root, files, diagnostics));
             }
+            return resolve(
+                    root,
+                    parsed,
+                    task,
+                    classifiers,
+                    members,
+                    productionClassifiers,
+                    productionMembers);
         } catch (IOException | RuntimeException | StackOverflowError failure) {
             return Result.incomplete(relativePath(root, files.get(0)),
                     "javac override/return-type observation failed: "
                             + failure.getClass().getSimpleName());
-        } finally {
-            if (emptyClasspath != null) {
-                try {
-                    Files.deleteIfExists(emptyClasspath);
-                } catch (IOException ignored) {
-                    // Failure to remove an empty temporary directory cannot create evidence.
-                }
-            }
         }
     }
 
@@ -154,15 +180,19 @@ final class JavacOverrideObserver {
             List<CompilationUnitTree> parsed,
             JavacTask task,
             List<ClassifierObservation> classifiers,
-            List<MemberObservation> members) throws IOException {
+            List<MemberObservation> members,
+            List<ClassifierObservation> productionClassifiers,
+            List<MemberObservation> productionMembers) throws IOException {
         Trees trees = Trees.instance(task);
         Types types = task.getTypes();
         Elements elements = task.getElements();
         Map<TypeLocator, List<TypeElement>> javacTypes = collectTypes(root, parsed, trees);
+
         Map<String, MemberObservation> membersByKey = new HashMap<>();
         members.forEach(member -> membersByKey.put(member.technicalKey(), member));
-        Map<MemberLocator, List<MemberObservation>> membersByLocation = new HashMap<>();
-        for (ClassifierObservation classifier : classifiers) {
+        productionMembers.forEach(member -> membersByKey.put(member.technicalKey(), member));
+        Map<MemberLocator, List<MemberObservation>> membersByOwnerAndName = new HashMap<>();
+        for (ClassifierObservation classifier : concat(classifiers, productionClassifiers)) {
             for (String key : classifier.declaredMemberKeys()) {
                 MemberObservation member = membersByKey.get(key);
                 if (member == null) {
@@ -170,13 +200,27 @@ final class JavacOverrideObserver {
                 }
                 if (member.kind() == MemberKind.METHOD) {
                     MemberLocator locator = new MemberLocator(classifier.id(), member.memberName());
-                    membersByLocation.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(member);
+                    membersByOwnerAndName.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(member);
                 }
             }
         }
 
+        Map<TypeLocator, ClassifierObservation> localClassifiersByLocation = new HashMap<>();
+        for (ClassifierObservation classifier : classifiers) {
+            TypeLocator locator = new TypeLocator(classifier.sourcePath(), classifier.startLine());
+            if (localClassifiersByLocation.put(locator, classifier) != null) {
+                return incomplete(classifiers,
+                        "ambiguous classifier source location for override evidence");
+            }
+        }
+        Map<String, List<ClassifierObservation>> productionByQualifiedName = new HashMap<>();
+        for (ClassifierObservation classifier : productionClassifiers) {
+            productionByQualifiedName.computeIfAbsent(
+                    classifier.qualifiedName(), ignored -> new ArrayList<>()).add(classifier);
+        }
+
         Map<String, TypeElement> typeByClassifier = new HashMap<>();
-        Map<String, ExecutableElement> methodByKey = new HashMap<>();
+        Map<String, ExecutableElement> localMethodByKey = new HashMap<>();
         Map<String, String> returnTypes = new HashMap<>();
         Set<String> mappedMethods = new HashSet<>();
         for (ClassifierObservation classifier : classifiers) {
@@ -203,11 +247,12 @@ final class JavacOverrideObserver {
                 }
                 SourcePoint methodLocation = methodDeclarationPoint(root, trees, method, methodTree);
                 if (methodLocation == null) {
-                    return incomplete(classifiers, "javac source method has no canonical source location");
+                    return incomplete(classifiers,
+                            "javac source method has no canonical source location");
                 }
-                List<MemberObservation> declarationCandidates = membersByLocation.get(
+                List<MemberObservation> declarationCandidates = membersByOwnerAndName.get(
                         new MemberLocator(classifier.id(), method.getSimpleName().toString()));
-                MemberObservation declaration = uniqueDeclaration(
+                MemberObservation declaration = uniqueSourceDeclaration(
                         declarationCandidates, method, types, methodLocation);
                 if (declaration == null) {
                     return Result.incomplete(
@@ -222,7 +267,7 @@ final class JavacOverrideObserver {
                             "javac source method mapped more than once for override evidence: "
                                     + classifier.qualifiedName() + "." + method.getSimpleName());
                 }
-                methodByKey.put(declaration.technicalKey(), method);
+                localMethodByKey.put(declaration.technicalKey(), method);
                 String returnType = method.getReturnType().toString();
                 if (returnType.isBlank()) {
                     return Result.incomplete(
@@ -240,7 +285,9 @@ final class JavacOverrideObserver {
         }
 
         Map<String, List<String>> overrides = new HashMap<>();
-        methodByKey.keySet().forEach(key -> overrides.put(key, List.of()));
+        for (String key : localMethodByKey.keySet()) {
+            overrides.put(key, List.of());
+        }
         for (ClassifierObservation classifier : classifiers) {
             TypeElement owner = typeByClassifier.get(classifier.id());
             if (owner == null) {
@@ -251,24 +298,125 @@ final class JavacOverrideObserver {
                 if (member == null || member.kind() != MemberKind.METHOD) {
                     continue;
                 }
-                ExecutableElement local = methodByKey.get(key);
+                ExecutableElement local = localMethodByKey.get(key);
                 if (local == null) {
-                    return incomplete(classifiers, "javac local override declaration could not be resolved");
+                    return incomplete(classifiers,
+                            "javac local override declaration could not be resolved");
                 }
-                List<String> targets = methodByKey.entrySet().stream()
-                        .filter(entry -> !entry.getKey().equals(key))
-                        .filter(entry -> elements.overrides(local, entry.getValue(), owner))
-                        .map(Map.Entry::getKey)
-                        .sorted()
-                        .toList();
-                overrides.put(key, targets);
+                LinkedHashSet<String> targets = new LinkedHashSet<>();
+                for (Element candidateElement : elements.getAllMembers(owner)) {
+                    if (candidateElement.getKind() != ElementKind.METHOD
+                            || !(candidateElement instanceof ExecutableElement candidate)
+                            || candidate.equals(local)
+                            || !elements.overrides(local, candidate, owner)) {
+                        continue;
+                    }
+                    TargetMapping target = canonicalOverrideTarget(
+                            root,
+                            trees,
+                            candidate,
+                            types,
+                            localClassifiersByLocation,
+                            productionByQualifiedName,
+                            membersByOwnerAndName);
+                    if (target.error() != null) {
+                        return Result.incomplete(
+                                member.sourcePath(), member.startLine(), target.error());
+                    }
+                    if (target.memberKey() != null) {
+                        targets.add(target.memberKey());
+                    }
+                }
+                overrides.put(key, targets.stream().sorted().toList());
             }
         }
         return new Result(true, returnTypes, overrides, List.of());
     }
 
-    private static Result incomplete(
-            List<ClassifierObservation> classifiers, String message) {
+    private static TargetMapping canonicalOverrideTarget(
+            Path root,
+            Trees trees,
+            ExecutableElement candidate,
+            Types types,
+            Map<TypeLocator, ClassifierObservation> localClassifiersByLocation,
+            Map<String, List<ClassifierObservation>> productionByQualifiedName,
+            Map<MemberLocator, List<MemberObservation>> membersByOwnerAndName) throws IOException {
+        Element enclosing = candidate.getEnclosingElement();
+        if (!(enclosing instanceof TypeElement declaringType)) {
+            return new TargetMapping(null, "javac override target has no declaring classifier");
+        }
+
+        SourcePoint ownerLocation = sourcePoint(root, trees, declaringType);
+        ClassifierObservation canonicalOwner;
+        boolean binaryProduction = false;
+        if (ownerLocation != null) {
+            canonicalOwner = localClassifiersByLocation.get(
+                    new TypeLocator(ownerLocation.path(), ownerLocation.line()));
+            if (canonicalOwner == null) {
+                return new TargetMapping(
+                        null,
+                        "javac source override target owner is outside the active source-set graph");
+            }
+        } else {
+            List<ClassifierObservation> productionCandidates = productionByQualifiedName.get(
+                    declaringType.getQualifiedName().toString());
+            if (productionCandidates == null || productionCandidates.isEmpty()) {
+                // Platform and explicit external dependencies are outside the canonical source graph.
+                return new TargetMapping(null, null);
+            }
+            if (productionCandidates.size() != 1) {
+                return new TargetMapping(
+                        null,
+                        "production-sibling override target owner could not be mapped uniquely");
+            }
+            canonicalOwner = productionCandidates.get(0);
+            binaryProduction = true;
+        }
+
+        List<MemberObservation> candidates = membersByOwnerAndName.get(
+                new MemberLocator(canonicalOwner.id(), candidate.getSimpleName().toString()));
+        MemberObservation declaration = uniqueBinaryDeclaration(candidates, candidate, types);
+        if (declaration != null) {
+            return new TargetMapping(declaration.technicalKey(), null);
+        }
+        if (binaryProduction && (candidates == null || candidates.isEmpty())) {
+            // Synthetic binary bridge/helper method with no canonical source declaration.
+            return new TargetMapping(null, null);
+        }
+        return new TargetMapping(
+                null,
+                "javac override target could not be mapped uniquely to canonical source evidence: owner="
+                        + canonicalOwner.qualifiedName()
+                        + ", method=" + candidate.getSimpleName());
+    }
+
+    private static MemberObservation uniqueBinaryDeclaration(
+            List<MemberObservation> candidates,
+            ExecutableElement method,
+            Types types) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        List<String> exact = method.getParameters().stream()
+                .map(parameter -> parameter.asType().toString()).toList();
+        List<String> erased = method.getParameters().stream()
+                .map(parameter -> types.erasure(parameter.asType()).toString()).toList();
+        List<MemberObservation> matching = candidates.stream()
+                .filter(candidate -> candidate.parameterTypes().equals(exact)
+                        || candidate.parameterTypes().equals(erased))
+                .toList();
+        return matching.size() == 1 ? matching.get(0) : null;
+    }
+
+    private static List<ClassifierObservation> concat(
+            List<ClassifierObservation> left, List<ClassifierObservation> right) {
+        List<ClassifierObservation> result = new ArrayList<>(left.size() + right.size());
+        result.addAll(left);
+        result.addAll(right);
+        return result;
+    }
+
+    private static Result incomplete(List<ClassifierObservation> classifiers, String message) {
         String sourcePath = classifiers.isEmpty()
                 ? "<unknown>.java" : classifiers.get(0).sourcePath();
         return Result.incomplete(sourcePath, message);
@@ -300,8 +448,7 @@ final class JavacOverrideObserver {
         return result;
     }
 
-    private static SourcePoint sourcePoint(
-            Path root, Trees trees, Element element) throws IOException {
+    private static SourcePoint sourcePoint(Path root, Trees trees, Element element) throws IOException {
         var treePath = trees.getPath(element);
         if (treePath == null) {
             return null;
@@ -331,8 +478,7 @@ final class JavacOverrideObserver {
         if (position < 0 || unit.getLineMap() == null) {
             return null;
         }
-        Path source = Path.of(unit.getSourceFile().toUri())
-                .toRealPath(LinkOption.NOFOLLOW_LINKS);
+        Path source = Path.of(unit.getSourceFile().toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
         if (!source.startsWith(root)) {
             return null;
         }
@@ -341,7 +487,7 @@ final class JavacOverrideObserver {
                 Math.toIntExact(unit.getLineMap().getLineNumber(position)));
     }
 
-    private static MemberObservation uniqueDeclaration(
+    private static MemberObservation uniqueSourceDeclaration(
             List<MemberObservation> candidates,
             ExecutableElement method,
             Types types,
@@ -410,8 +556,7 @@ final class JavacOverrideObserver {
                 .toList();
     }
 
-    private static String diagnosticPath(
-            Path root, JavaFileObject source, String fallback) {
+    private static String diagnosticPath(Path root, JavaFileObject source, String fallback) {
         if (source == null) {
             return fallback;
         }
@@ -475,5 +620,8 @@ final class JavacOverrideObserver {
     }
 
     private record SourcePoint(String path, int line) {
+    }
+
+    private record TargetMapping(String memberKey, String error) {
     }
 }
