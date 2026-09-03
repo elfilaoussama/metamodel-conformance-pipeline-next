@@ -23,6 +23,10 @@ jobs:
           python-version: "3.12"
       - name: Verify Clang frontend
         run: clang++ --version
+      - name: Verify recovered paper corpus integrity
+        run: |
+          python -m py_compile scripts/pin-paper-corpus.py
+          python scripts/pin-paper-corpus.py --validate-selection-only
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress verify
       - name: Verify pinned real repository
