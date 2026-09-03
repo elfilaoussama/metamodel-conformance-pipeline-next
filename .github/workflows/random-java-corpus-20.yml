@@ -125,6 +125,7 @@ jobs:
               repositories: length,
               javaFiles: (map(.javaFiles) | add),
               analyzedRepositories: ([.[] | select(.toolOutcome == "ANALYZED")] | length),
+              totalWitnesses: ([.[] | .decisions[] | .witnessCount] | add // 0),
               diagnostics: (
                 [.[] | .observationDiagnostics[]?]
                 | group_by(.kind)
@@ -138,7 +139,10 @@ jobs:
                     invariantId: .[0].invariantId,
                     conformant: ([.[] | select(.status == "CONFORMANT")] | length),
                     nonConformant: ([.[] | select(.status == "NON_CONFORMANT")] | length),
-                    notEvaluated: ([.[] | select(.status == "NOT_EVALUATED")] | length)
+                    notEvaluated: ([.[] | select(.status == "NOT_EVALUATED")] | length),
+                    evaluatedRepositories: ([.[] | select(.status != "NOT_EVALUATED")] | length),
+                    repositoriesWithFindings: ([.[] | select(.status == "NON_CONFORMANT")] | length),
+                    witnessCount: (map(.witnessCount) | add // 0)
                   })
               )
             }
