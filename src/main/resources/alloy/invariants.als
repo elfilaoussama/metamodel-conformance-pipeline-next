@@ -172,11 +172,14 @@ pred localOverrideImplemented[local : Member] {
       b.implementer = c and b.target = local
 }
 
-fun OverridePolicyViolations : Member -> Member {
+fun OverrideRelationConsistencyViolations : Member -> Member {
   { local, inherited : Member |
     (inherited in local.observedOverrides and not formallyOverrides[inherited, local]) or
     (inherited not in local.observedOverrides and formallyOverrides[inherited, local])
-  } +
+  }
+}
+
+fun OverrideDisciplineViolations : Member -> Member {
   { local, inherited : Member |
     formallyOverrides[inherited, local] and
     (
