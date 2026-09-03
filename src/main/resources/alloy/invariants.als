@@ -128,3 +128,24 @@ fun ImplementationBindingViolations : set univ {
     not (one b : ImplementationBinding | b.body = methodBody)
   }
 }
+
+fun AbstractionImplementationViolations : set Classifier {
+  { c : Classifier |
+    c.classifierAbstraction = CLASSIFIER_ABSTRACTION_UNKNOWN or
+    (
+      (some m : Member | unresolvedMethod[c, m]) and
+      c.classifierAbstraction != CLASSIFIER_ABSTRACT
+    )
+  }
+}
+
+fun StaticAbstractMethodViolations : set Member {
+  { m : Member |
+    m.kind = METHOD and
+    (
+      m.abstraction = ABSTRACTION_UNKNOWN or
+      m.memberScope = SCOPE_UNKNOWN or
+      (m.abstraction = ABSTRACT and m.memberScope = STATIC_SCOPE)
+    )
+  }
+}
