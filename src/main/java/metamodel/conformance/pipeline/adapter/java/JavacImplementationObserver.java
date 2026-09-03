@@ -27,7 +27,6 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -60,15 +59,34 @@ final class JavacImplementationObserver {
         for (Map.Entry<String, List<Path>> entry : filesBySourceSet.entrySet()) {
             String sourceSet = entry.getKey();
             Set<String> scopedPaths = entry.getValue().stream()
-                    .map(path -> relativePath(root, path)).collect(java.util.stream.Collectors.toSet());
+                    .map(path -> relativePath(root, path))
+                    .collect(java.util.stream.Collectors.toSet());
             List<ClassifierObservation> scopedClassifiers = classifiers.stream()
                     .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
             List<MemberObservation> scopedMembers = members.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
             List<MethodBodyObservation> scopedBodies = bodies.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
-            Result result = observeSourceSet(
-                    root, entry.getValue(), scopedClassifiers, scopedMembers, scopedBodies, dependencyArchives);
+            Result result;
+            try (JavacSourceSetContext context = JavacSourceSetContext.prepare(
+                    root, sourceSet, filesBySourceSet, dependencyArchives)) {
+                if (!context.complete()) {
+                    result = new Result(false, Map.of(), Map.of(), context.diagnostics());
+                } else {
+                    result = observeSourceSet(
+                            root,
+                            entry.getValue(),
+                            scopedClassifiers,
+                            scopedMembers,
+                            scopedBodies,
+                            context.classpath());
+                }
+            } catch (IOException | RuntimeException failure) {
+                result = Result.incomplete(
+                        relativePath(root, entry.getValue().get(0)),
+                        "javac source-set context failed for implementation evidence: "
+                                + failure.getClass().getSimpleName());
+            }
             complete &= result.complete();
             diagnostics.addAll(result.diagnostics());
             availability.putAll(result.availabilityByMember());
@@ -94,58 +112,41 @@ final class JavacImplementationObserver {
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
             List<MethodBodyObservation> bodies,
-            List<Path> dependencyArchives) {
+            String classpath) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             return Result.incomplete(relativePath(root, files.get(0)),
                     "JDK compiler is unavailable; implementation-binding evidence was not observed");
         }
-        Path emptyClasspath = null;
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        try {
-            emptyClasspath = dependencyArchives.isEmpty()
-                    ? Files.createTempDirectory("metamodel-conformance-javac-implementation-") : null;
-            String classpath = dependencyArchives.isEmpty()
-                    ? emptyClasspath.toString()
-                    : dependencyArchives.stream().map(Path::toString)
-                            .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
-            try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
-                    diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
-                Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
-                JavacTask task = (JavacTask) compiler.getTask(
-                        null,
-                        fileManager,
-                        diagnostics,
-                        List.of(
-                                "-proc:none",
-                                "-implicit:none",
-                                "--release", "17",
-                                "-classpath", classpath,
-                                "-Xlint:none"),
-                        null,
-                        sources);
-                List<CompilationUnitTree> parsed = new ArrayList<>();
-                task.parse().forEach(parsed::add);
-                task.analyze();
-                if (diagnostics.getDiagnostics().stream()
-                        .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
-                    return new Result(false, Map.of(), Map.of(),
-                            evidenceDiagnostics(root, files, diagnostics));
-                }
-                return resolve(root, parsed, task, classifiers, members, bodies);
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
+                diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
+            Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
+            JavacTask task = (JavacTask) compiler.getTask(
+                    null,
+                    fileManager,
+                    diagnostics,
+                    List.of(
+                            "-proc:none",
+                            "-implicit:none",
+                            "--release", "17",
+                            "-classpath", classpath,
+                            "-Xlint:none"),
+                    null,
+                    sources);
+            List<CompilationUnitTree> parsed = new ArrayList<>();
+            task.parse().forEach(parsed::add);
+            task.analyze();
+            if (diagnostics.getDiagnostics().stream()
+                    .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
+                return new Result(false, Map.of(), Map.of(),
+                        evidenceDiagnostics(root, files, diagnostics));
             }
+            return resolve(root, parsed, task, classifiers, members, bodies);
         } catch (IOException | RuntimeException | StackOverflowError failure) {
             return Result.incomplete(relativePath(root, files.get(0)),
                     "javac implementation-binding observation failed: "
                             + failure.getClass().getSimpleName());
-        } finally {
-            if (emptyClasspath != null) {
-                try {
-                    Files.deleteIfExists(emptyClasspath);
-                } catch (IOException ignored) {
-                    // Failure to remove an empty temporary directory cannot create evidence.
-                }
-            }
         }
     }
 
@@ -198,8 +199,7 @@ final class JavacImplementationObserver {
                 }
                 Tree tree = trees.getTree(method);
                 if (tree == null) {
-                    // javac exposes compiler-synthesized members such as enum values()/valueOf().
-                    // They have no source tree and therefore are outside the source-observation domain.
+                    // Compiler-synthesized methods have no source carrier and stay outside the observation.
                     continue;
                 }
                 if (!(tree instanceof MethodTree methodTree)) {
@@ -227,13 +227,11 @@ final class JavacImplementationObserver {
                                     + classifier.qualifiedName() + "." + method.getSimpleName());
                 }
                 if (methodTree.getBody() == null) {
-                    availability.put(declaration.technicalKey(),
-                            ImplementationAvailability.NO_SOURCE_BODY);
+                    availability.put(declaration.technicalKey(), ImplementationAvailability.NO_SOURCE_BODY);
                     bindings.put(declaration.technicalKey(), List.of());
                     continue;
                 }
-                availability.put(declaration.technicalKey(),
-                        ImplementationAvailability.SOURCE_BODY);
+                availability.put(declaration.technicalKey(), ImplementationAvailability.SOURCE_BODY);
                 SourceRange range = sourceRange(root, trees, method, methodTree.getBody());
                 if (range == null) {
                     return Result.incomplete(
@@ -260,8 +258,7 @@ final class JavacImplementationObserver {
         return new Result(true, availability, bindings, List.of());
     }
 
-    private static Result incomplete(
-            List<ClassifierObservation> classifiers, String message) {
+    private static Result incomplete(List<ClassifierObservation> classifiers, String message) {
         String sourcePath = classifiers.isEmpty()
                 ? "<unknown>.java" : classifiers.get(0).sourcePath();
         return Result.incomplete(sourcePath, message);
@@ -279,10 +276,8 @@ final class JavacImplementationObserver {
                         try {
                             SourcePoint location = sourcePoint(root, trees, type);
                             if (location != null) {
-                                TypeLocator locator =
-                                        new TypeLocator(location.path(), location.line());
-                                result.computeIfAbsent(locator,
-                                        ignored -> new ArrayList<>()).add(type);
+                                TypeLocator locator = new TypeLocator(location.path(), location.line());
+                                result.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(type);
                             }
                         } catch (IOException ignored) {
                             // Missing source mapping is handled as incomplete evidence.
@@ -295,8 +290,7 @@ final class JavacImplementationObserver {
         return result;
     }
 
-    private static SourcePoint sourcePoint(
-            Path root, Trees trees, Element element) throws IOException {
+    private static SourcePoint sourcePoint(Path root, Trees trees, Element element) throws IOException {
         var treePath = trees.getPath(element);
         if (treePath == null) {
             return null;
@@ -313,8 +307,6 @@ final class JavacImplementationObserver {
         if (treePath == null) {
             return null;
         }
-        // MethodTree starts before annotations. Spoon's declaration position starts at the
-        // declaration itself, so use the return-type tree as the compiler-side anchor.
         Tree declarationAnchor = methodTree.getReturnType() == null ? methodTree : methodTree.getReturnType();
         return sourcePoint(root, trees, treePath.getCompilationUnit(), declarationAnchor);
     }
@@ -328,8 +320,7 @@ final class JavacImplementationObserver {
         if (position < 0 || unit.getLineMap() == null) {
             return null;
         }
-        Path source = Path.of(unit.getSourceFile().toUri())
-                .toRealPath(LinkOption.NOFOLLOW_LINKS);
+        Path source = Path.of(unit.getSourceFile().toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
         if (!source.startsWith(root)) {
             return null;
         }
@@ -353,16 +344,14 @@ final class JavacImplementationObserver {
         if (start < 0 || end < 0 || unit.getLineMap() == null) {
             return null;
         }
-        Path source = Path.of(unit.getSourceFile().toUri())
-                .toRealPath(LinkOption.NOFOLLOW_LINKS);
+        Path source = Path.of(unit.getSourceFile().toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
         if (!source.startsWith(root)) {
             return null;
         }
         return new SourceRange(
                 relativePath(root, source),
                 Math.toIntExact(unit.getLineMap().getLineNumber(start)),
-                Math.toIntExact(unit.getLineMap().getLineNumber(
-                        Math.max(start, end - 1))));
+                Math.toIntExact(unit.getLineMap().getLineNumber(Math.max(start, end - 1))));
     }
 
     private static MemberObservation uniqueDeclaration(
@@ -425,10 +414,8 @@ final class JavacImplementationObserver {
                 .map(item -> new ObservationDiagnostic(
                         DiagnosticKind.EVIDENCE_INCOMPLETE,
                         diagnosticPath(root, item.getSource(), fallback),
-                        item.getLineNumber() < 0
-                                ? 0 : Math.toIntExact(item.getLineNumber()),
-                        normalizedMessage(root,
-                                item.getMessage(java.util.Locale.ROOT))))
+                        item.getLineNumber() < 0 ? 0 : Math.toIntExact(item.getLineNumber()),
+                        normalizedMessage(root, item.getMessage(java.util.Locale.ROOT))))
                 .distinct()
                 .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
                         .thenComparingInt(ObservationDiagnostic::line)
@@ -436,14 +423,12 @@ final class JavacImplementationObserver {
                 .toList();
     }
 
-    private static String diagnosticPath(
-            Path root, JavaFileObject source, String fallback) {
+    private static String diagnosticPath(Path root, JavaFileObject source, String fallback) {
         if (source == null) {
             return fallback;
         }
         try {
-            Path path = Path.of(source.toUri())
-                    .toRealPath(LinkOption.NOFOLLOW_LINKS);
+            Path path = Path.of(source.toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
             return path.startsWith(root) ? relativePath(root, path) : fallback;
         } catch (IOException | RuntimeException ignored) {
             return fallback;
