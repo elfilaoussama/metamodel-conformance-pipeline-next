@@ -57,7 +57,7 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
             List<Path> files = discoverJavaFiles(root);
             SpoonMethodBodyObserver.Result bodyResult = observeBodiesBySourceSet(root, files);
             SpoonAbstractionObserver.Result abstractionResult =
-                    observeAbstractionBySourceSet(root, files, base.classifiers(), base.members());
+                    observeAbstractionByFile(root, files, base.classifiers(), base.members());
             JavaDependencyClasspath.Result dependencies = JavaDependencyClasspath.resolve(dependencyArchives);
             JavacImplementationObserver.Result implementation = bodyResult.complete()
                     ? new JavacImplementationObserver().observe(
@@ -212,12 +212,11 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                 canonicalDiagnostics(diagnostics));
     }
 
-    private static SpoonAbstractionObserver.Result observeAbstractionBySourceSet(
+    private static SpoonAbstractionObserver.Result observeAbstractionByFile(
             Path root,
             List<Path> files,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members) {
-        Map<String, List<Path>> filesBySourceSet = filesBySourceSet(root, files);
         boolean classifierComplete = true;
         boolean methodAbstractionComplete = true;
         boolean methodScopeComplete = true;
@@ -226,18 +225,15 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
         Map<String, MemberScope> methodScope = new HashMap<>();
         List<ObservationDiagnostic> diagnostics = new ArrayList<>();
         SpoonAbstractionObserver observer = new SpoonAbstractionObserver();
-        for (Map.Entry<String, List<Path>> entry : filesBySourceSet.entrySet()) {
-            String sourceSet = entry.getKey();
-            Set<String> scopedPaths = entry.getValue().stream()
-                    .map(path -> root.relativize(path.toAbsolutePath().normalize())
-                            .toString().replace('\\', '/'))
-                    .collect(java.util.stream.Collectors.toSet());
+        for (Path file : files) {
+            String relative = root.relativize(file.toAbsolutePath().normalize())
+                    .toString().replace('\\', '/');
             List<ClassifierObservation> scopedClassifiers = classifiers.stream()
-                    .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
+                    .filter(item -> item.sourcePath().equals(relative)).toList();
             List<MemberObservation> scopedMembers = members.stream()
-                    .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
+                    .filter(item -> item.sourcePath().equals(relative)).toList();
             SpoonAbstractionObserver.Result result =
-                    observer.observe(root, entry.getValue(), scopedClassifiers, scopedMembers);
+                    observer.observe(root, List.of(file), scopedClassifiers, scopedMembers);
             classifierComplete &= result.classifierAbstractionComplete();
             methodAbstractionComplete &= result.methodAbstractionComplete();
             methodScopeComplete &= result.methodScopeComplete();
