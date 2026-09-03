@@ -40,7 +40,7 @@ final class SpoonMethodAbstractionObserver {
                     .sorted(Comparator.comparing(CtType::getQualifiedName)).toList()) {
                 for (CtMethod<?> method : type.getMethods().stream()
                         .filter(item -> item.getPosition().isValidPosition())
-                        .sorted(Comparator.comparing(CtMethod::getSimpleName)
+                        .sorted(Comparator.comparing((CtMethod<?> item) -> item.getSimpleName())
                                 .thenComparingInt(item -> item.getPosition().getLine()))
                         .toList()) {
                     Path source = method.getPosition().getFile().toPath()
