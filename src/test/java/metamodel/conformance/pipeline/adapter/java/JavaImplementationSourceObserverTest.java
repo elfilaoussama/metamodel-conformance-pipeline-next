@@ -64,6 +64,37 @@ class JavaImplementationSourceObserverTest {
     }
 
     @Test
+    void ignoresJavacSyntheticEnumMethodsOutsideTheSourceObservationDomain() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("enum-source"));
+        Files.writeString(source.resolve("Mode.java"), """
+                enum Mode {
+                    FAST,
+                    SAFE;
+
+                    void run() {
+                        int value = 1;
+                    }
+                }
+                """);
+
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.METHOD_BODIES));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.METHOD_ABSTRACTION));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.IMPLEMENTATION_BINDINGS));
+        assertEquals(1, observation.members().stream()
+                .filter(member -> member.kind() == MemberKind.METHOD).count());
+        assertEquals(1, observation.methodBodies().size());
+        assertEquals(1, observation.implementationBindings().size());
+
+        var decision = new AlloyInvariantEvaluator().evaluateAll(
+                        observation, new ExactAlloyEncoder().encode(observation)).stream()
+                .filter(item -> item.invariantId().equals("implementation-binding-consistency"))
+                .findFirst().orElseThrow();
+        assertEquals(DecisionStatus.CONFORMANT, decision.status());
+    }
+
+    @Test
     void nativeConcreteMethodIsAVisibleStrictPolicyViolationRatherThanBeingReclassifiedAbstract() throws Exception {
         Path source = Files.createDirectory(temporary.resolve("native-source"));
         Files.writeString(source.resolve("NativeSample.java"), "class NativeSample { native void run(); }");
