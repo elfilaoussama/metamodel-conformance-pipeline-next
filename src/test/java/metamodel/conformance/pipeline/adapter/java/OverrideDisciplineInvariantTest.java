@@ -44,7 +44,10 @@ class OverrideDisciplineInvariantTest {
                 .filter(member -> member.returnType() != null).count());
         assertEquals(1, observation.members().stream()
                 .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
-        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-discipline"));
     }
 
     @Test
@@ -64,7 +67,10 @@ class OverrideDisciplineInvariantTest {
         assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
         assertEquals(1, observation.members().stream()
                 .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
-        assertEquals(DecisionStatus.NON_CONFORMANT, overrideDecision(observation));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.NON_CONFORMANT,
+                decision(observation, "override-discipline"));
     }
 
     @Test
@@ -84,7 +90,10 @@ class OverrideDisciplineInvariantTest {
         assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
         assertEquals(1, observation.members().stream()
                 .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
-        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-discipline"));
     }
 
     @Test
@@ -104,7 +113,10 @@ class OverrideDisciplineInvariantTest {
         assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
         assertEquals(0, observation.members().stream()
                 .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
-        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-discipline"));
     }
 
     @Test
@@ -124,7 +136,10 @@ class OverrideDisciplineInvariantTest {
         assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
         assertEquals(1, observation.members().stream()
                 .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
-        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-discipline"));
     }
 
     @Test
@@ -148,11 +163,37 @@ class OverrideDisciplineInvariantTest {
         assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
         assertEquals(0, observation.members().stream()
                 .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
-        assertEquals(DecisionStatus.CONFORMANT, overrideDecision(observation));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-discipline"));
     }
 
     @Test
-    void missingCompilerEvidenceMakesOverrideConditionNotEvaluated() throws Exception {
+    void reportsStaticHidingAsBridgeMismatchWithoutInventingReturnPolicyFailure() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("static-hiding"));
+        Files.writeString(source.resolve("Base.java"), """
+                class Base {
+                    static Number value() { return 1; }
+                }
+                """);
+        Files.writeString(source.resolve("Child.java"), """
+                class Child extends Base {
+                    static Number value() { return 2; }
+                }
+                """);
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
+        assertEquals(0, observation.members().stream()
+                .mapToLong(member -> member.overriddenMemberKeys().size()).sum());
+        assertEquals(DecisionStatus.NON_CONFORMANT,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.CONFORMANT,
+                decision(observation, "override-discipline"));
+    }
+
+    @Test
+    void missingCompilerEvidenceMakesBothOverrideChecksNotEvaluated() throws Exception {
         Path source = Files.createDirectory(temporary.resolve("missing-dependency"));
         Files.writeString(source.resolve("Uses.java"), """
                 class Uses {
@@ -162,13 +203,16 @@ class OverrideDisciplineInvariantTest {
         Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
         assertFalse(observation.completeEvidence().contains(EvidenceKind.METHOD_RETURN_TYPES));
         assertFalse(observation.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS));
-        assertEquals(DecisionStatus.NOT_EVALUATED, overrideDecision(observation));
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                decision(observation, "override-relation-consistency"));
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                decision(observation, "override-discipline"));
     }
 
-    private static DecisionStatus overrideDecision(Observation observation) {
+    private static DecisionStatus decision(Observation observation, String invariantId) {
         return new AlloyInvariantEvaluator().evaluateAll(
                         observation, new ExactAlloyEncoder().encode(observation)).stream()
-                .filter(item -> item.invariantId().equals("override-discipline"))
+                .filter(item -> item.invariantId().equals(invariantId))
                 .findFirst().orElseThrow().status();
     }
 }
