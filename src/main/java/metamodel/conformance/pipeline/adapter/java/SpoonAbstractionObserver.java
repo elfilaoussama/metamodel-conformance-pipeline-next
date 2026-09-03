@@ -86,7 +86,7 @@ final class SpoonAbstractionObserver {
 
                 // Use the same source-declaration domain as SpoonJavaObserver. CtType#getMethods()
                 // is a semantic convenience view and can differ from the locally declared type-member
-                // set; O-07 evidence must correspond exactly to canonical source declarations.
+                // set; abstraction evidence must correspond exactly to canonical source declarations.
                 List<CtMethod<?>> declaredMethods = new ArrayList<>();
                 for (CtTypeMember typeMember : type.getTypeMembers()) {
                     if (typeMember instanceof CtMethod<?> method && method.getPosition().isValidPosition()) {
