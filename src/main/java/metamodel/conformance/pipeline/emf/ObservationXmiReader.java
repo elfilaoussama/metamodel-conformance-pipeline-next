@@ -79,6 +79,7 @@ public final class ObservationXmiReader {
         List<MemberObservation> members = new ArrayList<>();
         for (EObject member : (EList<EObject>) value(root, "members")) {
             Object observedIdentifier = value(member, "observedIdentifier");
+            Object returnType = value(member, "returnType");
             members.add(new MemberObservation(
                     string(member, "technicalKey"),
                     observedIdentifier instanceof String text && !text.isBlank() ? text : null,
@@ -89,7 +90,8 @@ public final class ObservationXmiReader {
                     integer(member, "startLine"), integer(member, "endLine"),
                     new ArrayList<>((EList<String>) value(member, "parameterTypes")),
                     MethodAbstraction.valueOf(value(member, "abstraction").toString()),
-                    MemberScope.valueOf(value(member, "scope").toString())));
+                    MemberScope.valueOf(value(member, "scope").toString()),
+                    returnType instanceof String text && !text.isBlank() ? text : null));
         }
         List<ClassifierObservation> classifiers = new ArrayList<>();
         for (EObject classifier : (EList<EObject>) value(root, "classifiers")) {

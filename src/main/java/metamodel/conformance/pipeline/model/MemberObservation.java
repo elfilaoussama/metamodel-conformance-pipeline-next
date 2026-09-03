@@ -15,7 +15,8 @@ public record MemberObservation(
         int endLine,
         List<String> parameterTypes,
         MethodAbstraction abstraction,
-        MemberScope scope) {
+        MemberScope scope,
+        String returnType) {
 
     public MemberObservation {
         technicalKey = CanonicalObservationValue.technicalId(
@@ -39,12 +40,34 @@ public record MemberObservation(
         }
         abstraction = abstraction == null ? MethodAbstraction.UNKNOWN : abstraction;
         scope = scope == null ? MemberScope.UNKNOWN : scope;
+        returnType = returnType == null || returnType.isBlank() ? null : returnType;
         if (kind == MemberKind.ATTRIBUTE && abstraction != MethodAbstraction.UNKNOWN) {
             throw new IllegalArgumentException("attributes cannot carry method abstraction evidence");
         }
         if (kind == MemberKind.ATTRIBUTE && scope != MemberScope.UNKNOWN) {
             throw new IllegalArgumentException("attributes cannot carry method scope evidence");
         }
+        if (kind == MemberKind.ATTRIBUTE && returnType != null) {
+            throw new IllegalArgumentException("attributes cannot carry method return-type evidence");
+        }
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            Inheritability inheritability,
+            MemberVisibility visibility,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes,
+            MethodAbstraction abstraction,
+            MemberScope scope) {
+        this(technicalKey, observedIdentifier, kind, inheritability, visibility,
+                memberName, sourcePath, startLine, endLine, parameterTypes,
+                abstraction, scope, null);
     }
 
     public MemberObservation(
@@ -61,7 +84,7 @@ public record MemberObservation(
             MethodAbstraction abstraction) {
         this(technicalKey, observedIdentifier, kind, inheritability, visibility,
                 memberName, sourcePath, startLine, endLine, parameterTypes,
-                abstraction, MemberScope.UNKNOWN);
+                abstraction, MemberScope.UNKNOWN, null);
     }
 
     public MemberObservation(
@@ -77,7 +100,7 @@ public record MemberObservation(
             List<String> parameterTypes) {
         this(technicalKey, observedIdentifier, kind, inheritability, visibility,
                 memberName, sourcePath, startLine, endLine, parameterTypes,
-                MethodAbstraction.UNKNOWN, MemberScope.UNKNOWN);
+                MethodAbstraction.UNKNOWN, MemberScope.UNKNOWN, null);
     }
 
     public MemberObservation(

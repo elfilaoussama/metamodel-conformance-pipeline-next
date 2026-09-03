@@ -131,7 +131,7 @@ final class AlloyWorkUnitPlanner {
                 .map(item -> new MemberObservation(
                         item.technicalKey(), item.observedIdentifier(), item.kind(), item.inheritability(),
                         item.visibility(), item.memberName(), item.sourcePath(), item.startLine(), item.endLine(),
-                        item.parameterTypes(), item.abstraction(), item.scope()))
+                        item.parameterTypes(), item.abstraction(), item.scope(), item.returnType()))
                 .toList();
         List<MethodBodyObservation> bodies = source.methodBodies().stream()
                 .filter(item -> bodyKeys.contains(item.technicalKey())).toList();

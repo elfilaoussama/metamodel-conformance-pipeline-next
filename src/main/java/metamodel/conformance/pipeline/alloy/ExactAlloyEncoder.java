@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public final class ExactAlloyEncoder {
     private static final int RELATION_CHUNK_SIZE = 64;
@@ -27,8 +28,10 @@ public final class ExactAlloyEncoder {
     public String encode(Observation observation) {
         Map<String, String> nameAtoms = tokens(observation.members().stream()
                 .map(MemberObservation::memberName).toList(), "N_");
-        Map<String, String> typeAtoms = tokens(observation.members().stream()
-                .flatMap(member -> member.parameterTypes().stream()).toList(), "T_");
+        Map<String, String> typeAtoms = tokens(Stream.concat(
+                        observation.members().stream().flatMap(member -> member.parameterTypes().stream()),
+                        observation.members().stream().map(MemberObservation::returnType).filter(java.util.Objects::nonNull))
+                .toList(), "T_");
         Map<String, String> packageAtoms = tokens(observation.classifiers().stream()
                 .map(ClassifierObservation::packageName).toList(), "PKG_");
         int positionCount = observation.members().stream()
@@ -67,7 +70,8 @@ public final class ExactAlloyEncoder {
                 .append("  memberName: one NameToken,\n")
                 .append("  parameterTypeAt: PositionToken -> lone TypeToken,\n")
                 .append("  abstraction: one MethodAbstraction,\n")
-                .append("  memberScope: one MemberScope\n")
+                .append("  memberScope: one MemberScope,\n")
+                .append("  returnType: lone TypeToken\n")
                 .append("}\n")
                 .append("abstract sig ImplementationBinding {\n")
                 .append("  implementer: one Classifier,\n")
@@ -103,6 +107,7 @@ public final class ExactAlloyEncoder {
         relation(alloy, "parameterTypeAt", parameterTypeEdges(observation, typeAtoms));
         relation(alloy, "abstraction", abstractionEdges(observation));
         relation(alloy, "memberScope", memberScopeEdges(observation));
+        relation(alloy, "returnType", returnTypeEdges(observation, typeAtoms));
         relation(alloy, "implementer", implementerEdges(observation));
         relation(alloy, "target", targetEdges(observation));
         relation(alloy, "body", bodyEdges(observation));
@@ -198,6 +203,13 @@ public final class ExactAlloyEncoder {
             case STATIC -> "STATIC_SCOPE";
             case UNKNOWN -> "SCOPE_UNKNOWN";
         }).toList();
+    }
+
+    private static List<String> returnTypeEdges(Observation o, Map<String, String> atoms) {
+        return o.members().stream()
+                .filter(m -> m.returnType() != null)
+                .map(m -> memberAtom(m.technicalKey()) + "->" + atoms.get(m.returnType()))
+                .toList();
     }
 
     private static List<String> implementerEdges(Observation o) {

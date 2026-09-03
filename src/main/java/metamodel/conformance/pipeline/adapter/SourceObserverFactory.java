@@ -34,11 +34,11 @@ public final class SourceObserverFactory {
             case JAVA -> new JavaImplementationSourceObserver(dependencies);
             case PYTHON -> {
                 rejectJavaDependencies(dependencies, "Python");
-                yield new Schema11SourceObserver(new PythonAstObserver());
+                yield new Schema12SourceObserver(new PythonAstObserver());
             }
             case CPP -> {
                 rejectJavaDependencies(dependencies, "C++");
-                yield new Schema11SourceObserver(new ClangCppObserver());
+                yield new Schema12SourceObserver(new ClangCppObserver());
             }
             case JAVA_ARCHIVE -> throw new IllegalArgumentException(
                     "JAVA_ARCHIVE is dependency evidence, not a source language");

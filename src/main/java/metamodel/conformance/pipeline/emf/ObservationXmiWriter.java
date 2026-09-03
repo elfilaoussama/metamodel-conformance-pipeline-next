@@ -104,6 +104,9 @@ public final class ObservationXmiWriter {
             ((EList<String>) member.eGet(feature(member, "parameterTypes"))).addAll(source.parameterTypes());
             set(member, "abstraction", abstraction.getEEnumLiteral(source.abstraction().name()).getInstance());
             set(member, "scope", scope.getEEnumLiteral(source.scope().name()).getInstance());
+            if (source.returnType() != null) {
+                set(member, "returnType", source.returnType());
+            }
             members.add(member);
             membersByKey.put(source.technicalKey(), member);
         }
