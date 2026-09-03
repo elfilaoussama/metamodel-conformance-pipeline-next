@@ -58,7 +58,7 @@ final class SpoonAbstractionObserver {
             Map<String, MemberScope> methodScope = new HashMap<>();
             for (CtType<?> type : model.getAllTypes().stream()
                     .filter(item -> item.getPosition().isValidPosition())
-                    .sorted(Comparator.comparing(CtType::getQualifiedName)
+                    .sorted(Comparator.comparing((CtType<?> item) -> item.getQualifiedName())
                             .thenComparingInt(item -> item.getPosition().getLine()))
                     .toList()) {
                 Path source = type.getPosition().getFile().toPath()
