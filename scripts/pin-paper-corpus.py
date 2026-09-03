@@ -159,6 +159,11 @@ def main() -> int:
     parser.add_argument("--cutoff", type=parse_cutoff, default=DEFAULT_CUTOFF)
     parser.add_argument("--token-env", default="GITHUB_TOKEN")
     parser.add_argument(
+        "--validate-selection-only",
+        action="store_true",
+        help="Verify the recovered historical selection bytes and structure without GitHub API calls.",
+    )
+    parser.add_argument(
         "--allow-unauthenticated",
         action="store_true",
         help="Allow GitHub's low unauthenticated API rate limit; unsuitable for all 224 rows.",
@@ -179,6 +184,10 @@ def main() -> int:
         rows = list(csv.DictReader(handle))
     validate_selection(rows)
     print(f"historical selection blob verified: {observed_selection_blob}")
+    print("historical selection structure verified: 224 repositories (Java=75, Python=75, C++=74)")
+
+    if args.validate_selection_only:
+        return 0
 
     token = os.environ.get(args.token_env)
     if not token and not args.allow_unauthenticated:
