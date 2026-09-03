@@ -63,9 +63,10 @@ cross-atom relation declared relevant by the invariant registry.
 Spoon observes declarations, direct parents, member signatures, and source
 provenance. A separate JDK compiler task observes inherited memberships through
 `Elements.getAllMembers`; annotation processing is disabled and the compiler uses
-an empty classpath, so repository code and build plugins are not executed. Javac
-members are mapped back to Spoon declaration atoms only through source ownership,
-member kind/name, and ordered parameter types.
+an empty classpath or the exact dependency archives supplied for the experiment,
+so repository build plugins are not executed. Javac members are mapped back to
+Spoon declaration atoms only through source ownership, member kind/name, ordered
+parameter types, and source provenance.
 
 `INHERITED_MEMBERS` is declared complete only when javac reports no errors and all
 internal type and declaration mappings are unique. Any missing dependency,
@@ -73,7 +74,7 @@ duplicate mapping, compiler failure, or unsupported source shape yields incomple
 evidence and an empty stored inherited relation. The affected invariants then return
 `NOT_EVALUATED`; the adapter never substitutes its own inheritance algorithm.
 
-Schema v6 records member visibility and classifier package as separate source facts.
+Schema v12 records member visibility and classifier package as separate source facts.
 Alloy derives contextual accessibility from those facts: public and protected
 members are accessible along inheritance, private members are not, and
 package-private members require an unbroken same-package inheritance path.
@@ -91,6 +92,24 @@ resolution first uses the declaring source set, then its sibling `src/main/java`
 and only then a globally unique declaration. This prevents duplicate test and
 production type names from becoming accidental ambiguity while preserving both
 source sets in the canonical observation.
+
+## Independent Java override view
+
+O-09 adds compiler-observed facts without moving policy judgment into Java.
+For every canonical source method, a javac task records its resolved return-type
+representation and maps `Elements.overrides` pairs back to canonical method atoms.
+`METHOD_RETURN_TYPES` and `OVERRIDE_RELATIONS` are complete only when compilation
+succeeds and every source method can be mapped uniquely. Missing or ambiguous
+compiler evidence therefore makes O-09 `NOT_EVALUATED`.
+
+The Alloy model receives `returnType` and `observedOverrides` as exact relations.
+It independently derives the manuscript-level candidate relation from hierarchy,
+contextual accessibility, ordered method keys, and method scope. A disagreement
+between the compiler-observed relation and this formal relation is itself an O-09
+witness. For a corresponding pair, Alloy then applies the strict profile: equal
+return type and a local declaration that is explicitly abstract or has an
+implementation binding in its declaring classifier. This comparison prevents an
+empty frontend relation from making override discipline vacuously conformant.
 
 ## Reproducible Alloy execution
 
@@ -118,14 +137,16 @@ their hashes are finalized.
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves
-member kind, name, visibility, declaring package, inheritability, and complete ordered method-parameter type
-lists. The exact Alloy model carries those observations structurally through
-`kind`, `memberName`, and `parameterTypeAt` relations. Parameter positions and
-type tokens remain separate atoms, so Java never groups members into semantic
-namespace-key equivalence classes.
+member kind, name, visibility, declaring package, inheritability, complete ordered
+method-parameter type lists, method abstraction/scope, return types, and independent
+override relations. The exact Alloy model carries those observations structurally
+through `kind`, `memberName`, `parameterTypeAt`, `returnType`, and
+`observedOverrides` relations. Parameter positions and type tokens remain separate
+atoms, so Java never groups members into semantic namespace-key equivalence classes.
 
-Alloy alone defines whether two methods have the same ordered signature or two
-attributes have the same local name. A future invariant may reuse these relations
+Alloy alone defines whether two methods have the same ordered signature, whether
+two attributes have the same local name, and whether the observed override facts
+satisfy the selected formal policy. A future invariant may reuse these relations
 without changing Java control flow. If it needs a genuinely new source fact, that
 fact must first be added to the canonical observation and independently observed;
 the pipeline must never infer element-level evidence that the frontend did not
