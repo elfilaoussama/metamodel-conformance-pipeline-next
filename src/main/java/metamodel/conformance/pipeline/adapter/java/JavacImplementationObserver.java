@@ -205,7 +205,7 @@ final class JavacImplementationObserver {
                 if (!(tree instanceof MethodTree methodTree)) {
                     return incomplete(classifiers, "javac source method tree is unavailable");
                 }
-                SourcePoint methodLocation = sourcePoint(root, trees, method);
+                SourcePoint methodLocation = methodDeclarationPoint(root, trees, method, methodTree);
                 if (methodLocation == null) {
                     return incomplete(classifiers, "javac source method has no canonical source location");
                 }
@@ -301,9 +301,30 @@ final class JavacImplementationObserver {
         if (treePath == null) {
             return null;
         }
-        CompilationUnitTree unit = treePath.getCompilationUnit();
-        long position = trees.getSourcePositions()
-                .getStartPosition(unit, treePath.getLeaf());
+        return sourcePoint(root, trees, treePath.getCompilationUnit(), treePath.getLeaf());
+    }
+
+    private static SourcePoint methodDeclarationPoint(
+            Path root,
+            Trees trees,
+            ExecutableElement method,
+            MethodTree methodTree) throws IOException {
+        var treePath = trees.getPath(method);
+        if (treePath == null) {
+            return null;
+        }
+        // MethodTree starts before annotations. Spoon's declaration position starts at the
+        // declaration itself, so use the return-type tree as the compiler-side anchor.
+        Tree declarationAnchor = methodTree.getReturnType() == null ? methodTree : methodTree.getReturnType();
+        return sourcePoint(root, trees, treePath.getCompilationUnit(), declarationAnchor);
+    }
+
+    private static SourcePoint sourcePoint(
+            Path root,
+            Trees trees,
+            CompilationUnitTree unit,
+            Tree target) throws IOException {
+        long position = trees.getSourcePositions().getStartPosition(unit, target);
         if (position < 0 || unit.getLineMap() == null) {
             return null;
         }
