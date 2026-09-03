@@ -13,7 +13,8 @@ public record MemberObservation(
         String sourcePath,
         int startLine,
         int endLine,
-        List<String> parameterTypes) {
+        List<String> parameterTypes,
+        MethodAbstraction abstraction) {
 
     public MemberObservation {
         technicalKey = CanonicalObservationValue.technicalId(
@@ -35,6 +36,26 @@ public record MemberObservation(
         if (parameterTypes.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new IllegalArgumentException("parameter types must not be blank");
         }
+        abstraction = abstraction == null ? MethodAbstraction.UNKNOWN : abstraction;
+        if (kind == MemberKind.ATTRIBUTE && abstraction != MethodAbstraction.UNKNOWN) {
+            throw new IllegalArgumentException("attributes cannot carry method abstraction evidence");
+        }
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            Inheritability inheritability,
+            MemberVisibility visibility,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes) {
+        this(technicalKey, observedIdentifier, kind, inheritability, visibility,
+                memberName, sourcePath, startLine, endLine, parameterTypes,
+                MethodAbstraction.UNKNOWN);
     }
 
     public MemberObservation(
@@ -60,8 +81,8 @@ public record MemberObservation(
             int startLine,
             int endLine,
             List<String> parameterTypes) {
-        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, MemberVisibility.PUBLIC, memberName,
-                sourcePath, startLine, endLine, parameterTypes);
+        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, MemberVisibility.PUBLIC,
+                memberName, sourcePath, startLine, endLine, parameterTypes);
     }
 
     private static String requireText(String value, String name) {

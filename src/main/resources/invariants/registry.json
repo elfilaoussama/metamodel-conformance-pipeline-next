@@ -50,6 +50,18 @@
       "violationMessage": "At least one member atom is both local and inherited in the same classifier."
     },
     {
+      "id": "implementation-binding-consistency",
+      "title": "Implementation binding consistency",
+      "specificationTrace": "O-06",
+      "witnessFunction": "ImplementationBindingViolations",
+      "witnessArity": 1,
+      "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "METHOD_BODIES", "METHOD_ABSTRACTION", "IMPLEMENTATION_BINDINGS"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "IMPLEMENTATION_BINDINGS"],
+      "partitionRoots": ["CLASSIFIER", "MEMBER", "BODY"],
+      "conformanceMessage": "Each implementation body is bound by one explicit implementer-target-body relationship and local abstract/concrete methods obey the selected binding policy.",
+      "violationMessage": "At least one implementation binding has an unavailable target, duplicate class-method binding, orphan/shared body, or invalid abstract/concrete local disposition."
+    },
+    {
       "id": "local-namespace-uniqueness",
       "title": "Local namespace uniqueness",
       "specificationTrace": "O-08-local",

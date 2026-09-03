@@ -2,8 +2,9 @@ package metamodel.conformance.pipeline.emf;
 
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.ImplementationBindingObservation;
 import metamodel.conformance.pipeline.model.MemberObservation;
-import metamodel.conformance.pipeline.model.MemberVisibility;
+import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -38,8 +39,7 @@ public final class ObservationXmiWriter {
         Path temporary = Files.createTempFile(normalizedTarget.getParent(), "observation-", ".xmi");
         try {
             save(observation, temporary);
-            ArtifactLimits.requireFileWithin(
-                    "canonical XMI", temporary, ArtifactLimits.MAX_XMI_BYTES);
+            ArtifactLimits.requireFileWithin("canonical XMI", temporary, ArtifactLimits.MAX_XMI_BYTES);
             AtomicFiles.move(temporary, normalizedTarget);
         } finally {
             Files.deleteIfExists(temporary);
@@ -50,8 +50,7 @@ public final class ObservationXmiWriter {
     private void save(Observation observation, Path target) throws IOException {
         ObservationSchema schema = ObservationSchema.load();
         EPackage ePackage = schema.ePackage();
-        EClass rootClass = schema.classifier("ObservationSet");
-        EObject root = ePackage.getEFactoryInstance().create(rootClass);
+        EObject root = ePackage.getEFactoryInstance().create(schema.classifier("ObservationSet"));
         set(root, "schemaVersion", observation.schemaVersion());
         set(root, "adapterId", observation.adapterId());
         set(root, "adapterVersion", observation.adapterVersion());
@@ -62,13 +61,25 @@ public final class ObservationXmiWriter {
                 .forEach(name -> completeEvidence.add(evidenceKind.getEEnumLiteral(name).getInstance()));
 
         EList<EObject> units = (EList<EObject>) root.eGet(feature(root, "units"));
+        EEnum language = (EEnum) ePackage.getEClassifier("Language");
         for (SourceUnit source : observation.units()) {
             EObject unit = ePackage.getEFactoryInstance().create(schema.classifier("SourceUnit"));
-            EEnum language = (EEnum) ePackage.getEClassifier("Language");
             set(unit, "language", language.getEEnumLiteral(source.language().name()).getInstance());
             set(unit, "path", source.path());
             set(unit, "sha256", source.sha256());
             units.add(unit);
+        }
+
+        Map<String, EObject> bodiesByKey = new LinkedHashMap<>();
+        EList<EObject> methodBodies = (EList<EObject>) root.eGet(feature(root, "methodBodies"));
+        for (MethodBodyObservation source : observation.methodBodies()) {
+            EObject body = ePackage.getEFactoryInstance().create(schema.classifier("MethodBody"));
+            set(body, "technicalKey", source.technicalKey());
+            set(body, "sourcePath", source.sourcePath());
+            set(body, "startLine", source.startLine());
+            set(body, "endLine", source.endLine());
+            methodBodies.add(body);
+            bodiesByKey.put(source.technicalKey(), body);
         }
 
         Map<String, EObject> membersByKey = new LinkedHashMap<>();
@@ -76,6 +87,7 @@ public final class ObservationXmiWriter {
         EEnum memberKind = (EEnum) ePackage.getEClassifier("MemberKind");
         EEnum inheritability = (EEnum) ePackage.getEClassifier("Inheritability");
         EEnum visibility = (EEnum) ePackage.getEClassifier("MemberVisibility");
+        EEnum abstraction = (EEnum) ePackage.getEClassifier("MethodAbstraction");
         for (MemberObservation source : observation.members()) {
             EObject member = ePackage.getEFactoryInstance().create(schema.classifier("Member"));
             set(member, "technicalKey", source.technicalKey());
@@ -83,15 +95,14 @@ public final class ObservationXmiWriter {
                 set(member, "observedIdentifier", source.observedIdentifier());
             }
             set(member, "kind", memberKind.getEEnumLiteral(source.kind().name()).getInstance());
-            set(member, "inheritability",
-                    inheritability.getEEnumLiteral(source.inheritability().name()).getInstance());
-            set(member, "visibility",
-                    visibility.getEEnumLiteral(source.visibility().name()).getInstance());
+            set(member, "inheritability", inheritability.getEEnumLiteral(source.inheritability().name()).getInstance());
+            set(member, "visibility", visibility.getEEnumLiteral(source.visibility().name()).getInstance());
             set(member, "memberName", source.memberName());
             set(member, "sourcePath", source.sourcePath());
             set(member, "startLine", source.startLine());
             set(member, "endLine", source.endLine());
             ((EList<String>) member.eGet(feature(member, "parameterTypes"))).addAll(source.parameterTypes());
+            set(member, "abstraction", abstraction.getEEnumLiteral(source.abstraction().name()).getInstance());
             members.add(member);
             membersByKey.put(source.technicalKey(), member);
         }
@@ -115,10 +126,20 @@ public final class ObservationXmiWriter {
             EObject classifier = classifiersById.get(source.id());
             EList<EObject> parents = (EList<EObject>) classifier.eGet(feature(classifier, "parents"));
             source.parentIds().forEach(parentId -> parents.add(classifiersById.get(parentId)));
-            EList<EObject> declaredMembers = (EList<EObject>) classifier.eGet(feature(classifier, "declaredMembers"));
-            source.declaredMemberKeys().forEach(memberKey -> declaredMembers.add(membersByKey.get(memberKey)));
-            EList<EObject> inheritedMembers = (EList<EObject>) classifier.eGet(feature(classifier, "inheritedMembers"));
-            source.inheritedMemberKeys().forEach(memberKey -> inheritedMembers.add(membersByKey.get(memberKey)));
+            EList<EObject> declared = (EList<EObject>) classifier.eGet(feature(classifier, "declaredMembers"));
+            source.declaredMemberKeys().forEach(key -> declared.add(membersByKey.get(key)));
+            EList<EObject> inherited = (EList<EObject>) classifier.eGet(feature(classifier, "inheritedMembers"));
+            source.inheritedMemberKeys().forEach(key -> inherited.add(membersByKey.get(key)));
+        }
+
+        EList<EObject> bindings = (EList<EObject>) root.eGet(feature(root, "implementationBindings"));
+        for (ImplementationBindingObservation source : observation.implementationBindings()) {
+            EObject binding = ePackage.getEFactoryInstance().create(schema.classifier("ImplementationBinding"));
+            set(binding, "technicalKey", source.technicalKey());
+            set(binding, "implementer", classifiersById.get(source.implementerClassifierId()));
+            set(binding, "target", membersByKey.get(source.targetMemberKey()));
+            set(binding, "body", bodiesByKey.get(source.bodyKey()));
+            bindings.add(binding);
         }
 
         EList<EObject> unresolved = (EList<EObject>) root.eGet(feature(root, "unresolvedParents"));
@@ -144,8 +165,7 @@ public final class ObservationXmiWriter {
 
         ResourceSetImpl resourceSet = new ResourceSetImpl();
         resourceSet.getPackageRegistry().put(ObservationSchema.NS_URI, ePackage);
-        resourceSet.getResourceFactoryRegistry().getExtensionToFactoryMap()
-                .put("xmi", new XMIResourceFactoryImpl());
+        resourceSet.getResourceFactoryRegistry().getExtensionToFactoryMap().put("xmi", new XMIResourceFactoryImpl());
         Resource resource = resourceSet.createResource(URI.createFileURI(target.toString()));
         resource.getContents().add(root);
         Map<String, Object> options = new HashMap<>();
@@ -157,7 +177,7 @@ public final class ObservationXmiWriter {
     }
 
     private static org.eclipse.emf.ecore.EStructuralFeature feature(EObject object, String name) {
-        org.eclipse.emf.ecore.EStructuralFeature feature = object.eClass().getEStructuralFeature(name);
+        var feature = object.eClass().getEStructuralFeature(name);
         if (feature == null) {
             throw new IllegalStateException("missing feature " + object.eClass().getName() + "." + name);
         }

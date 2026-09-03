@@ -1,4 +1,4 @@
-schemaVersion: "2"
+schemaVersion: "3"
 evidence:
   HIERARCHY:
     description: Direct parent edges are complete for the declared source boundary.
@@ -10,6 +10,10 @@ evidence:
     description: The frontend classified whether each declaration participates in inheritance.
   INHERITED_MEMBERS:
     description: The frontend independently resolved inherited member memberships within the configured source boundary.
+  METHOD_BODIES:
+    description: Source method bodies were independently materialized as standalone canonical observations.
+  IMPLEMENTATION_BINDINGS:
+    description: A compiler frontend independently classified method source-body availability and resolved declaration-to-body bindings.
 
 conditions:
   O-01:
@@ -34,11 +38,13 @@ conditions:
     witness: CLASSIFIER_MEMBER_PAIR
     reason: Evaluated only when the independent javac inherited-member observation is complete.
   O-06:
-    status: DEFERRED
-    reason: Requires independently observed bodies and implementation bindings.
+    status: EVALUABLE
+    requires: [DECLARATION_OWNERSHIP, METHOD_BODIES, IMPLEMENTATION_BINDINGS]
+    witness: MEMBER_OR_BODY
+    reason: Spoon observes standalone source bodies while javac independently resolves source-body availability and declaration-to-body bindings.
   O-07:
     status: DEFERRED
-    reason: Requires direct-instance and implementation-completeness evidence.
+    reason: Requires direct-instance and implementation-completeness evidence beyond source-body binding.
   O-08-local:
     status: EVALUABLE
     requires: [DECLARATION_OWNERSHIP, LOCAL_SIGNATURES]
@@ -50,4 +56,4 @@ conditions:
     reason: Evaluated only when the independent inherited-member view is complete.
   O-09:
     status: DEFERRED
-    reason: Requires frontend-resolved override evidence.
+    reason: Requires frontend-resolved override evidence and reuses implementation evidence from O-06.

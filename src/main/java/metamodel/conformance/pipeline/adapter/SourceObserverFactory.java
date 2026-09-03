@@ -1,7 +1,7 @@
 package metamodel.conformance.pipeline.adapter;
 
 import metamodel.conformance.pipeline.adapter.cpp.ClangCppObserver;
-import metamodel.conformance.pipeline.adapter.java.SpoonJavaObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
 import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
 import metamodel.conformance.pipeline.model.Language;
 
@@ -31,14 +31,14 @@ public final class SourceObserverFactory {
         Objects.requireNonNull(language, "language");
         List<Path> dependencies = dependencyArchives == null ? List.of() : List.copyOf(dependencyArchives);
         return switch (language) {
-            case JAVA -> new SpoonJavaObserver(dependencies);
+            case JAVA -> new JavaImplementationSourceObserver(dependencies);
             case PYTHON -> {
                 rejectJavaDependencies(dependencies, "Python");
-                yield new PythonAstObserver();
+                yield new Schema10SourceObserver(new PythonAstObserver());
             }
             case CPP -> {
                 rejectJavaDependencies(dependencies, "C++");
-                yield new ClangCppObserver();
+                yield new Schema10SourceObserver(new ClangCppObserver());
             }
             case JAVA_ARCHIVE -> throw new IllegalArgumentException(
                     "JAVA_ARCHIVE is dependency evidence, not a source language");

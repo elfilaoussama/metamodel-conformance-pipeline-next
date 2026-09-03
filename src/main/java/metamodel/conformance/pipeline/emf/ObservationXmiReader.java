@@ -4,11 +4,14 @@ import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
+import metamodel.conformance.pipeline.model.ImplementationBindingObservation;
 import metamodel.conformance.pipeline.model.Inheritability;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.MemberVisibility;
+import metamodel.conformance.pipeline.model.MethodAbstraction;
+import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 import metamodel.conformance.pipeline.model.SourceUnit;
@@ -39,7 +42,6 @@ public final class ObservationXmiReader {
         if (!Files.isRegularFile(input, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
             throw new IOException("observation is not a regular file");
         }
-        long size = Files.size(input);
         ArtifactLimits.requireFileWithin("canonical XMI", input, ArtifactLimits.MAX_XMI_BYTES);
         String prefix = Files.readString(input, StandardCharsets.UTF_8);
         if (prefix.contains("<!DOCTYPE") || prefix.contains("<!ENTITY")) {
@@ -50,8 +52,7 @@ public final class ObservationXmiReader {
         EPackage ePackage = schema.ePackage();
         ResourceSetImpl resourceSet = new ResourceSetImpl();
         resourceSet.getPackageRegistry().put(ObservationSchema.NS_URI, ePackage);
-        resourceSet.getResourceFactoryRegistry().getExtensionToFactoryMap()
-                .put("xmi", new XMIResourceFactoryImpl());
+        resourceSet.getResourceFactoryRegistry().getExtensionToFactoryMap().put("xmi", new XMIResourceFactoryImpl());
         Resource resource = resourceSet.getResource(URI.createFileURI(input.toString()), true);
         if (resource.getContents().size() != 1) {
             throw new IOException("observation must contain exactly one root object");
@@ -65,8 +66,13 @@ public final class ObservationXmiReader {
         for (EObject unit : (EList<EObject>) value(root, "units")) {
             units.add(new SourceUnit(
                     Language.valueOf(value(unit, "language").toString()),
-                    string(unit, "path"),
-                    string(unit, "sha256")));
+                    string(unit, "path"), string(unit, "sha256")));
+        }
+        List<MethodBodyObservation> bodies = new ArrayList<>();
+        for (EObject body : (EList<EObject>) value(root, "methodBodies")) {
+            bodies.add(new MethodBodyObservation(
+                    string(body, "technicalKey"), string(body, "sourcePath"),
+                    integer(body, "startLine"), integer(body, "endLine")));
         }
         List<MemberObservation> members = new ArrayList<>();
         for (EObject member : (EList<EObject>) value(root, "members")) {
@@ -77,11 +83,10 @@ public final class ObservationXmiReader {
                     MemberKind.valueOf(value(member, "kind").toString()),
                     Inheritability.valueOf(value(member, "inheritability").toString()),
                     MemberVisibility.valueOf(value(member, "visibility").toString()),
-                    string(member, "memberName"),
-                    string(member, "sourcePath"),
-                    integer(member, "startLine"),
-                    integer(member, "endLine"),
-                    new ArrayList<>((EList<String>) value(member, "parameterTypes"))));
+                    string(member, "memberName"), string(member, "sourcePath"),
+                    integer(member, "startLine"), integer(member, "endLine"),
+                    new ArrayList<>((EList<String>) value(member, "parameterTypes")),
+                    MethodAbstraction.valueOf(value(member, "abstraction").toString())));
         }
         List<ClassifierObservation> classifiers = new ArrayList<>();
         for (EObject classifier : (EList<EObject>) value(root, "classifiers")) {
@@ -98,49 +103,38 @@ public final class ObservationXmiReader {
                 inheritedMemberKeys.add(string(member, "technicalKey"));
             }
             classifiers.add(new ClassifierObservation(
-                    string(classifier, "id"),
-                    string(classifier, "qualifiedName"),
-                    string(classifier, "packageName"),
-                    ClassifierKind.valueOf(value(classifier, "kind").toString()),
-                    string(classifier, "sourcePath"),
-                    integer(classifier, "startLine"),
-                    integer(classifier, "endLine"),
-                    parentIds,
-                    declaredMemberKeys,
-                    inheritedMemberKeys));
+                    string(classifier, "id"), string(classifier, "qualifiedName"),
+                    string(classifier, "packageName"), ClassifierKind.valueOf(value(classifier, "kind").toString()),
+                    string(classifier, "sourcePath"), integer(classifier, "startLine"), integer(classifier, "endLine"),
+                    parentIds, declaredMemberKeys, inheritedMemberKeys));
+        }
+        List<ImplementationBindingObservation> bindings = new ArrayList<>();
+        for (EObject binding : (EList<EObject>) value(root, "implementationBindings")) {
+            bindings.add(new ImplementationBindingObservation(
+                    string(binding, "technicalKey"),
+                    string((EObject) value(binding, "implementer"), "id"),
+                    string((EObject) value(binding, "target"), "technicalKey"),
+                    string((EObject) value(binding, "body"), "technicalKey")));
         }
         List<UnresolvedParent> unresolved = new ArrayList<>();
         for (EObject item : (EList<EObject>) value(root, "unresolvedParents")) {
             unresolved.add(new UnresolvedParent(
-                    string((EObject) value(item, "owner"), "id"),
-                    string(item, "targetName"),
-                    string(item, "sourcePath"),
-                    integer(item, "line")));
+                    string((EObject) value(item, "owner"), "id"), string(item, "targetName"),
+                    string(item, "sourcePath"), integer(item, "line")));
         }
         List<String> externalParents = new ArrayList<>((EList<String>) value(root, "externalParents"));
         List<ObservationDiagnostic> diagnostics = new ArrayList<>();
         for (EObject item : (EList<EObject>) value(root, "diagnostics")) {
             diagnostics.add(new ObservationDiagnostic(
                     DiagnosticKind.valueOf(value(item, "kind").toString()),
-                    string(item, "sourcePath"),
-                    integer(item, "line"),
-                    string(item, "message")));
+                    string(item, "sourcePath"), integer(item, "line"), string(item, "message")));
         }
         Set<EvidenceKind> completeEvidence = ((EList<Object>) value(root, "completeEvidence")).stream()
-                .map(Object::toString)
-                .map(EvidenceKind::valueOf)
-                .collect(Collectors.toUnmodifiableSet());
+                .map(Object::toString).map(EvidenceKind::valueOf).collect(Collectors.toUnmodifiableSet());
         return new Observation(
-                string(root, "schemaVersion"),
-                string(root, "adapterId"),
-                string(root, "adapterVersion"),
-                externalParents,
-                completeEvidence,
-                units,
-                classifiers,
-                members,
-                unresolved,
-                diagnostics);
+                string(root, "schemaVersion"), string(root, "adapterId"), string(root, "adapterVersion"),
+                externalParents, completeEvidence, units, classifiers, members, bodies, bindings,
+                unresolved, diagnostics);
     }
 
     private static Object value(EObject object, String name) throws IOException {

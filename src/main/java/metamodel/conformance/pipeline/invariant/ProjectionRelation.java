@@ -5,7 +5,8 @@ import metamodel.conformance.pipeline.model.EvidenceKind;
 public enum ProjectionRelation {
     PARENTS(EvidenceKind.HIERARCHY),
     DECLARED_MEMBERS(EvidenceKind.DECLARATION_OWNERSHIP),
-    OBSERVED_INHERITED_MEMBERS(EvidenceKind.INHERITED_MEMBERS);
+    OBSERVED_INHERITED_MEMBERS(EvidenceKind.INHERITED_MEMBERS),
+    IMPLEMENTATION_BINDINGS(EvidenceKind.IMPLEMENTATION_BINDINGS);
 
     private final EvidenceKind requiredEvidence;
 

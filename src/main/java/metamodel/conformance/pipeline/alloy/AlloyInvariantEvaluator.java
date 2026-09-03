@@ -1,6 +1,8 @@
 package metamodel.conformance.pipeline.alloy;
 
 import edu.mit.csail.sdg.alloy4.A4Reporter;
+import edu.mit.csail.sdg.alloy4.Err;
+import edu.mit.csail.sdg.alloy4.Pos;
 import edu.mit.csail.sdg.ast.Command;
 import edu.mit.csail.sdg.ast.Func;
 import edu.mit.csail.sdg.parser.CompModule;
@@ -194,6 +196,9 @@ public final class AlloyInvariantEvaluator {
     }
 
     private static String safeMessage(Throwable failure) {
+        if (failure instanceof Err err && !Pos.UNKNOWN.equals(err.pos)) {
+            return err.pos.toShortString() + ": " + err.msg;
+        }
         String message = failure.getMessage();
         return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
