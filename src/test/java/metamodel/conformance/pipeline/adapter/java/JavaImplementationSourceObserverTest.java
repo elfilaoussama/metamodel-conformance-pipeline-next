@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JavaImplementationSourceObserverTest {
@@ -160,6 +161,50 @@ class JavaImplementationSourceObserverTest {
         var decision = new AlloyInvariantEvaluator().evaluateAll(
                         observation, new ExactAlloyEncoder().encode(observation)).stream()
                 .filter(item -> item.invariantId().equals("implementation-binding-consistency"))
+                .findFirst().orElseThrow();
+        assertEquals(DecisionStatus.CONFORMANT, decision.status());
+    }
+
+    @Test
+    void preservesLexicalAbstractionAndScopeWhenCompilerDependenciesAreMissing() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("missing-dependency-source"));
+        Path packageRoot = Files.createDirectories(source.resolve("sample"));
+        Files.writeString(packageRoot.resolve("Helper.java"), """
+                package sample;
+                final class Helper {
+                    static final class Nested {}
+                }
+                """);
+        Files.writeString(packageRoot.resolve("Uses.java"), """
+                package sample;
+
+                import third.party.External;
+                import java.util.List;
+
+                class Uses {
+                    static void consume(External... values) {}
+                    void consume(List<Helper.Nested> values) {}
+                }
+                """);
+
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.CLASSIFIER_ABSTRACTION));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.METHOD_ABSTRACTION));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.METHOD_SCOPE));
+        assertFalse(observation.completeEvidence().contains(EvidenceKind.IMPLEMENTATION_BINDINGS));
+        assertTrue(observation.members().stream()
+                .filter(member -> member.kind() == MemberKind.METHOD)
+                .allMatch(member -> member.abstraction() != MethodAbstraction.UNKNOWN));
+        assertTrue(observation.members().stream()
+                .filter(member -> member.kind() == MemberKind.METHOD)
+                .allMatch(member -> member.scope() != MemberScope.UNKNOWN));
+        assertFalse(observation.diagnostics().stream()
+                .anyMatch(item -> item.message().contains("method abstraction")));
+
+        var decision = new AlloyInvariantEvaluator().evaluateAll(
+                        observation, new ExactAlloyEncoder().encode(observation)).stream()
+                .filter(item -> item.invariantId().equals("static-abstract-method-separation"))
                 .findFirst().orElseThrow();
         assertEquals(DecisionStatus.CONFORMANT, decision.status());
     }
