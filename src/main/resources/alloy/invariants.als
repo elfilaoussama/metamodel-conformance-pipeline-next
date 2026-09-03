@@ -149,3 +149,39 @@ fun StaticAbstractMethodViolations : set Member {
     )
   }
 }
+
+pred potentialOverride[c : Classifier, local, inherited : Member] {
+  local in c.declaredMembers and
+  local.kind = METHOD and
+  inherited.kind = METHOD and
+  sameMemberKey[local, inherited] and
+  (some owner : c.^parents |
+    inherited in owner.declaredMembers and
+    memberAccessibleFrom[c, owner, inherited])
+}
+
+pred locallyImplemented[c : Classifier, method : Member] {
+  some b : ImplementationBinding |
+    b.implementer = c and b.target = method
+}
+
+fun OverrideDisciplineViolations : Member -> Member {
+  { local, inherited : Member |
+    some c : Classifier |
+      potentialOverride[c, local, inherited] and
+      (
+        local.memberScope = SCOPE_UNKNOWN or
+        inherited.memberScope = SCOPE_UNKNOWN or
+        (
+          local.memberScope = inherited.memberScope and
+          (
+            no local.returnType or
+            no inherited.returnType or
+            local.returnType != inherited.returnType or
+            local.abstraction = ABSTRACTION_UNKNOWN or
+            (local.abstraction = CONCRETE and not locallyImplemented[c, local])
+          )
+        )
+      )
+  }
+}
