@@ -14,6 +14,7 @@ import spoon.reflect.declaration.CtAnnotationType;
 import spoon.reflect.declaration.CtInterface;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtType;
+import spoon.reflect.declaration.CtTypeMember;
 import spoon.reflect.declaration.ModifierKind;
 
 import java.io.IOException;
@@ -83,11 +84,18 @@ final class SpoonAbstractionObserver {
                     return Result.incomplete(root, files, "duplicate classifier abstraction observation");
                 }
 
-                for (CtMethod<?> method : type.getMethods().stream()
-                        .filter(item -> item.getPosition().isValidPosition())
-                        .sorted(Comparator.comparing((CtMethod<?> item) -> item.getSimpleName())
-                                .thenComparingInt(item -> item.getPosition().getLine()))
-                        .toList()) {
+                // Use the same source-declaration domain as SpoonJavaObserver. CtType#getMethods()
+                // is a semantic convenience view and can differ from the locally declared type-member
+                // set; O-07 evidence must correspond exactly to canonical source declarations.
+                List<CtMethod<?>> declaredMethods = new ArrayList<>();
+                for (CtTypeMember typeMember : type.getTypeMembers()) {
+                    if (typeMember instanceof CtMethod<?> method && method.getPosition().isValidPosition()) {
+                        declaredMethods.add(method);
+                    }
+                }
+                declaredMethods.sort(Comparator.comparing((CtMethod<?> item) -> item.getSimpleName())
+                        .thenComparingInt(item -> item.getPosition().getLine()));
+                for (CtMethod<?> method : declaredMethods) {
                     Path methodSource = method.getPosition().getFile().toPath()
                             .toRealPath(LinkOption.NOFOLLOW_LINKS);
                     if (!methodSource.startsWith(root)) {
