@@ -84,15 +84,21 @@ class PythonDeclarationOwnershipTest {
                 SourceObserverFactory.create(Language.PYTHON, List.of()))
                 .analyze(temporary, output, Set.of());
 
-        assertEquals("10", result.observation().schemaVersion());
+        assertEquals("11", result.observation().schemaVersion());
         assertTrue(result.observation().completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
         assertFalse(result.observation().completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertFalse(result.observation().completeEvidence().contains(EvidenceKind.CLASSIFIER_ABSTRACTION));
+        assertFalse(result.observation().completeEvidence().contains(EvidenceKind.METHOD_SCOPE));
         assertEquals(DecisionStatus.CONFORMANT,
                 result.invariant("exclusive-declaration-ownership").status());
         assertEquals(DecisionStatus.NOT_EVALUATED,
                 result.invariant("acyclic-generalization").status());
         assertEquals(DecisionStatus.NOT_EVALUATED,
                 result.invariant("implementation-binding-consistency").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                result.invariant("abstraction-implementation-consistency").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                result.invariant("static-abstract-method-separation").status());
         assertEquals(DecisionStatus.NOT_EVALUATED,
                 result.invariant("local-namespace-uniqueness").status());
         assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());
