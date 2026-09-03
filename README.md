@@ -4,7 +4,7 @@ A deterministic, fail-closed pipeline that observes source code as a small EMF
 model, maps extracted evidence to registered invariants, and evaluates those
 invariants with the official Alloy engine.
 
-The current repository profile contains ten semantic checks spanning the
+The current repository profile contains eleven semantic checks spanning the
 manuscript conditions O-02 through O-09:
 
 - `exclusive-declaration-ownership` (trace: O-02);
@@ -15,8 +15,9 @@ manuscript conditions O-02 through O-09:
 - `abstraction-implementation-consistency` (trace: O-07 repository profile);
 - `static-abstract-method-separation` (trace: O-07 repository profile);
 - `local-namespace-uniqueness` (trace: O-08-local);
-- `inherited-namespace-uniqueness` (trace: O-08-inherited); and
-- `override-discipline` (trace: O-09).
+- `inherited-namespace-uniqueness` (trace: O-08-inherited);
+- `override-relation-consistency` (trace: O-09 bridge/correspondence); and
+- `override-discipline` (trace: O-09 strict policy).
 
 O-01 remains an identity-preservation/bridge-integrity question rather than a
 source conformance predicate because generated technical keys are not independent
@@ -101,18 +102,28 @@ O-09 uses a second independent compiler observation. Javac resolves each canonic
 source method's return type and the source-method pairs for which
 `Elements.overrides` holds. Schema-12 `observation.xmi` preserves those facts as
 `METHOD_RETURN_TYPES` and `OVERRIDE_RELATIONS`. Alloy independently derives the
-manuscript-level ancestor/signature/scope override candidate relation, checks that
-it corresponds to the frontend observation, and only then applies the strict
-return-equality and abstract-or-implemented policy. Compiler or mapping
-incompleteness therefore yields `NOT_EVALUATED` rather than an empty-relation
-conformance result.
+manuscript-level ancestor/accessibility/signature/scope candidate relation.
+
+The O-09 result is intentionally split. `override-relation-consistency` compares
+the compiler-observed relation with the formal candidate relation and therefore
+reports bridge or policy-correspondence disagreements separately. For example,
+Java static hiding is not reported by `Elements.overrides`, while the manuscript's
+same-key/same-scope structural predicate can still classify the pair as a formal
+candidate. `override-discipline` separately evaluates the manuscript's strict
+return-equality and abstract-or-implemented consequences over formal override
+pairs. It still requires independent `OVERRIDE_RELATIONS` evidence, so an unavailable
+frontend relation cannot make the strict empirical check vacuously conformant.
+Compiler or mapping incompleteness yields `NOT_EVALUATED` rather than an
+empty-relation conformance result.
 
 Conventional module source sets such as `module/src/main/java` and
-`module/src/test/java` are compiled and resolved independently. Duplicate qualified
-type names in different source sets therefore remain distinct declarations instead
-of poisoning the entire repository observation. An auxiliary source set may resolve
-an otherwise absent parent from its sibling production source set, but a same-set
-declaration always takes precedence.
+`module/src/test/java` are treated as separate semantic source sets. Duplicate
+qualified type names in different source sets therefore remain distinct declarations
+instead of poisoning the entire repository observation. Parent resolution prefers a
+same-set declaration, then a sibling production declaration, and finally a globally
+unique declaration. Compiler-derived evidence is claimed only when the configured
+source set can be resolved without ambiguity; missing build/source-set context is
+reported as incomplete evidence rather than guessed.
 
 ## Invariant extensibility
 
