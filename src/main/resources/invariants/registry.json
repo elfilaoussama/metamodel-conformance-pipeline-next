@@ -110,16 +110,28 @@
       "violationMessage": "At least one classifier inherits distinct declarations with the same member key."
     },
     {
+      "id": "override-relation-consistency",
+      "title": "Override relation consistency",
+      "specificationTrace": "O-09 bridge",
+      "witnessFunction": "OverrideRelationConsistencyViolations",
+      "witnessArity": 2,
+      "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "METHOD_SCOPE", "OVERRIDE_RELATIONS"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "OVERRIDE_RELATIONS"],
+      "partitionRoots": ["CLASSIFIER", "MEMBER"],
+      "conformanceMessage": "The independently frontend-resolved override relation agrees with the formal ancestor/signature/scope relation over the configured source boundary.",
+      "violationMessage": "At least one independently resolved override pair disagrees with the formal ancestor/signature/scope relation; this is a bridge or policy-correspondence finding, not a return-type finding."
+    },
+    {
       "id": "override-discipline",
       "title": "Override discipline",
       "specificationTrace": "O-09",
-      "witnessFunction": "OverridePolicyViolations",
+      "witnessFunction": "OverrideDisciplineViolations",
       "witnessArity": 2,
       "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "METHOD_BODIES", "METHOD_ABSTRACTION", "METHOD_SCOPE", "IMPLEMENTATION_BINDINGS", "METHOD_RETURN_TYPES", "OVERRIDE_RELATIONS"],
-      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "IMPLEMENTATION_BINDINGS", "OVERRIDE_RELATIONS"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "IMPLEMENTATION_BINDINGS"],
       "partitionRoots": ["CLASSIFIER", "MEMBER", "BODY"],
-      "conformanceMessage": "Every frontend-resolved override satisfies the strict signature, return-type, and abstract-or-implemented policy.",
-      "violationMessage": "At least one frontend-resolved override violates the strict signature, return-type, ancestry, or abstract-or-implemented policy."
+      "conformanceMessage": "Every formal override pair satisfies the manuscript's strict equal-return and abstract-or-implemented policy when independent override evidence is available.",
+      "violationMessage": "At least one formal override pair violates the strict equal-return or abstract-or-implemented policy."
     }
   ]
 }
