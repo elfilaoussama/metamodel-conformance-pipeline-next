@@ -1,4 +1,4 @@
-schemaVersion: "5"
+schemaVersion: "6"
 evidence:
   HIERARCHY:
     description: Direct parent edges are complete for the declared source boundary.
@@ -79,7 +79,15 @@ conditions:
     reason: Evaluated only when the independent inherited-member view is complete.
   O-09:
     status: EVALUABLE
-    invariantId: override-discipline
-    requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, METHOD_BODIES, METHOD_ABSTRACTION, METHOD_SCOPE, IMPLEMENTATION_BINDINGS, METHOD_RETURN_TYPES, OVERRIDE_RELATIONS]
-    witness: MEMBER_PAIR
-    reason: javac independently resolves source override pairs and return types; Alloy independently derives the manuscript-level same-key/same-scope ancestor relation, compares it with the frontend relation, and applies the strict equal-return plus abstract-or-implemented policy. Missing compiler evidence yields NOT_EVALUATED.
+    repositoryProfile:
+      relationConsistency:
+        invariantId: override-relation-consistency
+        requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, METHOD_SCOPE, OVERRIDE_RELATIONS]
+        witness: MEMBER_PAIR
+        reason: javac's independently resolved override relation is compared with the formal ancestor, accessibility, method-key, and scope relation. A mismatch is reported as a bridge/policy-correspondence finding rather than being conflated with return compatibility.
+      strictDiscipline:
+        invariantId: override-discipline
+        requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, METHOD_BODIES, METHOD_ABSTRACTION, METHOD_SCOPE, IMPLEMENTATION_BINDINGS, METHOD_RETURN_TYPES, OVERRIDE_RELATIONS]
+        witness: MEMBER_PAIR
+        reason: Over the formal override relation, Alloy applies the manuscript's strict return-type equality and abstract-or-implemented disposition. Independent override evidence is still required before this empirical claim is made.
+    reason: Missing compiler or mapping evidence yields NOT_EVALUATED for both checks. Keeping relation correspondence separate from strict policy preserves causal interpretation of O-09 findings.
