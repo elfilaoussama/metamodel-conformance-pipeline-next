@@ -205,13 +205,26 @@ final class JavacImplementationObserver {
                 if (!(tree instanceof MethodTree methodTree)) {
                     return incomplete(classifiers, "javac source method tree is unavailable");
                 }
+                SourcePoint methodLocation = sourcePoint(root, trees, method);
+                if (methodLocation == null) {
+                    return incomplete(classifiers, "javac source method has no canonical source location");
+                }
+                List<MemberObservation> declarationCandidates = membersByLocation.get(
+                        new MemberLocator(classifier.id(), method.getSimpleName().toString()));
                 MemberObservation declaration = uniqueDeclaration(
-                        membersByLocation.get(new MemberLocator(
-                                classifier.id(), method.getSimpleName().toString())),
-                        method, types);
-                if (declaration == null || !mappedMethods.add(declaration.technicalKey())) {
-                    return incomplete(classifiers,
-                            "javac source method declaration could not be mapped uniquely");
+                        declarationCandidates, method, types, methodLocation);
+                if (declaration == null) {
+                    return Result.incomplete(
+                            methodLocation.path(),
+                            methodLocation.line(),
+                            mappingFailureMessage(classifier, method, types, declarationCandidates));
+                }
+                if (!mappedMethods.add(declaration.technicalKey())) {
+                    return Result.incomplete(
+                            methodLocation.path(),
+                            methodLocation.line(),
+                            "javac source method mapped more than once: "
+                                    + classifier.qualifiedName() + "." + method.getSimpleName());
                 }
                 if (methodTree.getBody() == null) {
                     availability.put(declaration.technicalKey(),
@@ -223,13 +236,15 @@ final class JavacImplementationObserver {
                         ImplementationAvailability.SOURCE_BODY);
                 SourceRange range = sourceRange(root, trees, method, methodTree.getBody());
                 if (range == null) {
-                    return incomplete(classifiers,
+                    return Result.incomplete(
+                            methodLocation.path(), methodLocation.line(),
                             "javac method body has no canonical source range");
                 }
                 List<MethodBodyObservation> bodyCandidates = bodiesByLocation.get(
                         new BodyLocator(range.path(), range.startLine()));
                 if (bodyCandidates == null || bodyCandidates.size() != 1) {
-                    return incomplete(classifiers,
+                    return Result.incomplete(
+                            methodLocation.path(), methodLocation.line(),
                             "javac method body could not be matched to one Spoon body");
                 }
                 bindings.put(declaration.technicalKey(),
@@ -332,22 +347,51 @@ final class JavacImplementationObserver {
     private static MemberObservation uniqueDeclaration(
             List<MemberObservation> candidates,
             ExecutableElement method,
-            Types types) {
+            Types types,
+            SourcePoint methodLocation) {
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
-        if (candidates.size() == 1) {
-            return candidates.get(0);
+        List<MemberObservation> atSourceLocation = candidates.stream()
+                .filter(candidate -> candidate.sourcePath().equals(methodLocation.path())
+                        && candidate.startLine() == methodLocation.line())
+                .toList();
+        if (atSourceLocation.size() == 1) {
+            return atSourceLocation.get(0);
+        }
+        if (atSourceLocation.isEmpty()) {
+            return null;
         }
         List<String> exact = method.getParameters().stream()
                 .map(parameter -> parameter.asType().toString()).toList();
         List<String> erased = method.getParameters().stream()
                 .map(parameter -> types.erasure(parameter.asType()).toString()).toList();
-        List<MemberObservation> matching = candidates.stream()
+        List<MemberObservation> matching = atSourceLocation.stream()
                 .filter(candidate -> candidate.parameterTypes().equals(exact)
                         || candidate.parameterTypes().equals(erased))
                 .toList();
         return matching.size() == 1 ? matching.get(0) : null;
+    }
+
+    private static String mappingFailureMessage(
+            ClassifierObservation classifier,
+            ExecutableElement method,
+            Types types,
+            List<MemberObservation> candidates) {
+        List<String> exact = method.getParameters().stream()
+                .map(parameter -> parameter.asType().toString()).toList();
+        List<String> erased = method.getParameters().stream()
+                .map(parameter -> types.erasure(parameter.asType()).toString()).toList();
+        String candidateText = candidates == null ? "[]" : candidates.stream()
+                .map(candidate -> candidate.startLine() + ":" + candidate.parameterTypes())
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(", ", "[", "]"));
+        return "javac source method declaration could not be mapped uniquely: owner="
+                + classifier.qualifiedName()
+                + ", method=" + method.getSimpleName()
+                + ", exactParameters=" + exact
+                + ", erasedParameters=" + erased
+                + ", canonicalCandidates=" + candidateText;
     }
 
     private static List<ObservationDiagnostic> evidenceDiagnostics(
@@ -417,11 +461,15 @@ final class JavacImplementationObserver {
         }
 
         static Result incomplete(String sourcePath, String message) {
+            return incomplete(sourcePath, 0, message);
+        }
+
+        static Result incomplete(String sourcePath, int line, String message) {
             return new Result(false, Map.of(), Map.of(),
                     List.of(new ObservationDiagnostic(
                             DiagnosticKind.EVIDENCE_INCOMPLETE,
                             sourcePath,
-                            0,
+                            line,
                             message)));
         }
     }
