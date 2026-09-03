@@ -153,9 +153,10 @@ fun StaticAbstractMethodViolations : set Member {
 pred formalOverrideCandidate[c : Classifier, inherited, local : Member] {
   inherited.kind = METHOD
   local.kind = METHOD
-  inherited in (c.^parents).declaredMembers
-  inherited.inheritability = INHERITABLE
   local in c.declaredMembers
+  some owner : c.^parents |
+    inherited in owner.declaredMembers and
+    memberAccessibleFrom[c, owner, inherited]
   sameMemberKey[inherited, local]
   inherited.memberScope = local.memberScope
 }
