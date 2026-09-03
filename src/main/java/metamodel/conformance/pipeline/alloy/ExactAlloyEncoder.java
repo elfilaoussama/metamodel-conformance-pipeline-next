@@ -1,6 +1,5 @@
 package metamodel.conformance.pipeline.alloy;
 
-import metamodel.conformance.pipeline.model.ClassifierAbstraction;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.ImplementationBindingObservation;
 import metamodel.conformance.pipeline.model.MemberKind;
@@ -20,6 +19,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 public final class ExactAlloyEncoder {
     private static final int RELATION_CHUNK_SIZE = 64;
@@ -28,7 +28,9 @@ public final class ExactAlloyEncoder {
         Map<String, String> nameAtoms = tokens(observation.members().stream()
                 .map(MemberObservation::memberName).toList(), "N_");
         Map<String, String> typeAtoms = tokens(observation.members().stream()
-                .flatMap(member -> member.parameterTypes().stream()).toList(), "T_");
+                .flatMap(member -> Stream.concat(
+                        member.parameterTypes().stream(), Stream.ofNullable(member.returnType())))
+                .toList(), "T_");
         Map<String, String> packageAtoms = tokens(observation.classifiers().stream()
                 .map(ClassifierObservation::packageName).toList(), "PKG_");
         int positionCount = observation.members().stream()
@@ -67,7 +69,9 @@ public final class ExactAlloyEncoder {
                 .append("  memberName: one NameToken,\n")
                 .append("  parameterTypeAt: PositionToken -> lone TypeToken,\n")
                 .append("  abstraction: one MethodAbstraction,\n")
-                .append("  memberScope: one MemberScope\n")
+                .append("  memberScope: one MemberScope,\n")
+                .append("  returnType: lone TypeToken,\n")
+                .append("  observedOverrides: set Member\n")
                 .append("}\n")
                 .append("abstract sig ImplementationBinding {\n")
                 .append("  implementer: one Classifier,\n")
@@ -103,6 +107,8 @@ public final class ExactAlloyEncoder {
         relation(alloy, "parameterTypeAt", parameterTypeEdges(observation, typeAtoms));
         relation(alloy, "abstraction", abstractionEdges(observation));
         relation(alloy, "memberScope", memberScopeEdges(observation));
+        relation(alloy, "returnType", returnTypeEdges(observation, typeAtoms));
+        relation(alloy, "observedOverrides", overrideEdges(observation));
         relation(alloy, "implementer", implementerEdges(observation));
         relation(alloy, "target", targetEdges(observation));
         relation(alloy, "body", bodyEdges(observation));
@@ -198,6 +204,22 @@ public final class ExactAlloyEncoder {
             case STATIC -> "STATIC_SCOPE";
             case UNKNOWN -> "SCOPE_UNKNOWN";
         }).toList();
+    }
+
+    private static List<String> returnTypeEdges(Observation o, Map<String, String> atoms) {
+        return o.members().stream()
+                .filter(member -> member.returnType() != null)
+                .map(member -> memberAtom(member.technicalKey()) + "->" + atoms.get(member.returnType()))
+                .toList();
+    }
+
+    private static List<String> overrideEdges(Observation o) {
+        List<String> edges = new ArrayList<>();
+        for (MemberObservation member : o.members()) {
+            member.overriddenMemberKeys().forEach(overridden ->
+                    edges.add(memberAtom(member.technicalKey()) + "->" + memberAtom(overridden)));
+        }
+        return edges;
     }
 
     private static List<String> implementerEdges(Observation o) {

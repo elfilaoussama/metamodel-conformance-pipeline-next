@@ -4,7 +4,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
     name="observation"
-    nsURI="urn:metamodel-conformance:observation:11"
+    nsURI="urn:metamodel-conformance:observation:12"
     nsPrefix="obs">
   <eClassifiers xsi:type="ecore:EEnum" name="Language">
     <eLiterals name="JAVA"/>
@@ -38,6 +38,8 @@
     <eLiterals name="IMPLEMENTATION_BINDINGS" value="7"/>
     <eLiterals name="CLASSIFIER_ABSTRACTION" value="8"/>
     <eLiterals name="METHOD_SCOPE" value="9"/>
+    <eLiterals name="METHOD_RETURN_TYPES" value="10"/>
+    <eLiterals name="OVERRIDE_RELATIONS" value="11"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EEnum" name="Inheritability">
     <eLiterals name="INHERITABLE"/>
@@ -110,6 +112,8 @@
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="parameterTypes" upperBound="-1" ordered="true" unique="false" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="abstraction" lowerBound="1" eType="#//MethodAbstraction"/>
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="scope" lowerBound="1" eType="#//MemberScope"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="returnType" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="overriddenMembers" upperBound="-1" eType="#//Member"/>
   </eClassifiers>
   <eClassifiers xsi:type="ecore:EClass" name="MethodBody">
     <eStructuralFeatures xsi:type="ecore:EAttribute" name="technicalKey" lowerBound="1" iD="true" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>

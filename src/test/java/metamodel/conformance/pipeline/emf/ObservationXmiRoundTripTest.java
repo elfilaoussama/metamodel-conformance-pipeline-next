@@ -35,7 +35,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void roundTripsAndSerializesDeterministically() throws Exception {
-        Observation observation = schema11(TestObservations.inheritedViewConformant());
+        Observation observation = schema12(TestObservations.inheritedViewConformant());
         Path first = temporary.resolve("first.xmi");
         Path second = temporary.resolve("second.xmi");
         ObservationXmiWriter writer = new ObservationXmiWriter();
@@ -47,7 +47,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void preservesRepeatedOrderedParameterTypes() throws Exception {
-        Observation observation = schema11(TestObservations.repeatedParameterTypes());
+        Observation observation = schema12(TestObservations.repeatedParameterTypes());
         Path xmi = temporary.resolve("repeated-parameters.xmi");
         new ObservationXmiWriter().write(observation, xmi);
         Observation replayed = new ObservationXmiReader().read(xmi);
@@ -57,7 +57,7 @@ class ObservationXmiRoundTripTest {
 
     @Test
     void preservesContextualAccessibilityAndEvidenceDiagnostics() throws Exception {
-        Observation base = schema11(TestObservations.inheritedViewConformant());
+        Observation base = schema12(TestObservations.inheritedViewConformant());
         Observation observation = new Observation(
                 base.schemaVersion(), base.adapterId(), base.adapterVersion(), base.externalParents(),
                 base.completeEvidence(), base.units(), base.classifiers(), base.members(), base.methodBodies(),
@@ -73,26 +73,42 @@ class ObservationXmiRoundTripTest {
     }
 
     @Test
-    void preservesImplementationAndAbstractionEvidence() throws Exception {
+    void preservesImplementationAbstractionAndOverrideEvidence() throws Exception {
+        String parentClassifierKey = "cls_" + "0".repeat(64);
         String classifierKey = "cls_" + "1".repeat(64);
+        String inheritedMemberKey = "mem_" + "6".repeat(64);
         String memberKey = "mem_" + "2".repeat(64);
         String bodyKey = "body_" + "3".repeat(64);
         String bindingKey = "bind_" + "4".repeat(64);
+        MemberObservation inherited = new MemberObservation(
+                inheritedMemberKey, null, MemberKind.METHOD, Inheritability.INHERITABLE,
+                MemberVisibility.PUBLIC, "run", "Base.java", 2, 4, List.of(),
+                MethodAbstraction.CONCRETE, MemberScope.INSTANCE, "java.lang.Number", List.of());
         MemberObservation member = new MemberObservation(
                 memberKey, null, MemberKind.METHOD, Inheritability.INHERITABLE,
                 MemberVisibility.PUBLIC, "run", "Sample.java", 2, 4, List.of(),
-                MethodAbstraction.CONCRETE, MemberScope.INSTANCE);
+                MethodAbstraction.CONCRETE, MemberScope.INSTANCE, "java.lang.Number",
+                List.of(inheritedMemberKey));
         Observation observation = new Observation(
-                "11", "test", "1", List.of(),
-                Set.of(EvidenceKind.DECLARATION_OWNERSHIP, EvidenceKind.METHOD_BODIES,
-                        EvidenceKind.METHOD_ABSTRACTION, EvidenceKind.IMPLEMENTATION_BINDINGS,
-                        EvidenceKind.CLASSIFIER_ABSTRACTION, EvidenceKind.METHOD_SCOPE),
-                List.of(new SourceUnit(Language.JAVA, "Sample.java", "5".repeat(64))),
-                List.of(new ClassifierObservation(
-                        classifierKey, "Sample", "<default>", ClassifierKind.CLASS,
-                        "Sample.java", 1, 5, List.of(), List.of(memberKey), List.of(),
-                        ClassifierAbstraction.CONCRETE)),
-                List.of(member),
+                "12", "test", "1", List.of(),
+                Set.of(EvidenceKind.HIERARCHY, EvidenceKind.DECLARATION_OWNERSHIP,
+                        EvidenceKind.METHOD_BODIES, EvidenceKind.METHOD_ABSTRACTION,
+                        EvidenceKind.IMPLEMENTATION_BINDINGS, EvidenceKind.CLASSIFIER_ABSTRACTION,
+                        EvidenceKind.METHOD_SCOPE, EvidenceKind.METHOD_RETURN_TYPES,
+                        EvidenceKind.OVERRIDE_RELATIONS),
+                List.of(
+                        new SourceUnit(Language.JAVA, "Base.java", "7".repeat(64)),
+                        new SourceUnit(Language.JAVA, "Sample.java", "5".repeat(64))),
+                List.of(
+                        new ClassifierObservation(
+                                parentClassifierKey, "Base", "<default>", ClassifierKind.CLASS,
+                                "Base.java", 1, 5, List.of(), List.of(inheritedMemberKey), List.of(),
+                                ClassifierAbstraction.CONCRETE),
+                        new ClassifierObservation(
+                                classifierKey, "Sample", "<default>", ClassifierKind.CLASS,
+                                "Sample.java", 1, 5, List.of(parentClassifierKey), List.of(memberKey), List.of(),
+                                ClassifierAbstraction.CONCRETE)),
+                List.of(inherited, member),
                 List.of(new MethodBodyObservation(bodyKey, "Sample.java", 2, 4)),
                 List.of(new ImplementationBindingObservation(
                         bindingKey, classifierKey, memberKey, bodyKey)),
@@ -101,17 +117,18 @@ class ObservationXmiRoundTripTest {
         new ObservationXmiWriter().write(observation, xmi);
         Observation replayed = new ObservationXmiReader().read(xmi);
         assertEquals(observation, replayed);
-        assertEquals(ClassifierAbstraction.CONCRETE, replayed.classifiers().get(0).abstraction());
-        assertEquals(MethodAbstraction.CONCRETE, replayed.members().get(0).abstraction());
-        assertEquals(MemberScope.INSTANCE, replayed.members().get(0).scope());
+        MemberObservation replayedLocal = replayed.members().stream()
+                .filter(item -> item.technicalKey().equals(memberKey)).findFirst().orElseThrow();
+        assertEquals("java.lang.Number", replayedLocal.returnType());
+        assertEquals(List.of(inheritedMemberKey), replayedLocal.overriddenMemberKeys());
         assertEquals(classifierKey, replayed.implementationBindings().get(0).implementerClassifierId());
         assertEquals(memberKey, replayed.implementationBindings().get(0).targetMemberKey());
         assertEquals(bodyKey, replayed.implementationBindings().get(0).bodyKey());
     }
 
-    private static Observation schema11(Observation base) {
+    private static Observation schema12(Observation base) {
         return new Observation(
-                "11", base.adapterId(), base.adapterVersion(), base.externalParents(),
+                "12", base.adapterId(), base.adapterVersion(), base.externalParents(),
                 base.completeEvidence(), base.units(), base.classifiers(), base.members(), List.of(), List.of(),
                 base.unresolvedParents(), base.diagnostics());
     }

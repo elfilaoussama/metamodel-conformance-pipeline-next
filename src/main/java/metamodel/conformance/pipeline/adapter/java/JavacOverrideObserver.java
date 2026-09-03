@@ -9,16 +9,16 @@ import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.DiagnosticKind;
-import metamodel.conformance.pipeline.model.ImplementationAvailability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
-import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -33,18 +33,22 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-final class JavacImplementationObserver {
+/**
+ * Independently asks javac which source methods override other source methods and records
+ * resolved return-type names. It observes source-language facts only; O-09 remains in Alloy.
+ */
+final class JavacOverrideObserver {
     Result observe(
             Path root,
             List<Path> files,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<MethodBodyObservation> bodies,
             List<Path> dependencyArchives) {
         Map<String, List<Path>> filesBySourceSet = new TreeMap<>();
         for (Path file : files) {
@@ -52,8 +56,8 @@ final class JavacImplementationObserver {
             filesBySourceSet.computeIfAbsent(JavaSourceSets.id(relative), ignored -> new ArrayList<>())
                     .add(file);
         }
-        Map<String, ImplementationAvailability> availability = new HashMap<>();
-        Map<String, List<String>> bindings = new HashMap<>();
+        Map<String, String> returnTypes = new HashMap<>();
+        Map<String, List<String>> overrides = new HashMap<>();
         List<ObservationDiagnostic> diagnostics = new ArrayList<>();
         boolean complete = true;
         for (Map.Entry<String, List<Path>> entry : filesBySourceSet.entrySet()) {
@@ -65,41 +69,55 @@ final class JavacImplementationObserver {
                     .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
             List<MemberObservation> scopedMembers = members.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
-            List<MethodBodyObservation> scopedBodies = bodies.stream()
-                    .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
             Result result;
             try (JavacSourceSetContext context = JavacSourceSetContext.prepare(
                     root, sourceSet, filesBySourceSet, dependencyArchives)) {
                 if (!context.complete()) {
                     result = new Result(false, Map.of(), Map.of(), context.diagnostics());
                 } else {
+                    String productionSourceSet = context.productionSourceSet();
+                    List<ClassifierObservation> productionClassifiers = productionSourceSet == null
+                            ? List.of()
+                            : classifiers.stream()
+                                    .filter(item -> JavaSourceSets.id(item.sourcePath())
+                                            .equals(productionSourceSet))
+                                    .toList();
+                    Set<String> productionPaths = productionClassifiers.stream()
+                            .map(ClassifierObservation::sourcePath)
+                            .collect(java.util.stream.Collectors.toSet());
+                    List<MemberObservation> productionMembers = productionSourceSet == null
+                            ? List.of()
+                            : members.stream()
+                                    .filter(item -> productionPaths.contains(item.sourcePath()))
+                                    .toList();
                     result = observeSourceSet(
                             root,
                             entry.getValue(),
                             scopedClassifiers,
                             scopedMembers,
-                            scopedBodies,
+                            productionClassifiers,
+                            productionMembers,
                             context.classpath());
                 }
             } catch (IOException | RuntimeException failure) {
                 result = Result.incomplete(
                         relativePath(root, entry.getValue().get(0)),
-                        "javac source-set context failed for implementation evidence: "
+                        "javac source-set context failed for override/return-type evidence: "
                                 + failure.getClass().getSimpleName());
             }
             complete &= result.complete();
             diagnostics.addAll(result.diagnostics());
-            availability.putAll(result.availabilityByMember());
-            bindings.putAll(result.bodyKeysByMember());
+            returnTypes.putAll(result.returnTypesByMember());
+            overrides.putAll(result.overriddenMemberKeysByMember());
         }
         if (!complete) {
-            availability.clear();
-            bindings.clear();
+            returnTypes.clear();
+            overrides.clear();
         }
         return new Result(
                 complete,
-                availability,
-                bindings,
+                returnTypes,
+                overrides,
                 diagnostics.stream().distinct().sorted(
                         Comparator.comparing(ObservationDiagnostic::sourcePath)
                                 .thenComparingInt(ObservationDiagnostic::line)
@@ -111,12 +129,13 @@ final class JavacImplementationObserver {
             List<Path> files,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<MethodBodyObservation> bodies,
+            List<ClassifierObservation> productionClassifiers,
+            List<MemberObservation> productionMembers,
             String classpath) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             return Result.incomplete(relativePath(root, files.get(0)),
-                    "JDK compiler is unavailable; implementation-binding evidence was not observed");
+                    "JDK compiler is unavailable; override/return-type evidence was not observed");
         }
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
@@ -142,10 +161,17 @@ final class JavacImplementationObserver {
                 return new Result(false, Map.of(), Map.of(),
                         evidenceDiagnostics(root, files, diagnostics));
             }
-            return resolve(root, parsed, task, classifiers, members, bodies);
+            return resolve(
+                    root,
+                    parsed,
+                    task,
+                    classifiers,
+                    members,
+                    productionClassifiers,
+                    productionMembers);
         } catch (IOException | RuntimeException | StackOverflowError failure) {
             return Result.incomplete(relativePath(root, files.get(0)),
-                    "javac implementation-binding observation failed: "
+                    "javac override/return-type observation failed: "
                             + failure.getClass().getSimpleName());
         }
     }
@@ -156,14 +182,25 @@ final class JavacImplementationObserver {
             JavacTask task,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<MethodBodyObservation> bodies) throws IOException {
+            List<ClassifierObservation> productionClassifiers,
+            List<MemberObservation> productionMembers) throws IOException {
         Trees trees = Trees.instance(task);
         Types types = task.getTypes();
+        Elements elements = task.getElements();
         Map<TypeLocator, List<TypeElement>> javacTypes = collectTypes(root, parsed, trees);
+
+        List<ClassifierObservation> canonicalClassifiers = concat(classifiers, productionClassifiers);
+        Map<String, ClassifierObservation> classifierById = new HashMap<>();
+        for (ClassifierObservation classifier : canonicalClassifiers) {
+            if (classifierById.put(classifier.id(), classifier) != null) {
+                return incomplete(classifiers, "duplicate canonical classifier identity in override context");
+            }
+        }
         Map<String, MemberObservation> membersByKey = new HashMap<>();
         members.forEach(member -> membersByKey.put(member.technicalKey(), member));
-        Map<MemberLocator, List<MemberObservation>> membersByLocation = new HashMap<>();
-        for (ClassifierObservation classifier : classifiers) {
+        productionMembers.forEach(member -> membersByKey.put(member.technicalKey(), member));
+        Map<MemberLocator, List<MemberObservation>> membersByOwnerAndName = new HashMap<>();
+        for (ClassifierObservation classifier : canonicalClassifiers) {
             for (String key : classifier.declaredMemberKeys()) {
                 MemberObservation member = membersByKey.get(key);
                 if (member == null) {
@@ -171,27 +208,24 @@ final class JavacImplementationObserver {
                 }
                 if (member.kind() == MemberKind.METHOD) {
                     MemberLocator locator = new MemberLocator(classifier.id(), member.memberName());
-                    membersByLocation.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(member);
+                    membersByOwnerAndName.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(member);
                 }
             }
         }
-        Map<BodyLocator, List<MethodBodyObservation>> bodiesByLocation = new HashMap<>();
-        for (MethodBodyObservation body : bodies) {
-            BodyLocator locator = new BodyLocator(body.sourcePath(), body.startLine());
-            bodiesByLocation.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(body);
-        }
 
-        Map<String, ImplementationAvailability> availability = new HashMap<>();
-        Map<String, List<String>> bindings = new HashMap<>();
+        Map<String, TypeElement> typeByClassifier = new HashMap<>();
+        Map<String, ExecutableElement> localMethodByKey = new HashMap<>();
+        Map<String, String> returnTypes = new HashMap<>();
         Set<String> mappedMethods = new HashSet<>();
         for (ClassifierObservation classifier : classifiers) {
             List<TypeElement> candidates = javacTypes.get(
                     new TypeLocator(classifier.sourcePath(), classifier.startLine()));
             if (candidates == null || candidates.size() != 1) {
                 return incomplete(classifiers,
-                        "javac classifier could not be mapped uniquely for implementation evidence");
+                        "javac classifier could not be mapped uniquely for override evidence");
             }
             TypeElement type = candidates.get(0);
+            typeByClassifier.put(classifier.id(), type);
             for (Element element : type.getEnclosedElements()) {
                 if (element.getKind() != ElementKind.METHOD
                         || !(element instanceof ExecutableElement method)) {
@@ -199,7 +233,7 @@ final class JavacImplementationObserver {
                 }
                 Tree tree = trees.getTree(method);
                 if (tree == null) {
-                    // Compiler-synthesized methods have no source carrier and stay outside the observation.
+                    // Compiler-synthesized methods are outside the source observation boundary.
                     continue;
                 }
                 if (!(tree instanceof MethodTree methodTree)) {
@@ -207,11 +241,12 @@ final class JavacImplementationObserver {
                 }
                 SourcePoint methodLocation = methodDeclarationPoint(root, trees, method, methodTree);
                 if (methodLocation == null) {
-                    return incomplete(classifiers, "javac source method has no canonical source location");
+                    return incomplete(classifiers,
+                            "javac source method has no canonical source location");
                 }
-                List<MemberObservation> declarationCandidates = membersByLocation.get(
+                List<MemberObservation> declarationCandidates = membersByOwnerAndName.get(
                         new MemberLocator(classifier.id(), method.getSimpleName().toString()));
-                MemberObservation declaration = uniqueDeclaration(
+                MemberObservation declaration = uniqueSourceDeclaration(
                         declarationCandidates, method, types, methodLocation);
                 if (declaration == null) {
                     return Result.incomplete(
@@ -223,39 +258,203 @@ final class JavacImplementationObserver {
                     return Result.incomplete(
                             methodLocation.path(),
                             methodLocation.line(),
-                            "javac source method mapped more than once: "
+                            "javac source method mapped more than once for override evidence: "
                                     + classifier.qualifiedName() + "." + method.getSimpleName());
                 }
-                if (methodTree.getBody() == null) {
-                    availability.put(declaration.technicalKey(), ImplementationAvailability.NO_SOURCE_BODY);
-                    bindings.put(declaration.technicalKey(), List.of());
-                    continue;
-                }
-                availability.put(declaration.technicalKey(), ImplementationAvailability.SOURCE_BODY);
-                SourceRange range = sourceRange(root, trees, method, methodTree.getBody());
-                if (range == null) {
+                localMethodByKey.put(declaration.technicalKey(), method);
+                String returnType = method.getReturnType().toString();
+                if (returnType.isBlank()) {
                     return Result.incomplete(
                             methodLocation.path(), methodLocation.line(),
-                            "javac method body has no canonical source range");
+                            "javac source method has no resolved return-type name");
                 }
-                List<MethodBodyObservation> bodyCandidates = bodiesByLocation.get(
-                        new BodyLocator(range.path(), range.startLine()));
-                if (bodyCandidates == null || bodyCandidates.size() != 1) {
-                    return Result.incomplete(
-                            methodLocation.path(), methodLocation.line(),
-                            "javac method body could not be matched to one Spoon body");
-                }
-                bindings.put(declaration.technicalKey(),
-                        List.of(bodyCandidates.get(0).technicalKey()));
+                returnTypes.put(declaration.technicalKey(), returnType);
             }
         }
         long canonicalMethodCount = members.stream()
                 .filter(member -> member.kind() == MemberKind.METHOD).count();
         if (mappedMethods.size() != canonicalMethodCount) {
             return incomplete(classifiers,
-                    "not every canonical source method was independently mapped by javac");
+                    "not every canonical source method was independently mapped by javac for override evidence");
         }
-        return new Result(true, availability, bindings, List.of());
+
+        for (ClassifierObservation classifier : classifiers) {
+            TypeElement type = typeByClassifier.get(classifier.id());
+            String mappingError = mapAncestorTypes(
+                    classifier,
+                    type,
+                    classifierById,
+                    typeByClassifier,
+                    types,
+                    new HashSet<>());
+            if (mappingError != null) {
+                return Result.incomplete(classifier.sourcePath(), classifier.startLine(), mappingError);
+            }
+        }
+
+        Map<String, List<String>> overrides = new HashMap<>();
+        for (String key : localMethodByKey.keySet()) {
+            overrides.put(key, List.of());
+        }
+        for (ClassifierObservation classifier : classifiers) {
+            TypeElement owner = typeByClassifier.get(classifier.id());
+            if (owner == null) {
+                return incomplete(classifiers, "javac override owner could not be resolved");
+            }
+            Set<String> ancestors = ancestorIds(classifier, classifierById);
+            for (String key : classifier.declaredMemberKeys()) {
+                MemberObservation member = membersByKey.get(key);
+                if (member == null || member.kind() != MemberKind.METHOD) {
+                    continue;
+                }
+                ExecutableElement local = localMethodByKey.get(key);
+                if (local == null) {
+                    return incomplete(classifiers,
+                            "javac local override declaration could not be resolved");
+                }
+                LinkedHashSet<String> targets = new LinkedHashSet<>();
+                for (String ancestorId : ancestors) {
+                    ClassifierObservation ancestor = classifierById.get(ancestorId);
+                    TypeElement ancestorType = typeByClassifier.get(ancestorId);
+                    if (ancestor == null || ancestorType == null) {
+                        return Result.incomplete(
+                                member.sourcePath(), member.startLine(),
+                                "canonical override ancestor has no javac type mapping");
+                    }
+                    for (String targetKey : ancestor.declaredMemberKeys()) {
+                        MemberObservation target = membersByKey.get(targetKey);
+                        if (target == null || target.kind() != MemberKind.METHOD) {
+                            continue;
+                        }
+                        List<ExecutableElement> candidates;
+                        ExecutableElement sourceCandidate = localMethodByKey.get(targetKey);
+                        if (sourceCandidate != null) {
+                            candidates = List.of(sourceCandidate);
+                        } else {
+                            candidates = binaryMethodCandidates(ancestorType, target, types);
+                        }
+                        if (candidates.isEmpty()) {
+                            return Result.incomplete(
+                                    member.sourcePath(), member.startLine(),
+                                    "canonical ancestor method could not be mapped to javac: owner="
+                                            + ancestor.qualifiedName() + ", method=" + target.memberName());
+                        }
+                        if (candidates.stream().anyMatch(candidate ->
+                                elements.overrides(local, candidate, owner))) {
+                            targets.add(targetKey);
+                        }
+                    }
+                }
+                overrides.put(key, targets.stream().sorted().toList());
+            }
+        }
+        return new Result(true, returnTypes, overrides, List.of());
+    }
+
+    private static String mapAncestorTypes(
+            ClassifierObservation classifier,
+            TypeElement type,
+            Map<String, ClassifierObservation> classifierById,
+            Map<String, TypeElement> typeByClassifier,
+            Types types,
+            Set<String> active) {
+        if (type == null) {
+            return "javac classifier type is unavailable while mapping override ancestors";
+        }
+        if (!active.add(classifier.id())) {
+            return "cyclic canonical hierarchy encountered while mapping override ancestors";
+        }
+        try {
+            List<? extends TypeMirror> directSupertypes = types.directSupertypes(type.asType());
+            for (String parentId : classifier.parentIds()) {
+                ClassifierObservation parent = classifierById.get(parentId);
+                if (parent == null) {
+                    return "canonical parent is outside the active javac source-set context";
+                }
+                List<TypeElement> matches = directSupertypes.stream()
+                        .map(types::asElement)
+                        .filter(TypeElement.class::isInstance)
+                        .map(TypeElement.class::cast)
+                        .filter(candidate -> candidate.getQualifiedName().contentEquals(parent.qualifiedName()))
+                        .toList();
+                if (matches.size() != 1) {
+                    return "javac direct parent could not be mapped uniquely: " + parent.qualifiedName();
+                }
+                TypeElement parentType = matches.get(0);
+                TypeElement previous = typeByClassifier.putIfAbsent(parentId, parentType);
+                if (previous != null && !types.isSameType(previous.asType(), parentType.asType())) {
+                    return "canonical parent mapped to inconsistent javac types: " + parent.qualifiedName();
+                }
+                String nested = mapAncestorTypes(
+                        parent,
+                        previous == null ? parentType : previous,
+                        classifierById,
+                        typeByClassifier,
+                        types,
+                        active);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+            return null;
+        } finally {
+            active.remove(classifier.id());
+        }
+    }
+
+    private static Set<String> ancestorIds(
+            ClassifierObservation classifier,
+            Map<String, ClassifierObservation> classifierById) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        collectAncestorIds(classifier, classifierById, result);
+        return result;
+    }
+
+    private static void collectAncestorIds(
+            ClassifierObservation classifier,
+            Map<String, ClassifierObservation> classifierById,
+            Set<String> result) {
+        for (String parentId : classifier.parentIds()) {
+            if (!result.add(parentId)) {
+                continue;
+            }
+            ClassifierObservation parent = classifierById.get(parentId);
+            if (parent != null) {
+                collectAncestorIds(parent, classifierById, result);
+            }
+        }
+    }
+
+    private static List<ExecutableElement> binaryMethodCandidates(
+            TypeElement owner,
+            MemberObservation canonical,
+            Types types) {
+        return owner.getEnclosedElements().stream()
+                .filter(element -> element.getKind() == ElementKind.METHOD)
+                .filter(ExecutableElement.class::isInstance)
+                .map(ExecutableElement.class::cast)
+                .filter(method -> method.getSimpleName().contentEquals(canonical.memberName()))
+                .filter(method -> parameterTypesMatch(canonical, method, types))
+                .toList();
+    }
+
+    private static boolean parameterTypesMatch(
+            MemberObservation canonical,
+            ExecutableElement method,
+            Types types) {
+        List<String> exact = method.getParameters().stream()
+                .map(parameter -> parameter.asType().toString()).toList();
+        List<String> erased = method.getParameters().stream()
+                .map(parameter -> types.erasure(parameter.asType()).toString()).toList();
+        return canonical.parameterTypes().equals(exact) || canonical.parameterTypes().equals(erased);
+    }
+
+    private static List<ClassifierObservation> concat(
+            List<ClassifierObservation> left, List<ClassifierObservation> right) {
+        List<ClassifierObservation> result = new ArrayList<>(left.size() + right.size());
+        result.addAll(left);
+        result.addAll(right);
+        return result;
     }
 
     private static Result incomplete(List<ClassifierObservation> classifiers, String message) {
@@ -329,32 +528,7 @@ final class JavacImplementationObserver {
                 Math.toIntExact(unit.getLineMap().getLineNumber(position)));
     }
 
-    private static SourceRange sourceRange(
-            Path root,
-            Trees trees,
-            ExecutableElement method,
-            Tree target) throws IOException {
-        var path = trees.getPath(method);
-        if (path == null) {
-            return null;
-        }
-        CompilationUnitTree unit = path.getCompilationUnit();
-        long start = trees.getSourcePositions().getStartPosition(unit, target);
-        long end = trees.getSourcePositions().getEndPosition(unit, target);
-        if (start < 0 || end < 0 || unit.getLineMap() == null) {
-            return null;
-        }
-        Path source = Path.of(unit.getSourceFile().toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
-        if (!source.startsWith(root)) {
-            return null;
-        }
-        return new SourceRange(
-                relativePath(root, source),
-                Math.toIntExact(unit.getLineMap().getLineNumber(start)),
-                Math.toIntExact(unit.getLineMap().getLineNumber(Math.max(start, end - 1))));
-    }
-
-    private static MemberObservation uniqueDeclaration(
+    private static MemberObservation uniqueSourceDeclaration(
             List<MemberObservation> candidates,
             ExecutableElement method,
             Types types,
@@ -396,7 +570,7 @@ final class JavacImplementationObserver {
                 .map(candidate -> candidate.startLine() + ":" + candidate.parameterTypes())
                 .sorted()
                 .collect(java.util.stream.Collectors.joining(", ", "[", "]"));
-        return "javac source method declaration could not be mapped uniquely: owner="
+        return "javac source method declaration could not be mapped uniquely for override evidence: owner="
                 + classifier.qualifiedName()
                 + ", method=" + method.getSimpleName()
                 + ", exactParameters=" + exact
@@ -437,7 +611,7 @@ final class JavacImplementationObserver {
 
     private static String normalizedMessage(Path root, String message) {
         String text = message == null || message.isBlank()
-                ? "javac could not complete implementation-binding observation"
+                ? "javac could not complete override/return-type observation"
                 : message;
         return text.replace(root.toAbsolutePath().normalize().toString(), ".")
                 .replace('\r', ' ').trim();
@@ -450,12 +624,12 @@ final class JavacImplementationObserver {
 
     record Result(
             boolean complete,
-            Map<String, ImplementationAvailability> availabilityByMember,
-            Map<String, List<String>> bodyKeysByMember,
+            Map<String, String> returnTypesByMember,
+            Map<String, List<String>> overriddenMemberKeysByMember,
             List<ObservationDiagnostic> diagnostics) {
         Result {
-            availabilityByMember = Map.copyOf(availabilityByMember);
-            bodyKeysByMember = bodyKeysByMember.entrySet().stream()
+            returnTypesByMember = Map.copyOf(returnTypesByMember);
+            overriddenMemberKeysByMember = overriddenMemberKeysByMember.entrySet().stream()
                     .collect(java.util.stream.Collectors.toUnmodifiableMap(
                             Map.Entry::getKey,
                             entry -> List.copyOf(entry.getValue())));
@@ -486,12 +660,6 @@ final class JavacImplementationObserver {
     private record MemberLocator(String ownerId, String name) {
     }
 
-    private record BodyLocator(String path, int startLine) {
-    }
-
     private record SourcePoint(String path, int line) {
-    }
-
-    private record SourceRange(String path, int startLine, int endLine) {
     }
 }

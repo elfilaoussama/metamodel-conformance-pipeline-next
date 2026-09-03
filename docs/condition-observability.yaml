@@ -1,4 +1,4 @@
-schemaVersion: "4"
+schemaVersion: "6"
 evidence:
   HIERARCHY:
     description: Direct parent edges are complete for the declared source boundary.
@@ -20,6 +20,10 @@ evidence:
     description: Source-level classifier abstraction is observed explicitly as ABSTRACT, CONCRETE, or UNKNOWN without using unresolved-method outcomes.
   METHOD_SCOPE:
     description: Source-level method scope is observed explicitly as INSTANCE, STATIC, or UNKNOWN.
+  METHOD_RETURN_TYPES:
+    description: javac resolves a return-type representation for every canonical source method in the configured source set; the evidence kind is complete only when every method maps uniquely and compilation succeeds.
+  OVERRIDE_RELATIONS:
+    description: javac independently resolves which canonical source methods override which other canonical source methods within the configured source boundary; the relation is retained even when empty and is complete only when every method maps uniquely and compilation succeeds.
 
 conditions:
   O-01:
@@ -74,5 +78,16 @@ conditions:
     witness: CLASSIFIER_MEMBER_PAIR
     reason: Evaluated only when the independent inherited-member view is complete.
   O-09:
-    status: DEFERRED
-    reason: Requires independently resolved override and return-type evidence and reuses implementation evidence from O-06.
+    status: EVALUABLE
+    repositoryProfile:
+      relationConsistency:
+        invariantId: override-relation-consistency
+        requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, METHOD_SCOPE, OVERRIDE_RELATIONS]
+        witness: MEMBER_PAIR
+        reason: javac's independently resolved override relation is compared with the formal ancestor, accessibility, method-key, and scope relation. A mismatch is reported as a bridge/policy-correspondence finding rather than being conflated with return compatibility.
+      strictDiscipline:
+        invariantId: override-discipline
+        requires: [HIERARCHY, DECLARATION_OWNERSHIP, LOCAL_SIGNATURES, INHERITABILITY, METHOD_BODIES, METHOD_ABSTRACTION, METHOD_SCOPE, IMPLEMENTATION_BINDINGS, METHOD_RETURN_TYPES, OVERRIDE_RELATIONS]
+        witness: MEMBER_PAIR
+        reason: Over the formal override relation, Alloy applies the manuscript's strict return-type equality and abstract-or-implemented disposition. Independent override evidence is still required before this empirical claim is made.
+    reason: Missing compiler or mapping evidence yields NOT_EVALUATED for both checks. Keeping relation correspondence separate from strict policy preserves causal interpretation of O-09 findings.
