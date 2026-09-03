@@ -95,6 +95,29 @@ class JavaImplementationSourceObserverTest {
     }
 
     @Test
+    void mapsAnnotatedMethodAtItsDeclarationRatherThanAnnotationLine() throws Exception {
+        Path source = Files.createDirectory(temporary.resolve("annotated-source"));
+        Files.writeString(source.resolve("Annotated.java"), """
+                class Annotated {
+                    @Override
+                    public String toString() {
+                        return "annotated";
+                    }
+                }
+                """);
+
+        Observation observation = new JavaImplementationSourceObserver(List.of()).observe(source, Set.of());
+
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.METHOD_BODIES));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.METHOD_ABSTRACTION));
+        assertTrue(observation.completeEvidence().contains(EvidenceKind.IMPLEMENTATION_BINDINGS));
+        assertEquals(1, observation.implementationBindings().size());
+        assertEquals(3, observation.members().stream()
+                .filter(member -> member.kind() == MemberKind.METHOD)
+                .findFirst().orElseThrow().startLine());
+    }
+
+    @Test
     void mapsNestedTypeOverloadsByIndependentSourceLocation() throws Exception {
         Path source = Files.createDirectory(temporary.resolve("nested-overload-source"));
         Files.writeString(source.resolve("Outer.java"), """
