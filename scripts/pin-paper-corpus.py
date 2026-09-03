@@ -4,14 +4,18 @@
 This script does NOT claim to recover the original ingestion SHAs. The historical
 study recorded repository membership but omitted each clone's HEAD revision from
 tracked exports. It therefore resolves the latest commit on each repository's
-default branch at or before an explicit historical cutoff and labels every result
-as reconstructed provenance.
+current canonical default branch at or before an explicit historical cutoff and
+labels every result as reconstructed provenance.
+
+The recovered selection itself is treated as an immutable study artifact: its Git
+blob SHA-1 must match the historical tracked blob before any pinning begins.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import sys
@@ -26,6 +30,7 @@ from pathlib import Path
 DEFAULT_INPUT = Path("corpus/paper-224-selected.csv")
 DEFAULT_OUTPUT = Path("corpus/paper-224-reconstructed-pins.csv")
 DEFAULT_CUTOFF = "2026-07-29T12:09:33Z"
+EXPECTED_SELECTION_BLOB_SHA1 = "d6818780078944b5b12063c780a480dc8c8686eb"
 API_ROOT = "https://api.github.com"
 PROVENANCE = "RECONSTRUCTED_SELECTION_CUTOFF"
 
@@ -39,6 +44,12 @@ def parse_cutoff(value: str) -> str:
     if parsed.tzinfo is None:
         raise argparse.ArgumentTypeError("cutoff must include a timezone")
     return parsed.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def git_blob_sha1(path: Path) -> str:
+    data = path.read_bytes()
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data).hexdigest()
 
 
 def repository_coordinate(normalized: str) -> str:
@@ -155,9 +166,19 @@ def main() -> int:
     parser.add_argument("--sleep-seconds", type=float, default=0.0)
     args = parser.parse_args()
 
+    observed_selection_blob = git_blob_sha1(args.input)
+    if observed_selection_blob != EXPECTED_SELECTION_BLOB_SHA1:
+        print(
+            "historical selection integrity failure: "
+            f"git blob {observed_selection_blob} != expected {EXPECTED_SELECTION_BLOB_SHA1}",
+            file=sys.stderr,
+        )
+        return 65
+
     with args.input.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     validate_selection(rows)
+    print(f"historical selection blob verified: {observed_selection_blob}")
 
     token = os.environ.get(args.token_env)
     if not token and not args.allow_unauthenticated:
