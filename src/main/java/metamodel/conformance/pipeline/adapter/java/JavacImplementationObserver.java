@@ -184,39 +184,45 @@ final class JavacImplementationObserver {
         Map<String, List<String>> bindings = new HashMap<>();
         Set<String> mappedMethods = new HashSet<>();
         for (ClassifierObservation classifier : classifiers) {
-            List<TypeElement> candidates = javacTypes.get(new TypeLocator(classifier.sourcePath(), classifier.startLine()));
+            List<TypeElement> candidates = javacTypes.get(
+                    new TypeLocator(classifier.sourcePath(), classifier.startLine()));
             if (candidates == null || candidates.size() != 1) {
                 return incomplete(classifiers,
                         "javac classifier could not be mapped uniquely for implementation evidence");
             }
             TypeElement type = candidates.get(0);
             for (Element element : type.getEnclosedElements()) {
-                if (element.getKind() != ElementKind.METHOD || !(element instanceof ExecutableElement method)) {
+                if (element.getKind() != ElementKind.METHOD
+                        || !(element instanceof ExecutableElement method)) {
                     continue;
                 }
                 MemberObservation declaration = uniqueDeclaration(
                         membersByLocation.get(new MemberLocator(
-                            classifier.id(), method.getSimpleName().toString())),
+                                classifier.id(), method.getSimpleName().toString())),
                         method, types);
                 if (declaration == null || !mappedMethods.add(declaration.technicalKey())) {
-                    return incomplete(classifiers, "javac method declaration could not be mapped uniquely");
+                    return incomplete(classifiers,
+                            "javac method declaration could not be mapped uniquely");
                 }
                 Tree tree = trees.getTree(method);
                 if (!(tree instanceof MethodTree methodTree)) {
                     return incomplete(classifiers, "javac method tree is unavailable");
                 }
                 if (methodTree.getBody() == null) {
-                    availability.put(declaration.technicalKey(), ImplementationAvailability.NO_SOURCE_BODY);
+                    availability.put(declaration.technicalKey(),
+                            ImplementationAvailability.NO_SOURCE_BODY);
                     bindings.put(declaration.technicalKey(), List.of());
                     continue;
                 }
-                availability.put(declaration.technicalKey(), ImplementationAvailability.SOURCE_BODY);
+                availability.put(declaration.technicalKey(),
+                        ImplementationAvailability.SOURCE_BODY);
                 SourceRange range = sourceRange(root, trees, method, methodTree.getBody());
                 if (range == null) {
-                    return incomplete(classifiers, "javac method body has no canonical source range");
+                    return incomplete(classifiers,
+                            "javac method body has no canonical source range");
                 }
                 List<MethodBodyObservation> bodyCandidates = bodiesByLocation.get(
-                    new BodyLocator(range.path(), range.startLine()));
+                        new BodyLocator(range.path(), range.startLine()));
                 if (bodyCandidates == null || bodyCandidates.size() != 1) {
                     return incomplete(classifiers,
                             "javac method body could not be matched to one Spoon body");
@@ -228,13 +234,16 @@ final class JavacImplementationObserver {
         long canonicalMethodCount = members.stream()
                 .filter(member -> member.kind() == MemberKind.METHOD).count();
         if (mappedMethods.size() != canonicalMethodCount) {
-            return incomplete(classifiers, "not every canonical method was independently mapped by javac");
+            return incomplete(classifiers,
+                    "not every canonical method was independently mapped by javac");
         }
         return new Result(true, availability, bindings, List.of());
     }
 
-    private static Result incomplete(List<ClassifierObservation> classifiers, String message) {
-        String sourcePath = classifiers.isEmpty() ? "<unknown>.java" : classifiers.get(0).sourcePath();
+    private static Result incomplete(
+            List<ClassifierObservation> classifiers, String message) {
+        String sourcePath = classifiers.isEmpty()
+                ? "<unknown>.java" : classifiers.get(0).sourcePath();
         return Result.incomplete(sourcePath, message);
     }
 
@@ -250,11 +259,13 @@ final class JavacImplementationObserver {
                         try {
                             SourcePoint location = sourcePoint(root, trees, type);
                             if (location != null) {
-                                TypeLocator locator = new TypeLocator(location.path(), location.line());
-                                result.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(type);
+                                TypeLocator locator =
+                                        new TypeLocator(location.path(), location.line());
+                                result.computeIfAbsent(locator,
+                                        ignored -> new ArrayList<>()).add(type);
                             }
                         } catch (IOException ignored) {
-                            // Missing source mapping is handled by the caller as incomplete evidence.
+                            // Missing source mapping is handled as incomplete evidence.
                         }
                     }
                     return super.visitClass(node, unused);
@@ -264,22 +275,25 @@ final class JavacImplementationObserver {
         return result;
     }
 
-    private static SourcePoint sourcePoint(Path root, Trees trees, Element element)
-            throws IOException {
+    private static SourcePoint sourcePoint(
+            Path root, Trees trees, Element element) throws IOException {
         var treePath = trees.getPath(element);
         if (treePath == null) {
             return null;
         }
         CompilationUnitTree unit = treePath.getCompilationUnit();
-        long position = trees.getSourcePositions().getStartPosition(unit, treePath.getLeaf());
+        long position = trees.getSourcePositions()
+                .getStartPosition(unit, treePath.getLeaf());
         if (position < 0 || unit.getLineMap() == null) {
             return null;
         }
-        Path source = Path.of(unit.getSourceFile().toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
+        Path source = Path.of(unit.getSourceFile().toUri())
+                .toRealPath(LinkOption.NOFOLLOW_LINKS);
         if (!source.startsWith(root)) {
             return null;
         }
-        return new SourcePoint(relativePath(root, source),
+        return new SourcePoint(
+                relativePath(root, source),
                 Math.toIntExact(unit.getLineMap().getLineNumber(position)));
     }
 
@@ -298,18 +312,22 @@ final class JavacImplementationObserver {
         if (start < 0 || end < 0 || unit.getLineMap() == null) {
             return null;
         }
-        Path source = Path.of(unit.getSourceFile().toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
+        Path source = Path.of(unit.getSourceFile().toUri())
+                .toRealPath(LinkOption.NOFOLLOW_LINKS);
         if (!source.startsWith(root)) {
             return null;
         }
         return new SourceRange(
                 relativePath(root, source),
                 Math.toIntExact(unit.getLineMap().getLineNumber(start)),
-                Math.toIntExact(unit.getLineMap().getLineNumber(Math.max(start, end - 1))));
+                Math.toIntExact(unit.getLineMap().getLineNumber(
+                        Math.max(start, end - 1))));
     }
 
     private static MemberObservation uniqueDeclaration(
-            List<MemberObservation> candidates, ExecutableElement method, Types types) {
+            List<MemberObservation> candidates,
+            ExecutableElement method,
+            Types types) {
         if (candidates == null || candidates.isEmpty()) {
             return null;
         }
@@ -337,8 +355,10 @@ final class JavacImplementationObserver {
                 .map(item -> new ObservationDiagnostic(
                         DiagnosticKind.EVIDENCE_INCOMPLETE,
                         diagnosticPath(root, item.getSource(), fallback),
-                        item.getLineNumber() < 0 ? 0 : Math.toIntExact(item.getLineNumber()),
-                        normalizedMessage(root, item.getMessage(java.util.Locale.ROOT))))
+                        item.getLineNumber() < 0
+                                ? 0 : Math.toIntExact(item.getLineNumber()),
+                        normalizedMessage(root,
+                                item.getMessage(java.util.Locale.ROOT))))
                 .distinct()
                 .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
                         .thenComparingInt(ObservationDiagnostic::line)
@@ -346,12 +366,14 @@ final class JavacImplementationObserver {
                 .toList();
     }
 
-    private static String diagnosticPath(Path root, JavaFileObject source, String fallback) {
+    private static String diagnosticPath(
+            Path root, JavaFileObject source, String fallback) {
         if (source == null) {
             return fallback;
         }
         try {
-            Path path = Path.of(source.toUri()).toRealPath(LinkOption.NOFOLLOW_LINKS);
+            Path path = Path.of(source.toUri())
+                    .toRealPath(LinkOption.NOFOLLOW_LINKS);
             return path.startsWith(root) ? relativePath(root, path) : fallback;
         } catch (IOException | RuntimeException ignored) {
             return fallback;
@@ -360,13 +382,15 @@ final class JavacImplementationObserver {
 
     private static String normalizedMessage(Path root, String message) {
         String text = message == null || message.isBlank()
-                ? "javac could not complete implementation-binding observation" : message;
+                ? "javac could not complete implementation-binding observation"
+                : message;
         return text.replace(root.toAbsolutePath().normalize().toString(), ".")
-                .replace('\r\', ' ').trim();
+                .replace('\r', ' ').trim();
     }
 
     private static String relativePath(Path root, Path path) {
-        return root.relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/');
+        return root.relativize(path.toAbsolutePath().normalize())
+                .toString().replace('\\', '/');
     }
 
     record Result(
@@ -378,7 +402,8 @@ final class JavacImplementationObserver {
             availabilityByMember = Map.copyOf(availabilityByMember);
             bodyKeysByMember = bodyKeysByMember.entrySet().stream()
                     .collect(java.util.stream.Collectors.toUnmodifiableMap(
-                            Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
+                            Map.Entry::getKey,
+                            entry -> List.copyOf(entry.getValue())));
             diagnostics = List.copyOf(diagnostics);
         }
 
@@ -387,8 +412,12 @@ final class JavacImplementationObserver {
         }
 
         static Result incomplete(String sourcePath, String message) {
-            return new Result(false, Map.of(), Map.of(), List.of(new ObservationDiagnostic(
-                    DiagnosticKind.EVIDENCE_INCOMPLETE, sourcePath, 0, message)));
+            return new Result(false, Map.of(), Map.of(),
+                    List.of(new ObservationDiagnostic(
+                            DiagnosticKind.EVIDENCE_INCOMPLETE,
+                            sourcePath,
+                            0,
+                            message)));
         }
     }
 
