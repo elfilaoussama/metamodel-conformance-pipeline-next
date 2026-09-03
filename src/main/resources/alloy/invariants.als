@@ -120,11 +120,11 @@ fun ImplementationBindingViolations : set univ {
         (m.abstraction = ABSTRACT and
           some b : ImplementationBinding | b.implementer = c and b.target = m) or
         (m.abstraction = CONCRETE and
-          not one b : ImplementationBinding | b.implementer = c and b.target = m)
+          not (one b : ImplementationBinding | b.implementer = c and b.target = m))
       )
     )
   } +
   { methodBody : MethodBody |
-    not one b : ImplementationBinding | b.body = methodBody
+    not (one b : ImplementationBinding | b.body = methodBody)
   }
 }
