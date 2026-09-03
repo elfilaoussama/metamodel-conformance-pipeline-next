@@ -1,4 +1,4 @@
-schemaVersion: "5"
+schemaVersion: "4"
 evidence:
   HIERARCHY:
     description: Direct parent edges are complete for the declared source boundary.
@@ -24,15 +24,7 @@ evidence:
 conditions:
   O-01:
     status: DEFERRED
-    reason: Extractor-generated classifier/member technical keys are deterministic provenance identifiers and are not independent source identities; checking their uniqueness would be true by construction.
-    bridgeAudit:
-      status: AUDITED
-      scope: SOURCE_OBSERVATION_TO_XMI_TO_ALLOY
-      tests:
-        - same-name-and-signature-distinct-carriers
-        - duplicate-observed-labels-remain-distinct
-        - no-generated-id-o01-registry-entry
-      interpretation: The audit validates non-conflation and identity preservation in the measurement bridge only. It is not a per-repository O-01 conformance result.
+    reason: Extractor-generated technical keys are not independent source identities.
   O-02:
     status: EVALUABLE
     requires: [DECLARATION_OWNERSHIP]
