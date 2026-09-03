@@ -1,10 +1,12 @@
 package metamodel.conformance.pipeline.adapter.python;
 
 import metamodel.conformance.pipeline.ConformancePipeline;
+import metamodel.conformance.pipeline.adapter.SourceObserverFactory;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.decision.DecisionStatus;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Inheritability;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.Observation;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -77,15 +80,19 @@ class PythonDeclarationOwnershipTest {
                 """);
         Path output = temporary.resolve("artifacts");
 
-        var result = new ConformancePipeline(new PythonAstObserver())
+        var result = new ConformancePipeline(
+                SourceObserverFactory.create(Language.PYTHON, List.of()))
                 .analyze(temporary, output, Set.of());
 
+        assertEquals("9", result.observation().schemaVersion());
         assertTrue(result.observation().completeEvidence().contains(EvidenceKind.DECLARATION_OWNERSHIP));
         assertFalse(result.observation().completeEvidence().contains(EvidenceKind.HIERARCHY));
         assertEquals(DecisionStatus.CONFORMANT,
                 result.invariant("exclusive-declaration-ownership").status());
         assertEquals(DecisionStatus.NOT_EVALUATED,
                 result.invariant("acyclic-generalization").status());
+        assertEquals(DecisionStatus.NOT_EVALUATED,
+                result.invariant("implementation-binding-consistency").status());
         assertEquals(DecisionStatus.NOT_EVALUATED,
                 result.invariant("local-namespace-uniqueness").status());
         assertTrue(new CapsuleVerifier().verify(result.capsulePath()).valid());

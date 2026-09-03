@@ -6,6 +6,7 @@ import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.ImplementationAvailability;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
 
@@ -17,7 +18,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 
 public final class JavaImplementationSourceObserver implements SourceObserver {
@@ -40,7 +43,7 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
         try {
             Path root = sourceRoot.toRealPath(LinkOption.NOFOLLOW_LINKS);
             List<Path> files = discoverJavaFiles(root);
-            SpoonMethodBodyObserver.Result bodyResult = new SpoonMethodBodyObserver().observe(root, files);
+            SpoonMethodBodyObserver.Result bodyResult = observeBodiesBySourceSet(root, files);
             JavaDependencyClasspath.Result dependencies = JavaDependencyClasspath.resolve(dependencyArchives);
             JavacImplementationObserver.Result implementation = bodyResult.complete()
                     ? new JavacImplementationObserver().observe(
@@ -91,10 +94,47 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
         }
     }
 
+    private static SpoonMethodBodyObserver.Result observeBodiesBySourceSet(
+            Path root, List<Path> files) {
+        Map<String, List<Path>> filesBySourceSet = new TreeMap<>();
+        for (Path file : files) {
+            String relative = root.relativize(file.toAbsolutePath().normalize())
+                    .toString().replace('\\', '/');
+            filesBySourceSet.computeIfAbsent(
+                    JavaSourceSets.id(relative), ignored -> new ArrayList<>()).add(file);
+        }
+
+        boolean complete = true;
+        List<MethodBodyObservation> bodies = new ArrayList<>();
+        List<ObservationDiagnostic> diagnostics = new ArrayList<>();
+        SpoonMethodBodyObserver observer = new SpoonMethodBodyObserver();
+        for (List<Path> sourceSetFiles : filesBySourceSet.values()) {
+            SpoonMethodBodyObserver.Result result = observer.observe(root, sourceSetFiles);
+            complete &= result.complete();
+            bodies.addAll(result.bodies());
+            diagnostics.addAll(result.diagnostics());
+        }
+        List<MethodBodyObservation> canonicalBodies = bodies.stream()
+                .distinct()
+                .sorted(Comparator.comparing(MethodBodyObservation::technicalKey))
+                .toList();
+        if (canonicalBodies.size() != bodies.size()) {
+            complete = false;
+        }
+        return new SpoonMethodBodyObserver.Result(
+                complete,
+                canonicalBodies,
+                diagnostics.stream().distinct()
+                        .sorted(Comparator.comparing(ObservationDiagnostic::sourcePath)
+                                .thenComparingInt(ObservationDiagnostic::line)
+                                .thenComparing(ObservationDiagnostic::message))
+                        .toList());
+    }
+
     private static Observation upgrade(
             Observation base,
             List<MemberObservation> members,
-            List<metamodel.conformance.pipeline.model.MethodBodyObservation> bodies,
+            List<MethodBodyObservation> bodies,
             Set<EvidenceKind> addedEvidence,
             List<ObservationDiagnostic> extraDiagnostics) {
         EnumSet<EvidenceKind> evidence = EnumSet.noneOf(EvidenceKind.class);
