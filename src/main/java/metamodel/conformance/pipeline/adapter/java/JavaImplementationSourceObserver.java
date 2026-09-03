@@ -30,13 +30,13 @@ import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * Enriches the structural Java observation with independent implementation and abstraction evidence.
- * Spoon observes bodies, abstraction flags, and static/instance scope; javac independently resolves
- * which canonical declaration each source body corresponds to. Invariant semantics remain in Alloy.
+ * Enriches the structural Java observation with independent implementation, abstraction,
+ * return-type, and override evidence. Frontends observe facts only; invariant semantics
+ * remain in Alloy.
  */
 public final class JavaImplementationSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = SpoonJavaObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.2.0";
+    public static final String ADAPTER_VERSION = "1.3.0";
 
     private final List<Path> dependencyArchives;
 
@@ -68,6 +68,12 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                             bodyResult.bodies(),
                             dependencies.paths())
                     : JavacImplementationObserver.Result.incomplete();
+            JavacOverrideObserver.Result overrideEvidence = new JavacOverrideObserver().observe(
+                    root,
+                    files,
+                    base.classifiers(),
+                    base.members(),
+                    dependencies.paths());
 
             List<ClassifierObservation> classifiers = base.classifiers().stream().map(classifier ->
                     new ClassifierObservation(
@@ -94,6 +100,13 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                         ? abstractionResult.scopeByMember().getOrDefault(
                                 member.technicalKey(), MemberScope.UNKNOWN)
                         : MemberScope.UNKNOWN;
+                String returnType = member.kind() == MemberKind.METHOD
+                        ? overrideEvidence.returnTypesByMember().get(member.technicalKey())
+                        : null;
+                List<String> overriddenKeys = member.kind() == MemberKind.METHOD
+                        ? overrideEvidence.overriddenMemberKeysByMember()
+                                .getOrDefault(member.technicalKey(), List.of())
+                        : List.of();
                 return new MemberObservation(
                         member.technicalKey(),
                         member.observedIdentifier(),
@@ -106,7 +119,9 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                         member.endLine(),
                         member.parameterTypes(),
                         abstraction,
-                        scope);
+                        scope,
+                        returnType,
+                        overriddenKeys);
             }).toList();
 
             BindingResult bindingResult = implementation.complete()
@@ -129,10 +144,15 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
             if (bodyResult.complete() && implementation.complete() && bindingResult.complete()) {
                 added.add(EvidenceKind.IMPLEMENTATION_BINDINGS);
             }
+            if (overrideEvidence.complete()) {
+                added.add(EvidenceKind.METHOD_RETURN_TYPES);
+                added.add(EvidenceKind.OVERRIDE_RELATIONS);
+            }
             List<ObservationDiagnostic> extraDiagnostics = new ArrayList<>();
             extraDiagnostics.addAll(bodyResult.diagnostics());
             extraDiagnostics.addAll(abstractionResult.diagnostics());
             extraDiagnostics.addAll(implementation.diagnostics());
+            extraDiagnostics.addAll(overrideEvidence.diagnostics());
             extraDiagnostics.addAll(bindingResult.diagnostics());
             dependencies.verifyUnchanged();
             return upgrade(
@@ -298,7 +318,7 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
         List<ObservationDiagnostic> diagnostics = new ArrayList<>(base.diagnostics());
         diagnostics.addAll(extraDiagnostics);
         return new Observation(
-                "11",
+                "12",
                 ADAPTER_ID,
                 ADAPTER_VERSION,
                 base.externalParents(),

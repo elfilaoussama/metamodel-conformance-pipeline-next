@@ -15,7 +15,9 @@ public record MemberObservation(
         int endLine,
         List<String> parameterTypes,
         MethodAbstraction abstraction,
-        MemberScope scope) {
+        MemberScope scope,
+        String returnType,
+        List<String> overriddenMemberKeys) {
 
     public MemberObservation {
         technicalKey = CanonicalObservationValue.technicalId(
@@ -39,12 +41,41 @@ public record MemberObservation(
         }
         abstraction = abstraction == null ? MethodAbstraction.UNKNOWN : abstraction;
         scope = scope == null ? MemberScope.UNKNOWN : scope;
+        returnType = returnType == null || returnType.isBlank() ? null : returnType;
+        overriddenMemberKeys = overriddenMemberKeys == null ? List.of() : overriddenMemberKeys.stream()
+                .map(value -> CanonicalObservationValue.technicalId(
+                        value, "mem_", "overriddenMemberKey"))
+                .sorted().distinct().toList();
         if (kind == MemberKind.ATTRIBUTE && abstraction != MethodAbstraction.UNKNOWN) {
             throw new IllegalArgumentException("attributes cannot carry method abstraction evidence");
         }
         if (kind == MemberKind.ATTRIBUTE && scope != MemberScope.UNKNOWN) {
             throw new IllegalArgumentException("attributes cannot carry method scope evidence");
         }
+        if (kind == MemberKind.ATTRIBUTE && returnType != null) {
+            throw new IllegalArgumentException("attributes cannot carry method return-type evidence");
+        }
+        if (kind == MemberKind.ATTRIBUTE && !overriddenMemberKeys.isEmpty()) {
+            throw new IllegalArgumentException("attributes cannot carry override evidence");
+        }
+    }
+
+    public MemberObservation(
+            String technicalKey,
+            String observedIdentifier,
+            MemberKind kind,
+            Inheritability inheritability,
+            MemberVisibility visibility,
+            String memberName,
+            String sourcePath,
+            int startLine,
+            int endLine,
+            List<String> parameterTypes,
+            MethodAbstraction abstraction,
+            MemberScope scope) {
+        this(technicalKey, observedIdentifier, kind, inheritability, visibility,
+                memberName, sourcePath, startLine, endLine, parameterTypes,
+                abstraction, scope, null, List.of());
     }
 
     public MemberObservation(
