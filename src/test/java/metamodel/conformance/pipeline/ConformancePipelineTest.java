@@ -40,6 +40,10 @@ class ConformancePipelineTest {
                 first.invariant("local-inherited-separation").status());
         assertEquals(DecisionStatus.CONFORMANT,
                 first.invariant("implementation-binding-consistency").status());
+        assertEquals(DecisionStatus.CONFORMANT,
+                first.invariant("abstraction-implementation-consistency").status());
+        assertEquals(DecisionStatus.CONFORMANT,
+                first.invariant("static-abstract-method-separation").status());
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
         assertArrayEquals(Files.readAllBytes(first.capsulePath()), Files.readAllBytes(second.capsulePath()));
@@ -164,7 +168,7 @@ class ConformancePipelineTest {
         PipelineResult result = pipeline.analyze(
                 fixture("acyclic"), temporary.resolve("producer-drift"), Set.of());
         String capsule = Files.readString(result.capsulePath());
-        String changed = capsule.replace("\"toolVersion\" : \"0.12.0\"", "\"toolVersion\" : \"9.9.9\"");
+        String changed = capsule.replace("\"toolVersion\" : \"0.13.0\"", "\"toolVersion\" : \"9.9.9\"");
         assertFalse(capsule.equals(changed));
         Files.writeString(result.capsulePath(), changed);
 
