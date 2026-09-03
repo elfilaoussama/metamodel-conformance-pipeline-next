@@ -108,6 +108,18 @@
       "partitionRoots": ["CLASSIFIER"],
       "conformanceMessage": "Inherited method keys and attribute names are unique within each classifier.",
       "violationMessage": "At least one classifier inherits distinct declarations with the same member key."
+    },
+    {
+      "id": "override-discipline",
+      "title": "Override discipline",
+      "specificationTrace": "O-09",
+      "witnessFunction": "OverridePolicyViolations",
+      "witnessArity": 2,
+      "requiredEvidence": ["HIERARCHY", "DECLARATION_OWNERSHIP", "LOCAL_SIGNATURES", "INHERITABILITY", "METHOD_BODIES", "METHOD_ABSTRACTION", "METHOD_SCOPE", "IMPLEMENTATION_BINDINGS", "METHOD_RETURN_TYPES", "OVERRIDE_RELATIONS"],
+      "partitionRelations": ["PARENTS", "DECLARED_MEMBERS", "IMPLEMENTATION_BINDINGS", "OVERRIDE_RELATIONS"],
+      "partitionRoots": ["CLASSIFIER", "MEMBER", "BODY"],
+      "conformanceMessage": "Every frontend-resolved override satisfies the strict signature, return-type, and abstract-or-implemented policy.",
+      "violationMessage": "At least one frontend-resolved override violates the strict signature, return-type, ancestry, or abstract-or-implemented policy."
     }
   ]
 }
