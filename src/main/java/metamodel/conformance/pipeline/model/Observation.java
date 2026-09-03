@@ -15,6 +15,7 @@ public record Observation(
         List<ClassifierObservation> classifiers,
         List<MemberObservation> members,
         List<MethodBodyObservation> methodBodies,
+        List<ImplementationBindingObservation> implementationBindings,
         List<UnresolvedParent> unresolvedParents,
         List<ObservationDiagnostic> diagnostics) {
 
@@ -32,6 +33,9 @@ public record Observation(
                 .sorted(Comparator.comparing(MemberObservation::technicalKey)).toList();
         methodBodies = methodBodies == null ? List.of() : List.copyOf(methodBodies).stream()
                 .sorted(Comparator.comparing(MethodBodyObservation::technicalKey)).toList();
+        implementationBindings = implementationBindings == null ? List.of()
+                : List.copyOf(implementationBindings).stream()
+                        .sorted(Comparator.comparing(ImplementationBindingObservation::technicalKey)).toList();
         unresolvedParents = List.copyOf(unresolvedParents).stream()
                 .sorted(Comparator.comparing(UnresolvedParent::ownerId)
                         .thenComparing(UnresolvedParent::targetName)
@@ -43,7 +47,9 @@ public record Observation(
                         .thenComparing(item -> item.kind().name())
                         .thenComparing(ObservationDiagnostic::message))
                 .toList();
-        validateReferences(units, classifiers, members, methodBodies, unresolvedParents, diagnostics);
+        validateReferences(
+                units, classifiers, members, methodBodies, implementationBindings,
+                unresolvedParents, diagnostics);
         if (!unresolvedParents.isEmpty() && completeEvidence.contains(EvidenceKind.HIERARCHY)) {
             throw new IllegalArgumentException("hierarchy evidence cannot be complete with unresolved parents");
         }
@@ -62,10 +68,26 @@ public record Observation(
             List<SourceUnit> units,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
+            List<MethodBodyObservation> methodBodies,
             List<UnresolvedParent> unresolvedParents,
             List<ObservationDiagnostic> diagnostics) {
         this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
-                units, classifiers, members, List.of(), unresolvedParents, diagnostics);
+                units, classifiers, members, methodBodies, List.of(), unresolvedParents, diagnostics);
+    }
+
+    public Observation(
+            String schemaVersion,
+            String adapterId,
+            String adapterVersion,
+            List<String> externalParents,
+            Set<EvidenceKind> completeEvidence,
+            List<SourceUnit> units,
+            List<ClassifierObservation> classifiers,
+            List<MemberObservation> members,
+            List<UnresolvedParent> unresolvedParents,
+            List<ObservationDiagnostic> diagnostics) {
+        this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
+                units, classifiers, members, List.of(), List.of(), unresolvedParents, diagnostics);
     }
 
     public Observation(
@@ -79,7 +101,7 @@ public record Observation(
             List<MemberObservation> members,
             List<UnresolvedParent> unresolvedParents) {
         this(schemaVersion, adapterId, adapterVersion, externalParents, completeEvidence,
-                units, classifiers, members, List.of(), unresolvedParents, List.of());
+                units, classifiers, members, List.of(), List.of(), unresolvedParents, List.of());
     }
 
     public Observation(
@@ -100,6 +122,7 @@ public record Observation(
                 classifiers,
                 List.of(),
                 List.of(),
+                List.of(),
                 unresolvedParents,
                 List.of());
     }
@@ -115,6 +138,7 @@ public record Observation(
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
             List<MethodBodyObservation> methodBodies,
+            List<ImplementationBindingObservation> implementationBindings,
             List<UnresolvedParent> unresolvedParents,
             List<ObservationDiagnostic> diagnostics) {
         Set<String> sourcePaths = new HashSet<>();
@@ -151,11 +175,23 @@ public record Observation(
             }
             requireSourcePath(sourcePaths, body.sourcePath(), "method body");
         }
-        for (MemberObservation member : members) {
-            for (String bodyKey : member.implementationBodyKeys()) {
-                if (!bodyKeys.contains(bodyKey)) {
-                    throw new IllegalArgumentException("unknown implementation body key: " + bodyKey);
-                }
+        Set<String> bindingKeys = new HashSet<>();
+        for (ImplementationBindingObservation binding : implementationBindings) {
+            if (!bindingKeys.add(binding.technicalKey())) {
+                throw new IllegalArgumentException(
+                        "duplicate technical implementation-binding key: " + binding.technicalKey());
+            }
+            if (!ids.contains(binding.implementerClassifierId())) {
+                throw new IllegalArgumentException(
+                        "unknown implementation-binding implementer: " + binding.implementerClassifierId());
+            }
+            if (!memberKeys.contains(binding.targetMemberKey())) {
+                throw new IllegalArgumentException(
+                        "unknown implementation-binding target: " + binding.targetMemberKey());
+            }
+            if (!bodyKeys.contains(binding.bodyKey())) {
+                throw new IllegalArgumentException(
+                        "unknown implementation-binding body: " + binding.bodyKey());
             }
         }
         for (ClassifierObservation classifier : classifiers) {

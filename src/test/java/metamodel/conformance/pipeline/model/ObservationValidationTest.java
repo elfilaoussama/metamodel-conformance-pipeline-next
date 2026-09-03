@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ObservationValidationTest {
     @Test
@@ -33,6 +33,10 @@ class ObservationValidationTest {
                 () -> new MemberObservation(
                         "work", null, MemberKind.METHOD, "work",
                         "A.java", 1, 1, List.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ImplementationBindingObservation(
+                        "binding", TestObservations.A,
+                        "mem_" + "1".repeat(64), "body_" + "2".repeat(64)));
     }
 
     @Test
@@ -44,6 +48,42 @@ class ObservationValidationTest {
                 base.schemaVersion(), base.adapterId(), base.adapterVersion(),
                 base.externalParents(), base.completeEvidence(),
                 List.of(unit, unit), List.of(), List.of(), List.of()));
+    }
+
+    @Test
+    void rejectsImplementationBindingReferencesOutsideCanonicalEvidence() {
+        String classifierKey = TestObservations.A;
+        String memberKey = "mem_" + "1".repeat(64);
+        String bodyKey = "body_" + "2".repeat(64);
+        String bindingKey = "bind_" + "3".repeat(64);
+        SourceUnit unit = new SourceUnit(Language.JAVA, "A.java", Hashing.sha256("source"));
+        ClassifierObservation classifier = new ClassifierObservation(
+                classifierKey, "A", ClassifierKind.CLASS,
+                "A.java", 1, 4, List.of(), List.of(memberKey));
+        MemberObservation member = new MemberObservation(
+                memberKey, null, MemberKind.METHOD, Inheritability.INHERITABLE,
+                MemberVisibility.PUBLIC, "run", "A.java", 2, 3, List.of(),
+                MethodAbstraction.CONCRETE);
+        MethodBodyObservation body = new MethodBodyObservation(bodyKey, "A.java", 2, 3);
+
+        assertThrows(IllegalArgumentException.class, () -> new Observation(
+                "10", "test", "1", List.of(), Set.of(), List.of(unit),
+                List.of(classifier), List.of(member), List.of(body),
+                List.of(new ImplementationBindingObservation(
+                        bindingKey, "cls_" + "f".repeat(64), memberKey, bodyKey)),
+                List.of(), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new Observation(
+                "10", "test", "1", List.of(), Set.of(), List.of(unit),
+                List.of(classifier), List.of(member), List.of(body),
+                List.of(new ImplementationBindingObservation(
+                        bindingKey, classifierKey, "mem_" + "e".repeat(64), bodyKey)),
+                List.of(), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new Observation(
+                "10", "test", "1", List.of(), Set.of(), List.of(unit),
+                List.of(classifier), List.of(member), List.of(body),
+                List.of(new ImplementationBindingObservation(
+                        bindingKey, classifierKey, memberKey, "body_" + "d".repeat(64))),
+                List.of(), List.of()));
     }
 
     @Test

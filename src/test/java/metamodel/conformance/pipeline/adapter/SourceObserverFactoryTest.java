@@ -32,12 +32,12 @@ class SourceObserverFactoryTest {
     }
 
     @Test
-    void createsSchema9ObserversWithoutChangingJavaDefaultLanguage() {
+    void createsSchema10ObserversWithoutChangingJavaDefaultLanguage() {
         assertInstanceOf(JavaImplementationSourceObserver.class,
                 SourceObserverFactory.create(Language.JAVA, List.of()));
-        assertInstanceOf(Schema9SourceObserver.class,
+        assertInstanceOf(Schema10SourceObserver.class,
                 SourceObserverFactory.create(Language.PYTHON, List.of()));
-        assertInstanceOf(Schema9SourceObserver.class,
+        assertInstanceOf(Schema10SourceObserver.class,
                 SourceObserverFactory.create(Language.CPP, List.of()));
     }
 

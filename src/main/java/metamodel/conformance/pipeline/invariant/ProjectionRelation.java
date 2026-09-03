@@ -6,7 +6,7 @@ public enum ProjectionRelation {
     PARENTS(EvidenceKind.HIERARCHY),
     DECLARED_MEMBERS(EvidenceKind.DECLARATION_OWNERSHIP),
     OBSERVED_INHERITED_MEMBERS(EvidenceKind.INHERITED_MEMBERS),
-    IMPLEMENTATION_BODIES(EvidenceKind.IMPLEMENTATION_BINDINGS);
+    IMPLEMENTATION_BINDINGS(EvidenceKind.IMPLEMENTATION_BINDINGS);
 
     private final EvidenceKind requiredEvidence;
 

@@ -14,8 +14,7 @@ public record MemberObservation(
         int startLine,
         int endLine,
         List<String> parameterTypes,
-        ImplementationAvailability implementationAvailability,
-        List<String> implementationBodyKeys) {
+        MethodAbstraction abstraction) {
 
     public MemberObservation {
         technicalKey = CanonicalObservationValue.technicalId(
@@ -37,13 +36,10 @@ public record MemberObservation(
         if (parameterTypes.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new IllegalArgumentException("parameter types must not be blank");
         }
-        implementationAvailability = implementationAvailability == null
-                ? ImplementationAvailability.UNKNOWN : implementationAvailability;
-        implementationBodyKeys = implementationBodyKeys == null ? List.of()
-                : implementationBodyKeys.stream()
-                        .map(value -> CanonicalObservationValue.technicalId(
-                                value, "body_", "implementation body key"))
-                        .sorted().distinct().toList();
+        abstraction = abstraction == null ? MethodAbstraction.UNKNOWN : abstraction;
+        if (kind == MemberKind.ATTRIBUTE && abstraction != MethodAbstraction.UNKNOWN) {
+            throw new IllegalArgumentException("attributes cannot carry method abstraction evidence");
+        }
     }
 
     public MemberObservation(
@@ -59,7 +55,7 @@ public record MemberObservation(
             List<String> parameterTypes) {
         this(technicalKey, observedIdentifier, kind, inheritability, visibility,
                 memberName, sourcePath, startLine, endLine, parameterTypes,
-                ImplementationAvailability.UNKNOWN, List.of());
+                MethodAbstraction.UNKNOWN);
     }
 
     public MemberObservation(
@@ -85,8 +81,8 @@ public record MemberObservation(
             int startLine,
             int endLine,
             List<String> parameterTypes) {
-        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, MemberVisibility.PUBLIC, memberName,
-                sourcePath, startLine, endLine, parameterTypes);
+        this(technicalKey, observedIdentifier, kind, Inheritability.UNKNOWN, MemberVisibility.PUBLIC,
+                memberName, sourcePath, startLine, endLine, parameterTypes);
     }
 
     private static String requireText(String value, String name) {

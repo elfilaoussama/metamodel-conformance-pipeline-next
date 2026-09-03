@@ -88,13 +88,43 @@ fun InheritedNamespaceUniquenessViolations : Classifier -> Member {
   }
 }
 
+pred bindingTargetAvailable[b : ImplementationBinding] {
+  b.target.kind = METHOD and
+  b.target in b.implementer.declaredMembers + formalInheritedMembers[b.implementer]
+}
+
+fun implementedMethodsVisibleTo[c : Classifier] : set Member {
+  { m : Member |
+    m.kind = METHOD and
+    some b : ImplementationBinding |
+      b.target = m and b.implementer in c.*parents
+  }
+}
+
+pred unresolvedMethod[c : Classifier, m : Member] {
+  m.kind = METHOD and
+  m in c.declaredMembers + formalInheritedMembers[c] and
+  m not in implementedMethodsVisibleTo[c]
+}
+
 fun ImplementationBindingViolations : set univ {
   { m : Member |
-    (m.kind = ATTRIBUTE and
-      (m.implementationAvailability != IMPLEMENTATION_UNKNOWN or some m.implementationBodies)) or
-    (m.kind = METHOD and m.implementationAvailability = IMPLEMENTATION_UNKNOWN) or
-    (m.kind = METHOD and m.implementationAvailability = SOURCE_BODY and not one m.implementationBodies) or
-    (m.kind = METHOD and m.implementationAvailability = NO_SOURCE_BODY and some m.implementationBodies)
+    (m.kind = METHOD and m.abstraction = ABSTRACTION_UNKNOWN) or
+    (some b : ImplementationBinding |
+      b.target = m and not bindingTargetAvailable[b]) or
+    (some disj b1, b2 : ImplementationBinding |
+      b1.target = m and b2.target = m and b1.implementer = b2.implementer) or
+    (some c : Classifier |
+      m.kind = METHOD and m in c.declaredMembers and
+      (
+        (m.abstraction = ABSTRACT and
+          some b : ImplementationBinding | b.implementer = c and b.target = m) or
+        (m.abstraction = CONCRETE and
+          not one b : ImplementationBinding | b.implementer = c and b.target = m)
+      )
+    )
   } +
-  { b : MethodBody | not one b.~implementationBodies }
+  { methodBody : MethodBody |
+    not one b : ImplementationBinding | b.body = methodBody
+  }
 }
