@@ -13,7 +13,6 @@ import metamodel.conformance.pipeline.util.ArtifactLimits;
 import metamodel.conformance.pipeline.util.AtomicFiles;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.common.util.URI;
-import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EEnum;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EPackage;
@@ -88,6 +87,7 @@ public final class ObservationXmiWriter {
         EEnum inheritability = (EEnum) ePackage.getEClassifier("Inheritability");
         EEnum visibility = (EEnum) ePackage.getEClassifier("MemberVisibility");
         EEnum abstraction = (EEnum) ePackage.getEClassifier("MethodAbstraction");
+        EEnum scope = (EEnum) ePackage.getEClassifier("MemberScope");
         for (MemberObservation source : observation.members()) {
             EObject member = ePackage.getEFactoryInstance().create(schema.classifier("Member"));
             set(member, "technicalKey", source.technicalKey());
@@ -103,6 +103,7 @@ public final class ObservationXmiWriter {
             set(member, "endLine", source.endLine());
             ((EList<String>) member.eGet(feature(member, "parameterTypes"))).addAll(source.parameterTypes());
             set(member, "abstraction", abstraction.getEEnumLiteral(source.abstraction().name()).getInstance());
+            set(member, "scope", scope.getEEnumLiteral(source.scope().name()).getInstance());
             members.add(member);
             membersByKey.put(source.technicalKey(), member);
         }
@@ -110,6 +111,7 @@ public final class ObservationXmiWriter {
         Map<String, EObject> classifiersById = new LinkedHashMap<>();
         EList<EObject> classifiers = (EList<EObject>) root.eGet(feature(root, "classifiers"));
         EEnum kind = (EEnum) ePackage.getEClassifier("ClassifierKind");
+        EEnum classifierAbstraction = (EEnum) ePackage.getEClassifier("ClassifierAbstraction");
         for (ClassifierObservation source : observation.classifiers()) {
             EObject classifier = ePackage.getEFactoryInstance().create(schema.classifier("Classifier"));
             set(classifier, "id", source.id());
@@ -119,6 +121,8 @@ public final class ObservationXmiWriter {
             set(classifier, "sourcePath", source.sourcePath());
             set(classifier, "startLine", source.startLine());
             set(classifier, "endLine", source.endLine());
+            set(classifier, "abstraction",
+                    classifierAbstraction.getEEnumLiteral(source.abstraction().name()).getInstance());
             classifiers.add(classifier);
             classifiersById.put(source.id(), classifier);
         }
