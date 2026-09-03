@@ -8,7 +8,6 @@ import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.MemberScope;
 import metamodel.conformance.pipeline.model.MethodAbstraction;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
-import metamodel.conformance.pipeline.util.Hashing;
 import spoon.Launcher;
 import spoon.reflect.declaration.CtAnnotationType;
 import spoon.reflect.declaration.CtInterface;
@@ -54,6 +53,13 @@ final class SpoonAbstractionObserver {
                 }
             }
 
+            Map<String, MemberObservation> membersByKey = new HashMap<>();
+            for (MemberObservation member : canonicalMembers) {
+                if (membersByKey.put(member.technicalKey(), member) != null) {
+                    return Result.incomplete(root, files, "duplicate canonical member key");
+                }
+            }
+
             Map<String, ClassifierAbstraction> classifierAbstraction = new HashMap<>();
             Map<String, MethodAbstraction> methodAbstraction = new HashMap<>();
             Map<String, MemberScope> methodScope = new HashMap<>();
@@ -84,6 +90,18 @@ final class SpoonAbstractionObserver {
                     return Result.incomplete(root, files, "duplicate classifier abstraction observation");
                 }
 
+                List<MemberObservation> canonicalMethods = new ArrayList<>();
+                for (String memberKey : classifier.declaredMemberKeys()) {
+                    MemberObservation member = membersByKey.get(memberKey);
+                    if (member == null) {
+                        return Result.incomplete(root, files,
+                                "canonical classifier references an unavailable member");
+                    }
+                    if (member.kind() == MemberKind.METHOD) {
+                        canonicalMethods.add(member);
+                    }
+                }
+
                 // Use the same source-declaration domain as SpoonJavaObserver. CtType#getMethods()
                 // is a semantic convenience view and can differ from the locally declared type-member
                 // set; abstraction evidence must correspond exactly to canonical source declarations.
@@ -103,15 +121,13 @@ final class SpoonAbstractionObserver {
                                 "Spoon reported method abstraction outside the source root");
                     }
                     String methodPath = root.relativize(methodSource).toString().replace('\\', '/');
-                    List<String> parameterTypes = method.getParameters().stream()
-                            .map(parameter -> {
-                                String value = parameter.getType().getQualifiedName();
-                                return value == null || value.isBlank() ? "<unknown>" : value;
-                            }).toList();
-                    String canonical = "java\0" + methodPath + "\0" + type.getQualifiedName() + "\0"
-                            + MemberKind.METHOD + "\0" + method.getSimpleName() + "\0"
-                            + String.join("\0", parameterTypes) + "\0" + method.getPosition().getLine();
-                    String memberKey = "mem_" + Hashing.sha256(canonical);
+                    MemberObservation canonicalMethod = locateCanonicalMethod(
+                            methodPath, method, canonicalMethods);
+                    if (canonicalMethod == null) {
+                        return Result.incomplete(root, files,
+                                "source method abstraction could not be mapped uniquely to the canonical declaration");
+                    }
+                    String memberKey = canonicalMethod.technicalKey();
                     boolean abstractMethod = method.hasModifier(ModifierKind.ABSTRACT)
                             || (type instanceof CtInterface<?>
                                     && method.getBody() == null
@@ -168,6 +184,48 @@ final class SpoonAbstractionObserver {
             return Result.incomplete(root, files,
                     "Spoon abstraction observation failed: " + failure.getClass().getSimpleName());
         }
+    }
+
+    private static MemberObservation locateCanonicalMethod(
+            String sourcePath,
+            CtMethod<?> method,
+            List<MemberObservation> canonicalMethods) {
+        List<MemberObservation> candidates = canonicalMethods.stream()
+                .filter(item -> item.sourcePath().equals(sourcePath))
+                .filter(item -> item.memberName().equals(method.getSimpleName()))
+                .toList();
+        if (candidates.size() == 1) {
+            return candidates.get(0);
+        }
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        List<MemberObservation> sameStartLine = candidates.stream()
+                .filter(item -> item.startLine() == method.getPosition().getLine())
+                .toList();
+        if (sameStartLine.size() == 1) {
+            return sameStartLine.get(0);
+        }
+        if (!sameStartLine.isEmpty()) {
+            candidates = sameStartLine;
+        }
+
+        List<MemberObservation> sameEndLine = candidates.stream()
+                .filter(item -> item.endLine() == method.getPosition().getEndLine())
+                .toList();
+        if (sameEndLine.size() == 1) {
+            return sameEndLine.get(0);
+        }
+        if (!sameEndLine.isEmpty()) {
+            candidates = sameEndLine;
+        }
+
+        int parameterCount = method.getParameters().size();
+        List<MemberObservation> sameArity = candidates.stream()
+                .filter(item -> item.parameterTypes().size() == parameterCount)
+                .toList();
+        return sameArity.size() == 1 ? sameArity.get(0) : null;
     }
 
     private static String sourcePath(Path root, List<Path> files) {
