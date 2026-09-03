@@ -45,6 +45,8 @@ class ConformancePipelineTest {
         assertEquals(DecisionStatus.CONFORMANT,
                 first.invariant("static-abstract-method-separation").status());
         assertEquals(DecisionStatus.CONFORMANT,
+                first.invariant("override-relation-consistency").status());
+        assertEquals(DecisionStatus.CONFORMANT,
                 first.invariant("override-discipline").status());
         assertArrayEquals(Files.readAllBytes(first.observationPath()), Files.readAllBytes(second.observationPath()));
         assertArrayEquals(Files.readAllBytes(first.alloyPath()), Files.readAllBytes(second.alloyPath()));
