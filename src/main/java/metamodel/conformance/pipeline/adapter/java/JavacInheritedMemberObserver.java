@@ -25,17 +25,16 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Comparator;
-import java.util.TreeMap;
 import java.util.Set;
+import java.util.TreeMap;
 
 final class JavacInheritedMemberObserver {
     Result observe(
@@ -55,14 +54,49 @@ final class JavacInheritedMemberObserver {
         boolean complete = true;
         for (Map.Entry<String, List<Path>> entry : filesBySourceSet.entrySet()) {
             String sourceSet = entry.getKey();
+            Set<String> scopedPaths = entry.getValue().stream()
+                    .map(path -> relativePath(root, path))
+                    .collect(java.util.stream.Collectors.toSet());
             List<ClassifierObservation> scopedClassifiers = classifiers.stream()
                     .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
-            Set<String> scopedPaths = entry.getValue().stream()
-                    .map(path -> relativePath(root, path)).collect(java.util.stream.Collectors.toSet());
             List<MemberObservation> scopedMembers = members.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
-            Result result = observeSourceSet(
-                    root, entry.getValue(), scopedClassifiers, scopedMembers, dependencyArchives);
+            Result result;
+            try (JavacSourceSetContext context = JavacSourceSetContext.prepare(
+                    root, sourceSet, filesBySourceSet, dependencyArchives)) {
+                if (!context.complete()) {
+                    result = new Result(false, Map.of(), context.diagnostics());
+                } else {
+                    String productionSourceSet = context.productionSourceSet();
+                    List<ClassifierObservation> productionClassifiers = productionSourceSet == null
+                            ? List.of()
+                            : classifiers.stream()
+                                    .filter(item -> JavaSourceSets.id(item.sourcePath())
+                                            .equals(productionSourceSet))
+                                    .toList();
+                    Set<String> productionPaths = productionClassifiers.stream()
+                            .map(ClassifierObservation::sourcePath)
+                            .collect(java.util.stream.Collectors.toSet());
+                    List<MemberObservation> productionMembers = productionSourceSet == null
+                            ? List.of()
+                            : members.stream()
+                                    .filter(item -> productionPaths.contains(item.sourcePath()))
+                                    .toList();
+                    result = observeSourceSet(
+                            root,
+                            entry.getValue(),
+                            scopedClassifiers,
+                            scopedMembers,
+                            productionClassifiers,
+                            productionMembers,
+                            context.classpath());
+                }
+            } catch (IOException | RuntimeException failure) {
+                result = Result.incomplete(
+                        relativePath(root, entry.getValue().get(0)),
+                        "javac source-set context failed for inherited-member evidence: "
+                                + failure.getClass().getSimpleName());
+            }
             complete &= result.complete();
             diagnostics.addAll(result.diagnostics());
             inherited.putAll(result.inheritedByClassifier());
@@ -70,10 +104,13 @@ final class JavacInheritedMemberObserver {
         if (!complete) {
             inherited.clear();
         }
-        return new Result(complete, inherited, diagnostics.stream().distinct().sorted(
-                Comparator.comparing(ObservationDiagnostic::sourcePath)
-                        .thenComparingInt(ObservationDiagnostic::line)
-                        .thenComparing(ObservationDiagnostic::message)).toList());
+        return new Result(
+                complete,
+                inherited,
+                diagnostics.stream().distinct().sorted(
+                        Comparator.comparing(ObservationDiagnostic::sourcePath)
+                                .thenComparingInt(ObservationDiagnostic::line)
+                                .thenComparing(ObservationDiagnostic::message)).toList());
     }
 
     private Result observeSourceSet(
@@ -81,56 +118,49 @@ final class JavacInheritedMemberObserver {
             List<Path> files,
             List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
-            List<Path> dependencyArchives) {
+            List<ClassifierObservation> productionClassifiers,
+            List<MemberObservation> productionMembers,
+            String classpath) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             return Result.incomplete(relativePath(root, files.get(0)),
                     "JDK compiler is unavailable; inherited-member evidence was not observed");
         }
-        Path emptyClasspath = null;
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        try {
-            emptyClasspath = dependencyArchives.isEmpty()
-                    ? Files.createTempDirectory("metamodel-conformance-javac-") : null;
-            String classpath = dependencyArchives.isEmpty()
-                    ? emptyClasspath.toString()
-                    : dependencyArchives.stream().map(Path::toString)
-                            .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
-            try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
-                    diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
-                Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
-                JavacTask task = (JavacTask) compiler.getTask(
-                        null,
-                        fileManager,
-                        diagnostics,
-                        List.of(
-                                "-proc:none",
-                                "-implicit:none",
-                                "--release", "17",
-                                "-classpath", classpath,
-                                "-Xlint:none"),
-                        null,
-                        sources);
-                List<CompilationUnitTree> parsed = new ArrayList<>();
-                task.parse().forEach(parsed::add);
-                task.analyze();
-                if (diagnostics.getDiagnostics().stream()
-                        .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
-                    return new Result(false, Map.of(), evidenceDiagnostics(root, files, diagnostics));
-                }
-                return resolve(root, parsed, task, classifiers, members);
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(
+                diagnostics, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
+            Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
+            JavacTask task = (JavacTask) compiler.getTask(
+                    null,
+                    fileManager,
+                    diagnostics,
+                    List.of(
+                            "-proc:none",
+                            "-implicit:none",
+                            "--release", "17",
+                            "-classpath", classpath,
+                            "-Xlint:none"),
+                    null,
+                    sources);
+            List<CompilationUnitTree> parsed = new ArrayList<>();
+            task.parse().forEach(parsed::add);
+            task.analyze();
+            if (diagnostics.getDiagnostics().stream()
+                    .anyMatch(item -> item.getKind() == Diagnostic.Kind.ERROR)) {
+                return new Result(false, Map.of(), evidenceDiagnostics(root, files, diagnostics));
             }
+            return resolve(
+                    root,
+                    parsed,
+                    task,
+                    classifiers,
+                    members,
+                    productionClassifiers,
+                    productionMembers);
         } catch (IOException | RuntimeException | StackOverflowError failure) {
             return Result.incomplete(relativePath(root, files.get(0)),
-                    "javac inherited-member observation failed: " + failure.getClass().getSimpleName());
-        } finally {
-            if (emptyClasspath != null) {
-                try {
-                    Files.deleteIfExists(emptyClasspath);
-                } catch (IOException ignored) {
-                    // Failure to remove an empty temporary directory cannot create evidence.
-                }
-            }
+                    "javac inherited-member observation failed: "
+                            + failure.getClass().getSimpleName());
         }
     }
 
@@ -139,7 +169,9 @@ final class JavacInheritedMemberObserver {
             List<CompilationUnitTree> parsed,
             JavacTask task,
             List<ClassifierObservation> classifiers,
-            List<MemberObservation> members) throws IOException {
+            List<MemberObservation> members,
+            List<ClassifierObservation> productionClassifiers,
+            List<MemberObservation> productionMembers) throws IOException {
         Trees trees = Trees.instance(task);
         Elements elements = task.getElements();
         Types types = task.getTypes();
@@ -151,11 +183,17 @@ final class JavacInheritedMemberObserver {
                 return incomplete(classifiers, "ambiguous classifier source location");
             }
         }
+        Map<String, List<ClassifierObservation>> productionByQualifiedName = new HashMap<>();
+        for (ClassifierObservation classifier : productionClassifiers) {
+            productionByQualifiedName.computeIfAbsent(
+                    classifier.qualifiedName(), ignored -> new ArrayList<>()).add(classifier);
+        }
 
         Map<String, MemberObservation> membersByKey = new HashMap<>();
         members.forEach(member -> membersByKey.put(member.technicalKey(), member));
+        productionMembers.forEach(member -> membersByKey.put(member.technicalKey(), member));
         Map<MemberLocator, List<MemberObservation>> membersByLocation = new HashMap<>();
-        for (ClassifierObservation classifier : classifiers) {
+        for (ClassifierObservation classifier : concat(classifiers, productionClassifiers)) {
             for (String key : classifier.declaredMemberKeys()) {
                 MemberObservation member = membersByKey.get(key);
                 if (member == null) {
@@ -175,38 +213,56 @@ final class JavacInheritedMemberObserver {
                 return incomplete(classifiers, "javac classifier could not be mapped uniquely");
             }
             LinkedHashSet<String> inherited = new LinkedHashSet<>();
-            for (Element member : elements.getAllMembers(candidates.get(0))) {
-                MemberKind kind = memberKind(member.getKind());
+            for (Element element : elements.getAllMembers(candidates.get(0))) {
+                MemberKind kind = memberKind(element.getKind());
                 if (kind == null) {
                     continue;
                 }
-                Element enclosing = member.getEnclosingElement();
+                Element enclosing = element.getEnclosingElement();
                 if (!(enclosing instanceof TypeElement declaringType)) {
                     return incomplete(classifiers, "javac member has no declaring classifier");
                 }
+
                 SourceLocation ownerLocation = sourceLocation(root, trees, declaringType);
-                if (ownerLocation == null) {
-                    // Platform or explicitly external declarations are outside the canonical graph.
-                    continue;
-                }
-                ClassifierObservation owner = classifiersByLocation.get(
-                        new TypeLocator(ownerLocation.path(), ownerLocation.line()));
-                if (owner == null) {
-                    return incomplete(classifiers, "javac declaration owner is outside the canonical source graph");
+                ClassifierObservation owner;
+                boolean productionBinary = false;
+                if (ownerLocation != null) {
+                    owner = classifiersByLocation.get(
+                            new TypeLocator(ownerLocation.path(), ownerLocation.line()));
+                    if (owner == null) {
+                        return incomplete(classifiers,
+                                "javac declaration owner is outside the active source-set graph");
+                    }
+                } else {
+                    List<ClassifierObservation> productionCandidates = productionByQualifiedName.get(
+                            declaringType.getQualifiedName().toString());
+                    if (productionCandidates == null || productionCandidates.isEmpty()) {
+                        // Platform/dependency declarations are outside the canonical source graph.
+                        continue;
+                    }
+                    if (productionCandidates.size() != 1) {
+                        return incomplete(classifiers,
+                                "production-sibling declaration owner could not be mapped uniquely");
+                    }
+                    owner = productionCandidates.get(0);
+                    productionBinary = true;
                 }
                 if (owner.id().equals(classifier.id())) {
                     continue;
                 }
-                SourceLocation memberLocation = sourceLocation(root, trees, member);
-                if (memberLocation == null) {
-                    return incomplete(classifiers, "javac member has no canonical source location");
-                }
+
                 MemberLocator locator = new MemberLocator(
-                        owner.id(), kind, member.getSimpleName().toString());
+                        owner.id(), kind, element.getSimpleName().toString());
                 MemberObservation declaration = uniqueDeclaration(
-                        membersByLocation.get(locator), member, types);
+                        membersByLocation.get(locator), element, types);
                 if (declaration == null) {
-                    return incomplete(classifiers, "javac member declaration could not be mapped uniquely");
+                    if (productionBinary) {
+                        // javac can expose synthetic binary members (for example bridge methods).
+                        // They have no canonical source declaration and therefore are not evidence.
+                        continue;
+                    }
+                    return incomplete(classifiers,
+                            "javac member declaration could not be mapped uniquely");
                 }
                 inherited.add(declaration.technicalKey());
             }
@@ -214,6 +270,14 @@ final class JavacInheritedMemberObserver {
                     classifier.id(), inherited.stream().sorted().toList());
         }
         return new Result(true, Map.copyOf(inheritedByClassifier), List.of());
+    }
+
+    private static List<ClassifierObservation> concat(
+            List<ClassifierObservation> left, List<ClassifierObservation> right) {
+        List<ClassifierObservation> result = new ArrayList<>(left.size() + right.size());
+        result.addAll(left);
+        result.addAll(right);
+        return result;
     }
 
     private static Result incomplete(List<ClassifierObservation> classifiers, String message) {
