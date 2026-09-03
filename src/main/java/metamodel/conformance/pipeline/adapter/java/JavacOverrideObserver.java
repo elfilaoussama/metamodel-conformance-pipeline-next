@@ -17,6 +17,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
@@ -188,11 +189,18 @@ final class JavacOverrideObserver {
         Elements elements = task.getElements();
         Map<TypeLocator, List<TypeElement>> javacTypes = collectTypes(root, parsed, trees);
 
+        List<ClassifierObservation> canonicalClassifiers = concat(classifiers, productionClassifiers);
+        Map<String, ClassifierObservation> classifierById = new HashMap<>();
+        for (ClassifierObservation classifier : canonicalClassifiers) {
+            if (classifierById.put(classifier.id(), classifier) != null) {
+                return incomplete(classifiers, "duplicate canonical classifier identity in override context");
+            }
+        }
         Map<String, MemberObservation> membersByKey = new HashMap<>();
         members.forEach(member -> membersByKey.put(member.technicalKey(), member));
         productionMembers.forEach(member -> membersByKey.put(member.technicalKey(), member));
         Map<MemberLocator, List<MemberObservation>> membersByOwnerAndName = new HashMap<>();
-        for (ClassifierObservation classifier : concat(classifiers, productionClassifiers)) {
+        for (ClassifierObservation classifier : canonicalClassifiers) {
             for (String key : classifier.declaredMemberKeys()) {
                 MemberObservation member = membersByKey.get(key);
                 if (member == null) {
@@ -203,20 +211,6 @@ final class JavacOverrideObserver {
                     membersByOwnerAndName.computeIfAbsent(locator, ignored -> new ArrayList<>()).add(member);
                 }
             }
-        }
-
-        Map<TypeLocator, ClassifierObservation> localClassifiersByLocation = new HashMap<>();
-        for (ClassifierObservation classifier : classifiers) {
-            TypeLocator locator = new TypeLocator(classifier.sourcePath(), classifier.startLine());
-            if (localClassifiersByLocation.put(locator, classifier) != null) {
-                return incomplete(classifiers,
-                        "ambiguous classifier source location for override evidence");
-            }
-        }
-        Map<String, List<ClassifierObservation>> productionByQualifiedName = new HashMap<>();
-        for (ClassifierObservation classifier : productionClassifiers) {
-            productionByQualifiedName.computeIfAbsent(
-                    classifier.qualifiedName(), ignored -> new ArrayList<>()).add(classifier);
         }
 
         Map<String, TypeElement> typeByClassifier = new HashMap<>();
@@ -284,6 +278,20 @@ final class JavacOverrideObserver {
                     "not every canonical source method was independently mapped by javac for override evidence");
         }
 
+        for (ClassifierObservation classifier : classifiers) {
+            TypeElement type = typeByClassifier.get(classifier.id());
+            String mappingError = mapAncestorTypes(
+                    classifier,
+                    type,
+                    classifierById,
+                    typeByClassifier,
+                    types,
+                    new HashSet<>());
+            if (mappingError != null) {
+                return Result.incomplete(classifier.sourcePath(), classifier.startLine(), mappingError);
+            }
+        }
+
         Map<String, List<String>> overrides = new HashMap<>();
         for (String key : localMethodByKey.keySet()) {
             overrides.put(key, List.of());
@@ -293,6 +301,7 @@ final class JavacOverrideObserver {
             if (owner == null) {
                 return incomplete(classifiers, "javac override owner could not be resolved");
             }
+            Set<String> ancestors = ancestorIds(classifier, classifierById);
             for (String key : classifier.declaredMemberKeys()) {
                 MemberObservation member = membersByKey.get(key);
                 if (member == null || member.kind() != MemberKind.METHOD) {
@@ -304,27 +313,36 @@ final class JavacOverrideObserver {
                             "javac local override declaration could not be resolved");
                 }
                 LinkedHashSet<String> targets = new LinkedHashSet<>();
-                for (Element candidateElement : elements.getAllMembers(owner)) {
-                    if (candidateElement.getKind() != ElementKind.METHOD
-                            || !(candidateElement instanceof ExecutableElement candidate)
-                            || candidate.equals(local)
-                            || !elements.overrides(local, candidate, owner)) {
-                        continue;
-                    }
-                    TargetMapping target = canonicalOverrideTarget(
-                            root,
-                            trees,
-                            candidate,
-                            types,
-                            localClassifiersByLocation,
-                            productionByQualifiedName,
-                            membersByOwnerAndName);
-                    if (target.error() != null) {
+                for (String ancestorId : ancestors) {
+                    ClassifierObservation ancestor = classifierById.get(ancestorId);
+                    TypeElement ancestorType = typeByClassifier.get(ancestorId);
+                    if (ancestor == null || ancestorType == null) {
                         return Result.incomplete(
-                                member.sourcePath(), member.startLine(), target.error());
+                                member.sourcePath(), member.startLine(),
+                                "canonical override ancestor has no javac type mapping");
                     }
-                    if (target.memberKey() != null) {
-                        targets.add(target.memberKey());
+                    for (String targetKey : ancestor.declaredMemberKeys()) {
+                        MemberObservation target = membersByKey.get(targetKey);
+                        if (target == null || target.kind() != MemberKind.METHOD) {
+                            continue;
+                        }
+                        List<ExecutableElement> candidates;
+                        ExecutableElement sourceCandidate = localMethodByKey.get(targetKey);
+                        if (sourceCandidate != null) {
+                            candidates = List.of(sourceCandidate);
+                        } else {
+                            candidates = binaryMethodCandidates(ancestorType, target, types);
+                        }
+                        if (candidates.isEmpty()) {
+                            return Result.incomplete(
+                                    member.sourcePath(), member.startLine(),
+                                    "canonical ancestor method could not be mapped to javac: owner="
+                                            + ancestor.qualifiedName() + ", method=" + target.memberName());
+                        }
+                        if (candidates.stream().anyMatch(candidate ->
+                                elements.overrides(local, candidate, owner))) {
+                            targets.add(targetKey);
+                        }
                     }
                 }
                 overrides.put(key, targets.stream().sorted().toList());
@@ -333,79 +351,102 @@ final class JavacOverrideObserver {
         return new Result(true, returnTypes, overrides, List.of());
     }
 
-    private static TargetMapping canonicalOverrideTarget(
-            Path root,
-            Trees trees,
-            ExecutableElement candidate,
+    private static String mapAncestorTypes(
+            ClassifierObservation classifier,
+            TypeElement type,
+            Map<String, ClassifierObservation> classifierById,
+            Map<String, TypeElement> typeByClassifier,
             Types types,
-            Map<TypeLocator, ClassifierObservation> localClassifiersByLocation,
-            Map<String, List<ClassifierObservation>> productionByQualifiedName,
-            Map<MemberLocator, List<MemberObservation>> membersByOwnerAndName) throws IOException {
-        Element enclosing = candidate.getEnclosingElement();
-        if (!(enclosing instanceof TypeElement declaringType)) {
-            return new TargetMapping(null, "javac override target has no declaring classifier");
+            Set<String> active) {
+        if (type == null) {
+            return "javac classifier type is unavailable while mapping override ancestors";
         }
-
-        SourcePoint ownerLocation = sourcePoint(root, trees, declaringType);
-        ClassifierObservation canonicalOwner;
-        boolean binaryProduction = false;
-        if (ownerLocation != null) {
-            canonicalOwner = localClassifiersByLocation.get(
-                    new TypeLocator(ownerLocation.path(), ownerLocation.line()));
-            if (canonicalOwner == null) {
-                return new TargetMapping(
-                        null,
-                        "javac source override target owner is outside the active source-set graph");
+        if (!active.add(classifier.id())) {
+            return "cyclic canonical hierarchy encountered while mapping override ancestors";
+        }
+        try {
+            List<? extends TypeMirror> directSupertypes = types.directSupertypes(type.asType());
+            for (String parentId : classifier.parentIds()) {
+                ClassifierObservation parent = classifierById.get(parentId);
+                if (parent == null) {
+                    return "canonical parent is outside the active javac source-set context";
+                }
+                List<TypeElement> matches = directSupertypes.stream()
+                        .map(types::asElement)
+                        .filter(TypeElement.class::isInstance)
+                        .map(TypeElement.class::cast)
+                        .filter(candidate -> candidate.getQualifiedName().contentEquals(parent.qualifiedName()))
+                        .toList();
+                if (matches.size() != 1) {
+                    return "javac direct parent could not be mapped uniquely: " + parent.qualifiedName();
+                }
+                TypeElement parentType = matches.get(0);
+                TypeElement previous = typeByClassifier.putIfAbsent(parentId, parentType);
+                if (previous != null && !types.isSameType(previous.asType(), parentType.asType())) {
+                    return "canonical parent mapped to inconsistent javac types: " + parent.qualifiedName();
+                }
+                String nested = mapAncestorTypes(
+                        parent,
+                        previous == null ? parentType : previous,
+                        classifierById,
+                        typeByClassifier,
+                        types,
+                        active);
+                if (nested != null) {
+                    return nested;
+                }
             }
-        } else {
-            List<ClassifierObservation> productionCandidates = productionByQualifiedName.get(
-                    declaringType.getQualifiedName().toString());
-            if (productionCandidates == null || productionCandidates.isEmpty()) {
-                // Platform and explicit external dependencies are outside the canonical source graph.
-                return new TargetMapping(null, null);
-            }
-            if (productionCandidates.size() != 1) {
-                return new TargetMapping(
-                        null,
-                        "production-sibling override target owner could not be mapped uniquely");
-            }
-            canonicalOwner = productionCandidates.get(0);
-            binaryProduction = true;
+            return null;
+        } finally {
+            active.remove(classifier.id());
         }
-
-        List<MemberObservation> candidates = membersByOwnerAndName.get(
-                new MemberLocator(canonicalOwner.id(), candidate.getSimpleName().toString()));
-        MemberObservation declaration = uniqueBinaryDeclaration(candidates, candidate, types);
-        if (declaration != null) {
-            return new TargetMapping(declaration.technicalKey(), null);
-        }
-        if (binaryProduction && (candidates == null || candidates.isEmpty())) {
-            // Synthetic binary bridge/helper method with no canonical source declaration.
-            return new TargetMapping(null, null);
-        }
-        return new TargetMapping(
-                null,
-                "javac override target could not be mapped uniquely to canonical source evidence: owner="
-                        + canonicalOwner.qualifiedName()
-                        + ", method=" + candidate.getSimpleName());
     }
 
-    private static MemberObservation uniqueBinaryDeclaration(
-            List<MemberObservation> candidates,
+    private static Set<String> ancestorIds(
+            ClassifierObservation classifier,
+            Map<String, ClassifierObservation> classifierById) {
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        collectAncestorIds(classifier, classifierById, result);
+        return result;
+    }
+
+    private static void collectAncestorIds(
+            ClassifierObservation classifier,
+            Map<String, ClassifierObservation> classifierById,
+            Set<String> result) {
+        for (String parentId : classifier.parentIds()) {
+            if (!result.add(parentId)) {
+                continue;
+            }
+            ClassifierObservation parent = classifierById.get(parentId);
+            if (parent != null) {
+                collectAncestorIds(parent, classifierById, result);
+            }
+        }
+    }
+
+    private static List<ExecutableElement> binaryMethodCandidates(
+            TypeElement owner,
+            MemberObservation canonical,
+            Types types) {
+        return owner.getEnclosedElements().stream()
+                .filter(element -> element.getKind() == ElementKind.METHOD)
+                .filter(ExecutableElement.class::isInstance)
+                .map(ExecutableElement.class::cast)
+                .filter(method -> method.getSimpleName().contentEquals(canonical.memberName()))
+                .filter(method -> parameterTypesMatch(canonical, method, types))
+                .toList();
+    }
+
+    private static boolean parameterTypesMatch(
+            MemberObservation canonical,
             ExecutableElement method,
             Types types) {
-        if (candidates == null || candidates.isEmpty()) {
-            return null;
-        }
         List<String> exact = method.getParameters().stream()
                 .map(parameter -> parameter.asType().toString()).toList();
         List<String> erased = method.getParameters().stream()
                 .map(parameter -> types.erasure(parameter.asType()).toString()).toList();
-        List<MemberObservation> matching = candidates.stream()
-                .filter(candidate -> candidate.parameterTypes().equals(exact)
-                        || candidate.parameterTypes().equals(erased))
-                .toList();
-        return matching.size() == 1 ? matching.get(0) : null;
+        return canonical.parameterTypes().equals(exact) || canonical.parameterTypes().equals(erased);
     }
 
     private static List<ClassifierObservation> concat(
@@ -620,8 +661,5 @@ final class JavacOverrideObserver {
     }
 
     private record SourcePoint(String path, int line) {
-    }
-
-    private record TargetMapping(String memberKey, String error) {
     }
 }
