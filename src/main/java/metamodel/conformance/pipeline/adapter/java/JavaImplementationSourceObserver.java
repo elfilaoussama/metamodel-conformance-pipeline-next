@@ -2,11 +2,13 @@ package metamodel.conformance.pipeline.adapter.java;
 
 import metamodel.conformance.pipeline.adapter.ObservationException;
 import metamodel.conformance.pipeline.adapter.SourceObserver;
+import metamodel.conformance.pipeline.model.ClassifierAbstraction;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.ImplementationBindingObservation;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
+import metamodel.conformance.pipeline.model.MemberScope;
 import metamodel.conformance.pipeline.model.MethodAbstraction;
 import metamodel.conformance.pipeline.model.MethodBodyObservation;
 import metamodel.conformance.pipeline.model.Observation;
@@ -28,13 +30,13 @@ import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * Enriches the structural Java observation with independent implementation evidence.
- * Spoon observes bodies and method abstraction; javac independently resolves which
- * canonical declaration each source body corresponds to. Invariant semantics remain in Alloy.
+ * Enriches the structural Java observation with independent implementation and abstraction evidence.
+ * Spoon observes bodies, abstraction flags, and static/instance scope; javac independently resolves
+ * which canonical declaration each source body corresponds to. Invariant semantics remain in Alloy.
  */
 public final class JavaImplementationSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = SpoonJavaObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.1.0";
+    public static final String ADAPTER_VERSION = "1.2.0";
 
     private final List<Path> dependencyArchives;
 
@@ -47,14 +49,15 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
         Observation base = new SpoonJavaObserver(dependencyArchives).observe(sourceRoot, externalParents);
         if (base.diagnostics().stream().anyMatch(item -> item.kind()
                 == metamodel.conformance.pipeline.model.DiagnosticKind.PARSE_ERROR)) {
-            return upgrade(base, base.members(), List.of(), List.of(), Set.of(), List.of());
+            return upgrade(
+                    base, base.classifiers(), base.members(), List.of(), List.of(), Set.of(), List.of());
         }
         try {
             Path root = sourceRoot.toRealPath(LinkOption.NOFOLLOW_LINKS);
             List<Path> files = discoverJavaFiles(root);
             SpoonMethodBodyObserver.Result bodyResult = observeBodiesBySourceSet(root, files);
-            SpoonMethodAbstractionObserver.Result abstractionResult =
-                    observeAbstractionBySourceSet(root, files, base.members());
+            SpoonAbstractionObserver.Result abstractionResult =
+                    observeAbstractionBySourceSet(root, files, base.classifiers(), base.members());
             JavaDependencyClasspath.Result dependencies = JavaDependencyClasspath.resolve(dependencyArchives);
             JavacImplementationObserver.Result implementation = bodyResult.complete()
                     ? new JavacImplementationObserver().observe(
@@ -66,11 +69,31 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                             dependencies.paths())
                     : JavacImplementationObserver.Result.incomplete();
 
+            List<ClassifierObservation> classifiers = base.classifiers().stream().map(classifier ->
+                    new ClassifierObservation(
+                            classifier.id(),
+                            classifier.qualifiedName(),
+                            classifier.packageName(),
+                            classifier.kind(),
+                            classifier.sourcePath(),
+                            classifier.startLine(),
+                            classifier.endLine(),
+                            classifier.parentIds(),
+                            classifier.declaredMemberKeys(),
+                            classifier.inheritedMemberKeys(),
+                            abstractionResult.abstractionByClassifier().getOrDefault(
+                                    classifier.id(), ClassifierAbstraction.UNKNOWN)))
+                    .toList();
+
             List<MemberObservation> members = base.members().stream().map(member -> {
                 MethodAbstraction abstraction = member.kind() == MemberKind.METHOD
                         ? abstractionResult.abstractionByMember().getOrDefault(
                                 member.technicalKey(), MethodAbstraction.UNKNOWN)
                         : MethodAbstraction.UNKNOWN;
+                MemberScope scope = member.kind() == MemberKind.METHOD
+                        ? abstractionResult.scopeByMember().getOrDefault(
+                                member.technicalKey(), MemberScope.UNKNOWN)
+                        : MemberScope.UNKNOWN;
                 return new MemberObservation(
                         member.technicalKey(),
                         member.observedIdentifier(),
@@ -82,19 +105,26 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                         member.startLine(),
                         member.endLine(),
                         member.parameterTypes(),
-                        abstraction);
+                        abstraction,
+                        scope);
             }).toList();
 
             BindingResult bindingResult = implementation.complete()
-                    ? toBindings(base.classifiers(), implementation.bodyKeysByMember())
+                    ? toBindings(classifiers, implementation.bodyKeysByMember())
                     : BindingResult.incomplete();
 
             EnumSet<EvidenceKind> added = EnumSet.noneOf(EvidenceKind.class);
             if (bodyResult.complete()) {
                 added.add(EvidenceKind.METHOD_BODIES);
             }
-            if (abstractionResult.complete()) {
+            if (abstractionResult.methodAbstractionComplete()) {
                 added.add(EvidenceKind.METHOD_ABSTRACTION);
+            }
+            if (abstractionResult.classifierAbstractionComplete()) {
+                added.add(EvidenceKind.CLASSIFIER_ABSTRACTION);
+            }
+            if (abstractionResult.methodScopeComplete()) {
+                added.add(EvidenceKind.METHOD_SCOPE);
             }
             if (bodyResult.complete() && implementation.complete() && bindingResult.complete()) {
                 added.add(EvidenceKind.IMPLEMENTATION_BINDINGS);
@@ -107,6 +137,7 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
             dependencies.verifyUnchanged();
             return upgrade(
                     base,
+                    classifiers,
                     members,
                     bodyResult.bodies(),
                     bindingResult.bindings(),
@@ -181,32 +212,60 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
                 canonicalDiagnostics(diagnostics));
     }
 
-    private static SpoonMethodAbstractionObserver.Result observeAbstractionBySourceSet(
-            Path root, List<Path> files, List<MemberObservation> members) {
+    private static SpoonAbstractionObserver.Result observeAbstractionBySourceSet(
+            Path root,
+            List<Path> files,
+            List<ClassifierObservation> classifiers,
+            List<MemberObservation> members) {
         Map<String, List<Path>> filesBySourceSet = filesBySourceSet(root, files);
-        boolean complete = true;
-        Map<String, MethodAbstraction> abstraction = new HashMap<>();
+        boolean classifierComplete = true;
+        boolean methodAbstractionComplete = true;
+        boolean methodScopeComplete = true;
+        Map<String, ClassifierAbstraction> classifierAbstraction = new HashMap<>();
+        Map<String, MethodAbstraction> methodAbstraction = new HashMap<>();
+        Map<String, MemberScope> methodScope = new HashMap<>();
         List<ObservationDiagnostic> diagnostics = new ArrayList<>();
-        SpoonMethodAbstractionObserver observer = new SpoonMethodAbstractionObserver();
+        SpoonAbstractionObserver observer = new SpoonAbstractionObserver();
         for (Map.Entry<String, List<Path>> entry : filesBySourceSet.entrySet()) {
+            String sourceSet = entry.getKey();
             Set<String> scopedPaths = entry.getValue().stream()
                     .map(path -> root.relativize(path.toAbsolutePath().normalize())
                             .toString().replace('\\', '/'))
                     .collect(java.util.stream.Collectors.toSet());
+            List<ClassifierObservation> scopedClassifiers = classifiers.stream()
+                    .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet)).toList();
             List<MemberObservation> scopedMembers = members.stream()
                     .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
-            SpoonMethodAbstractionObserver.Result result =
-                    observer.observe(root, entry.getValue(), scopedMembers);
-            complete &= result.complete();
+            SpoonAbstractionObserver.Result result =
+                    observer.observe(root, entry.getValue(), scopedClassifiers, scopedMembers);
+            classifierComplete &= result.classifierAbstractionComplete();
+            methodAbstractionComplete &= result.methodAbstractionComplete();
+            methodScopeComplete &= result.methodScopeComplete();
+            for (Map.Entry<String, ClassifierAbstraction> observed : result.abstractionByClassifier().entrySet()) {
+                if (classifierAbstraction.put(observed.getKey(), observed.getValue()) != null) {
+                    classifierComplete = false;
+                }
+            }
             for (Map.Entry<String, MethodAbstraction> observed : result.abstractionByMember().entrySet()) {
-                if (abstraction.put(observed.getKey(), observed.getValue()) != null) {
-                    complete = false;
+                if (methodAbstraction.put(observed.getKey(), observed.getValue()) != null) {
+                    methodAbstractionComplete = false;
+                }
+            }
+            for (Map.Entry<String, MemberScope> observed : result.scopeByMember().entrySet()) {
+                if (methodScope.put(observed.getKey(), observed.getValue()) != null) {
+                    methodScopeComplete = false;
                 }
             }
             diagnostics.addAll(result.diagnostics());
         }
-        return new SpoonMethodAbstractionObserver.Result(
-                complete, abstraction, canonicalDiagnostics(diagnostics));
+        return new SpoonAbstractionObserver.Result(
+                classifierComplete,
+                methodAbstractionComplete,
+                methodScopeComplete,
+                classifierAbstraction,
+                methodAbstraction,
+                methodScope,
+                canonicalDiagnostics(diagnostics));
     }
 
     private static Map<String, List<Path>> filesBySourceSet(Path root, List<Path> files) {
@@ -231,6 +290,7 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
 
     private static Observation upgrade(
             Observation base,
+            List<ClassifierObservation> classifiers,
             List<MemberObservation> members,
             List<MethodBodyObservation> bodies,
             List<ImplementationBindingObservation> bindings,
@@ -242,13 +302,13 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
         List<ObservationDiagnostic> diagnostics = new ArrayList<>(base.diagnostics());
         diagnostics.addAll(extraDiagnostics);
         return new Observation(
-                "10",
+                "11",
                 ADAPTER_ID,
                 ADAPTER_VERSION,
                 base.externalParents(),
                 evidence,
                 base.units(),
-                base.classifiers(),
+                classifiers,
                 members,
                 bodies,
                 bindings,
