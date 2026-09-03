@@ -9,7 +9,19 @@ fi
 readonly repository="$1"
 readonly commit="$2"
 readonly output_root="$3"
-readonly pipeline_jar="${PIPELINE_JAR:-target/metamodel-conformance-pipeline-next-0.10.0-SNAPSHOT.jar}"
+if [[ -n "${PIPELINE_JAR:-}" ]]; then
+  pipeline_jar="${PIPELINE_JAR}"
+else
+  shopt -s nullglob
+  pipeline_jars=(target/metamodel-conformance-pipeline-next-*.jar)
+  shopt -u nullglob
+  if [[ ${#pipeline_jars[@]} -ne 1 ]]; then
+    echo "Expected exactly one built pipeline JAR; found ${#pipeline_jars[@]}" >&2
+    exit 66
+  fi
+  pipeline_jar="${pipeline_jars[0]}"
+fi
+readonly pipeline_jar
 
 if [[ ! "${repository}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   echo "invalid repository name" >&2
