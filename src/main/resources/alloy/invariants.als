@@ -149,3 +149,44 @@ fun StaticAbstractMethodViolations : set Member {
     )
   }
 }
+
+pred formalOverrideCandidate[c : Classifier, inherited, local : Member] {
+  inherited.kind = METHOD
+  local.kind = METHOD
+  local in c.declaredMembers
+  some owner : c.^parents |
+    inherited in owner.declaredMembers and
+    memberAccessibleFrom[c, owner, inherited]
+  sameMemberKey[inherited, local]
+  inherited.memberScope = local.memberScope
+}
+
+pred formallyOverrides[inherited, local : Member] {
+  some c : Classifier | formalOverrideCandidate[c, inherited, local]
+}
+
+pred localOverrideImplemented[local : Member] {
+  some c : Classifier |
+    local in c.declaredMembers and
+    some b : ImplementationBinding |
+      b.implementer = c and b.target = local
+}
+
+fun OverrideRelationConsistencyViolations : Member -> Member {
+  { local, inherited : Member |
+    (inherited in local.observedOverrides and not formallyOverrides[inherited, local]) or
+    (inherited not in local.observedOverrides and formallyOverrides[inherited, local])
+  }
+}
+
+fun OverrideDisciplineViolations : Member -> Member {
+  { local, inherited : Member |
+    formallyOverrides[inherited, local] and
+    (
+      no inherited.returnType or
+      no local.returnType or
+      inherited.returnType != local.returnType or
+      (local.abstraction != ABSTRACT and not localOverrideImplemented[local])
+    )
+  }
+}

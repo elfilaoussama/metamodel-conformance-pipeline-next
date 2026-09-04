@@ -164,7 +164,7 @@ class AlloyInvariantEvaluatorTest {
 
         List<Decision> decisions = runner.evaluateAll(observation, inconsistentModel);
 
-        assertEquals(9, decisions.size());
+        assertEquals(11, decisions.size());
         decisions.forEach(decision -> assertEquals(DecisionStatus.NOT_EVALUATED, decision.status()));
     }
 
@@ -177,7 +177,7 @@ class AlloyInvariantEvaluatorTest {
 
         List<Decision> decisions = runner.evaluateAll(incomplete, "this is deliberately not Alloy");
 
-        assertEquals(9, decisions.size());
+        assertEquals(11, decisions.size());
         decisions.forEach(decision -> {
             assertEquals(DecisionStatus.NOT_EVALUATED, decision.status());
             assertFalse(decision.message().contains("parsing failed"));

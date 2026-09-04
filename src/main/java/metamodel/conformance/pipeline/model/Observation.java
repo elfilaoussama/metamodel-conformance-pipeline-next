@@ -1,8 +1,10 @@
 package metamodel.conformance.pipeline.model;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public record Observation(
@@ -162,11 +164,27 @@ public record Observation(
             }
         }
         Set<String> memberKeys = new HashSet<>();
+        Map<String, MemberObservation> membersByKey = new HashMap<>();
         for (MemberObservation member : members) {
             if (!memberKeys.add(member.technicalKey())) {
                 throw new IllegalArgumentException("duplicate technical member key: " + member.technicalKey());
             }
+            membersByKey.put(member.technicalKey(), member);
             requireSourcePath(sourcePaths, member.sourcePath(), "member");
+        }
+        for (MemberObservation member : members) {
+            for (String overriddenKey : member.overriddenMemberKeys()) {
+                MemberObservation overridden = membersByKey.get(overriddenKey);
+                if (overridden == null) {
+                    throw new IllegalArgumentException("unknown overridden member key: " + overriddenKey);
+                }
+                if (member.technicalKey().equals(overriddenKey)) {
+                    throw new IllegalArgumentException("method cannot override itself: " + overriddenKey);
+                }
+                if (member.kind() != MemberKind.METHOD || overridden.kind() != MemberKind.METHOD) {
+                    throw new IllegalArgumentException("override relation must connect methods");
+                }
+            }
         }
         Set<String> bodyKeys = new HashSet<>();
         for (MethodBodyObservation body : methodBodies) {

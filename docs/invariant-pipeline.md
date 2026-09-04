@@ -63,9 +63,10 @@ cross-atom relation declared relevant by the invariant registry.
 Spoon observes declarations, direct parents, member signatures, and source
 provenance. A separate JDK compiler task observes inherited memberships through
 `Elements.getAllMembers`; annotation processing is disabled and the compiler uses
-an empty classpath, so repository code and build plugins are not executed. Javac
-members are mapped back to Spoon declaration atoms only through source ownership,
-member kind/name, and ordered parameter types.
+an empty classpath or the exact dependency archives supplied for the experiment,
+so repository build plugins are not executed. Javac members are mapped back to
+Spoon declaration atoms only through source ownership, member kind/name, ordered
+parameter types, and source provenance.
 
 `INHERITED_MEMBERS` is declared complete only when javac reports no errors and all
 internal type and declaration mappings are unique. Any missing dependency,
@@ -73,7 +74,7 @@ duplicate mapping, compiler failure, or unsupported source shape yields incomple
 evidence and an empty stored inherited relation. The affected invariants then return
 `NOT_EVALUATED`; the adapter never substitutes its own inheritance algorithm.
 
-Schema v6 records member visibility and classifier package as separate source facts.
+Schema v12 records member visibility and classifier package as separate source facts.
 Alloy derives contextual accessibility from those facts: public and protected
 members are accessible along inheritance, private members are not, and
 package-private members require an unbroken same-package inheritance path.
@@ -86,11 +87,44 @@ source locations. These diagnostics may coexist with independently complete evid
 for ownership, hierarchy, or local signatures; only invariants requiring the missing
 inherited view return `NOT_EVALUATED`.
 
-Conventional `src/<set>/java` roots are separate semantic compilation units. Parent
-resolution first uses the declaring source set, then its sibling `src/main/java`,
-and only then a globally unique declaration. This prevents duplicate test and
-production type names from becoming accidental ambiguity while preserving both
-source sets in the canonical observation.
+Conventional `src/<set>/java` roots are separate semantic source sets. Structural
+parent resolution first uses the declaring source set, then its sibling
+`src/main/java`, and only then a globally unique declaration. This prevents
+duplicate test and production type names from becoming accidental ambiguity while
+preserving both declarations in the canonical observation. Compiler-derived
+evidence remains fail-closed when the source-set compilation context cannot be
+reconstructed without ambiguity.
+
+## Independent Java override view
+
+O-09 adds compiler-observed facts without moving policy judgment into Java. For
+every canonical source method, a javac task records its resolved return-type
+representation and maps `Elements.overrides` pairs back to canonical method atoms.
+`METHOD_RETURN_TYPES` and `OVERRIDE_RELATIONS` are complete only when compilation
+succeeds and every source method can be mapped uniquely. Missing or ambiguous
+compiler evidence therefore makes the affected O-09 checks `NOT_EVALUATED`.
+
+The Alloy model receives `returnType` and `observedOverrides` as exact relations.
+It independently derives the manuscript-level candidate relation from hierarchy,
+contextual accessibility, ordered method keys, and method scope. O-09 then has two
+registered outputs because these answer different empirical questions:
+
+1. `override-relation-consistency` compares javac's independent override relation
+   with the formal structural relation. A non-empty witness is a bridge or
+   policy-correspondence disagreement. It is not automatically a type-policy
+   violation. Java static hiding is the canonical boundary case: javac does not
+   classify it as overriding, while the manuscript's same-key/same-scope structural
+   predicate can still identify a formal candidate.
+2. `override-discipline` evaluates the manuscript's strict consequences over formal
+   override pairs: equal return type and a local declaration that is explicitly
+   abstract or has an implementation binding in its declaring classifier. The
+   registry still requires `OVERRIDE_RELATIONS` for this empirical check, even
+   though the Alloy function itself operates on the formal relation, so unavailable
+   independent override evidence cannot produce a vacuous conformance claim.
+
+This split preserves causal interpretation in the corrected experiment. A frontend
+versus formal-relation disagreement and a strict return/implementation disagreement
+are both relevant to O-09 but are not the same finding.
 
 ## Reproducible Alloy execution
 
@@ -118,18 +152,20 @@ their hashes are finalized.
 ## Evidence projections
 
 The canonical EMF observation is the durable evidence boundary. It preserves
-member kind, name, visibility, declaring package, inheritability, and complete ordered method-parameter type
-lists. The exact Alloy model carries those observations structurally through
-`kind`, `memberName`, and `parameterTypeAt` relations. Parameter positions and
-type tokens remain separate atoms, so Java never groups members into semantic
-namespace-key equivalence classes.
+member kind, name, visibility, declaring package, inheritability, complete ordered
+method-parameter type lists, method abstraction/scope, return types, and independent
+override relations. The exact Alloy model carries those observations structurally
+through `kind`, `memberName`, `parameterTypeAt`, `returnType`, and
+`observedOverrides` relations. Parameter positions and type tokens remain separate
+atoms, so Java never groups members into semantic namespace-key equivalence classes.
 
-Alloy alone defines whether two methods have the same ordered signature or two
-attributes have the same local name. A future invariant may reuse these relations
-without changing Java control flow. If it needs a genuinely new source fact, that
-fact must first be added to the canonical observation and independently observed;
-the pipeline must never infer element-level evidence that the frontend did not
-provide.
+Alloy alone defines whether two methods have the same ordered signature, whether
+two attributes have the same local name, whether the frontend and formal override
+relations correspond, and whether formal override pairs satisfy the selected strict
+policy. A future invariant may reuse these relations without changing Java control
+flow. If it needs a genuinely new source fact, that fact must first be added to the
+canonical observation and independently observed; the pipeline must never infer
+element-level evidence that the frontend did not provide.
 
 ## Parse diagnostics
 

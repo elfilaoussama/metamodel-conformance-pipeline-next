@@ -1,17 +1,14 @@
-name: verify
+name: research-full-gate
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: research-full-gate-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -37,3 +34,15 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress verify
       - name: Verify pinned real repository
         run: ./scripts/verify-real-repository.sh
+
+  frozen-java-corpus:
+    needs: build
+    uses: ./.github/workflows/random-java-corpus-20.yml
+
+  frozen-python-corpus:
+    needs: build
+    uses: ./.github/workflows/python-corpus-6.yml
+
+  frozen-cpp-corpus:
+    needs: build
+    uses: ./.github/workflows/cpp-corpus-4.yml

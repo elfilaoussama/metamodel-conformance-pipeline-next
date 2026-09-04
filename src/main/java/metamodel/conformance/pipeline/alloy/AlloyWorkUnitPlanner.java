@@ -68,6 +68,12 @@ final class AlloyWorkUnitPlanner {
                 classifier.inheritedMemberKeys().forEach(member -> connect(graph, classifierNode(classifier.id()), memberNode(member)));
             }
         }
+        if (relations.contains(ProjectionRelation.OVERRIDE_RELATIONS)) {
+            for (MemberObservation member : observation.members()) {
+                member.overriddenMemberKeys().forEach(overridden ->
+                        connect(graph, memberNode(member.technicalKey()), memberNode(overridden)));
+            }
+        }
         if (relations.contains(ProjectionRelation.IMPLEMENTATION_BINDINGS)) {
             for (ImplementationBindingObservation binding : observation.implementationBindings()) {
                 String node = bindingNode(binding.technicalKey());
@@ -131,7 +137,9 @@ final class AlloyWorkUnitPlanner {
                 .map(item -> new MemberObservation(
                         item.technicalKey(), item.observedIdentifier(), item.kind(), item.inheritability(),
                         item.visibility(), item.memberName(), item.sourcePath(), item.startLine(), item.endLine(),
-                        item.parameterTypes(), item.abstraction(), item.scope()))
+                        item.parameterTypes(), item.abstraction(), item.scope(), item.returnType(),
+                        relations.contains(ProjectionRelation.OVERRIDE_RELATIONS)
+                                ? retained(item.overriddenMemberKeys(), memberKeys) : List.of()))
                 .toList();
         List<MethodBodyObservation> bodies = source.methodBodies().stream()
                 .filter(item -> bodyKeys.contains(item.technicalKey())).toList();
