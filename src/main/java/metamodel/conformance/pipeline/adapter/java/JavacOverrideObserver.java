@@ -41,7 +41,7 @@ import java.util.TreeMap;
 
 /**
  * Independently asks javac which source methods override other source methods and records
- * resolved return-type names. It observes source-language facts only; O-09 remains in Alloy.
+ * resolved return-type names. It observes source-language facts only; policy remains in Alloy.
  */
 final class JavacOverrideObserver {
     Result observe(

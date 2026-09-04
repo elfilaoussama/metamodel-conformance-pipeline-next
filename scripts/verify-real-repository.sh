@@ -46,7 +46,7 @@ java -jar "${pipeline_jar}" verify-capsule \
 
 jq --exit-status '
   (.decisions | map({key: .invariantId, value: .status}) | from_entries) as $status |
-  (.decisions | length) == 9 and
+  (.decisions | length) == 11 and
   any(.observationDiagnostics[]; .kind == "EVIDENCE_INCOMPLETE") and
   all(.observationDiagnostics[]; .kind != "PARSE_ERROR") and
   $status["exclusive-declaration-ownership"] == "CONFORMANT" and
