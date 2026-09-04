@@ -1,6 +1,6 @@
 package metamodel.conformance.pipeline.adapter;
 
-import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaDependencyAwareSourceObserver;
 import metamodel.conformance.pipeline.model.Language;
 import org.junit.jupiter.api.Test;
 
@@ -33,7 +33,7 @@ class SourceObserverFactoryTest {
 
     @Test
     void createsSchema12ObserversWithoutChangingJavaDefaultLanguage() {
-        assertInstanceOf(JavaImplementationSourceObserver.class,
+        assertInstanceOf(JavaDependencyAwareSourceObserver.class,
                 SourceObserverFactory.create(Language.JAVA, List.of()));
         assertInstanceOf(Schema12SourceObserver.class,
                 SourceObserverFactory.create(Language.PYTHON, List.of()));
