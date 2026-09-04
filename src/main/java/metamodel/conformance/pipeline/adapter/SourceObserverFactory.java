@@ -1,7 +1,7 @@
 package metamodel.conformance.pipeline.adapter;
 
 import metamodel.conformance.pipeline.adapter.cpp.ClangCppObserver;
-import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaDependencyAwareSourceObserver;
 import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
 import metamodel.conformance.pipeline.model.Language;
 
@@ -31,7 +31,7 @@ public final class SourceObserverFactory {
         Objects.requireNonNull(language, "language");
         List<Path> dependencies = dependencyArchives == null ? List.of() : List.copyOf(dependencyArchives);
         return switch (language) {
-            case JAVA -> new JavaImplementationSourceObserver(dependencies);
+            case JAVA -> new JavaDependencyAwareSourceObserver(dependencies);
             case PYTHON -> {
                 rejectJavaDependencies(dependencies, "Python");
                 yield new Schema12SourceObserver(new PythonAstObserver());
