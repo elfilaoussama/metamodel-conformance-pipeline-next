@@ -137,7 +137,9 @@ final class JavacInheritedMemberObserver {
                     List.of(
                             "-proc:none",
                             "-implicit:none",
-                            "--release", "17",
+                            "--release", Integer.toString(JavaCompilerProfile.discover(
+                                    root,
+                                    JavaSourceSets.id(relativePath(root, files.get(0)))).release()),
                             "-classpath", classpath,
                             "-Xlint:none"),
                     null,
