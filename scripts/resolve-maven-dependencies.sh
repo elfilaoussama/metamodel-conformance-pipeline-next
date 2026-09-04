@@ -32,15 +32,25 @@ if ! command -v mvn >/dev/null 2>&1; then
   exit 69
 fi
 
+plugin_version="${MAVEN_DEPENDENCY_PLUGIN_VERSION:-}"
+if [[ -z "${plugin_version}" ]]; then
+  echo "MAVEN_DEPENDENCY_PLUGIN_VERSION is required for reproducible Maven resolution" >&2
+  exit 64
+fi
+if [[ ! "${plugin_version}" =~ ^[0-9A-Za-z_.-]+$ ]]; then
+  echo "invalid MAVEN_DEPENDENCY_PLUGIN_VERSION" >&2
+  exit 64
+fi
+readonly plugin_goal="org.apache.maven.plugins:maven-dependency-plugin:${plugin_version}:build-classpath"
+
 classpath_file="$(mktemp)"
 trap 'rm -f -- "${classpath_file}"' EXIT
 
 mvn --batch-mode --no-transfer-progress -q \
   -f "${poms[0]}" \
   -DincludeScope=test \
-  -Dmdep.outputAbsoluteArtifactFilename=true \
   -Dmdep.outputFile="${classpath_file}" \
-  dependency:build-classpath
+  "${plugin_goal}"
 
 if [[ ! -f "${classpath_file}" ]]; then
   echo "Maven did not produce a dependency classpath" >&2
