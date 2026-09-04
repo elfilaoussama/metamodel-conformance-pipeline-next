@@ -1,5 +1,6 @@
 package metamodel.conformance.pipeline.adapter.java;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 
 final class JavaSourceSets {
@@ -29,5 +30,17 @@ final class JavaSourceSets {
         }
         segments[sourceIndex + 1] = "main";
         return String.join("/", segments);
+    }
+
+    static Path moduleRoot(Path root, String sourceSet) {
+        if (sourceSet == null || ROOT.equals(sourceSet) || sourceSet.startsWith("src/")) {
+            return root;
+        }
+        int marker = sourceSet.lastIndexOf("/src/");
+        if (marker < 0) {
+            return root;
+        }
+        String prefix = sourceSet.substring(0, marker);
+        return prefix.isBlank() ? root : root.resolve(prefix).normalize();
     }
 }

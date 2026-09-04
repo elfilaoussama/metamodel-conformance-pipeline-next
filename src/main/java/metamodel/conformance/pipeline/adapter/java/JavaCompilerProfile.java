@@ -29,8 +29,20 @@ final class JavaCompilerProfile {
     }
 
     static JavaCompilerProfile discover(Path sourceRoot) {
+        return discover(sourceRoot, null);
+    }
+
+    static JavaCompilerProfile discover(Path sourceRoot, String sourceSet) {
         int runtimeRelease = Runtime.version().feature();
-        Integer declared = sourceRoot == null ? null : declaredMavenRelease(sourceRoot.resolve("pom.xml"));
+        if (sourceRoot == null) {
+            return new JavaCompilerProfile(runtimeRelease);
+        }
+        Path normalizedRoot = sourceRoot.toAbsolutePath().normalize();
+        Path moduleRoot = JavaSourceSets.moduleRoot(normalizedRoot, sourceSet);
+        Integer declared = declaredMavenRelease(moduleRoot.resolve("pom.xml"));
+        if (declared == null && !moduleRoot.equals(normalizedRoot)) {
+            declared = declaredMavenRelease(normalizedRoot.resolve("pom.xml"));
+        }
         return new JavaCompilerProfile(declared == null ? runtimeRelease : declared);
     }
 
