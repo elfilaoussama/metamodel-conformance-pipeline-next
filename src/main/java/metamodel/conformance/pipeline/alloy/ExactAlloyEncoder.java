@@ -2,12 +2,14 @@ package metamodel.conformance.pipeline.alloy;
 
 import metamodel.conformance.pipeline.model.ClassifierObservation;
 import metamodel.conformance.pipeline.model.ImplementationBindingObservation;
+import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.MemberScope;
 import metamodel.conformance.pipeline.model.MemberVisibility;
 import metamodel.conformance.pipeline.model.MethodAbstraction;
 import metamodel.conformance.pipeline.model.Observation;
+import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.util.Hashing;
 
 import java.io.IOException;
@@ -19,6 +21,8 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public final class ExactAlloyEncoder {
@@ -35,6 +39,15 @@ public final class ExactAlloyEncoder {
                 .map(ClassifierObservation::packageName).toList(), "PKG_");
         int positionCount = observation.members().stream()
                 .mapToInt(member -> member.parameterTypes().size()).max().orElse(0);
+        Set<String> repositorySourcePaths = observation.units().stream()
+                .filter(unit -> unit.language() != Language.JAVA_ARCHIVE)
+                .map(SourceUnit::path)
+                .collect(Collectors.toUnmodifiableSet());
+        List<String> sourceClassifierAtoms = observation.classifiers().stream()
+                .filter(classifier -> repositorySourcePaths.contains(classifier.sourcePath()))
+                .map(classifier -> classifierAtom(classifier.id()))
+                .sorted()
+                .toList();
 
         StringBuilder alloy = new StringBuilder();
         alloy.append("module repository_instance\n\n");
@@ -93,6 +106,9 @@ public final class ExactAlloyEncoder {
         for (int position = 0; position < positionCount; position++) {
             alloy.append("one sig P_").append(position).append(" extends PositionToken {}\n");
         }
+        alloy.append("\nfun SourceClassifiers : set Classifier {\n  ")
+                .append(sourceClassifierAtoms.isEmpty() ? "none" : String.join(" + ", sourceClassifierAtoms))
+                .append("\n}\n");
 
         alloy.append("\nfact ExactObservation {\n");
         relation(alloy, "parents", parentEdges(observation));
