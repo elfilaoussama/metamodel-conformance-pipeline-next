@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MAVEN_DEPENDENCY_PLUGIN_VERSION: "3.11.0"
+      MAVEN_RESOLVER_IMAGE: "maven:3.9.16-eclipse-temurin-17"
     strategy:
       fail-fast: false
       max-parallel: 5
