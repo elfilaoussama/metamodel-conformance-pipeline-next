@@ -33,14 +33,19 @@ final class JavaSourceSets {
     }
 
     static Path moduleRoot(Path root, String sourceSet) {
+        String key = moduleKey(sourceSet);
+        return ".".equals(key) ? root : root.resolve(key).normalize();
+    }
+
+    static String moduleKey(String sourceSet) {
         if (sourceSet == null || ROOT.equals(sourceSet) || sourceSet.startsWith("src/")) {
-            return root;
+            return ".";
         }
         int marker = sourceSet.lastIndexOf("/src/");
         if (marker < 0) {
-            return root;
+            return ".";
         }
         String prefix = sourceSet.substring(0, marker);
-        return prefix.isBlank() ? root : root.resolve(prefix).normalize();
+        return prefix.isBlank() ? "." : prefix;
     }
 }
