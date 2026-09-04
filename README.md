@@ -164,4 +164,6 @@ complete and every invariant is `NOT_EVALUATED`. The Alloy artifact and capsule 
 still emitted and independently replayable; a parse error is not a missing result.
 
 See [the observation contract](docs/decisions/0001-observation-contract.md) and
-[the invariant pipeline contract](docs/invariant-pipeline.md).
+[the invariant pipeline contract](docs/invariant-pipeline.md). The latest frozen
+engineering-corpus evidence is recorded in
+[the current corpus validation](docs/current-corpus-validation.md).
