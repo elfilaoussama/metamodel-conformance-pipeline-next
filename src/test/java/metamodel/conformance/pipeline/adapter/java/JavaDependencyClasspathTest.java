@@ -20,20 +20,35 @@ class JavaDependencyClasspathTest {
     Path temporary;
 
     @Test
-    void fingerprintsAndCanonicalizesExplicitDependencyArchives() throws Exception {
-        Path second = jar("second.jar", "b/B.class", new byte[]{2});
-        Path first = jar("first.jar", "a/A.class", new byte[]{1});
+    void fingerprintsProvenanceWithoutReorderingSemanticClasspath() throws Exception {
+        Path second = jar("second.jar", "shared/Type.class", new byte[]{2});
+        Path first = jar("first.jar", "shared/Type.class", new byte[]{1});
 
-        JavaDependencyClasspath.Result result = JavaDependencyClasspath.resolve(
-                List.of(second, first));
+        JavaDependencyClasspath.Result result = JavaDependencyClasspath.resolve(List.of(second, first));
 
         assertEquals(2, result.entries().size());
+        assertEquals(List.of(second.toRealPath(), first.toRealPath()), result.paths());
+        assertEquals(second.toRealPath(), result.ownerOfType("shared.Type").path());
         assertTrue(result.units().stream().allMatch(unit -> unit.language() == Language.JAVA_ARCHIVE));
         assertTrue(result.units().stream().allMatch(unit -> unit.path().startsWith("dependencies/")));
         assertEquals(List.of(Hashing.sha256(first), Hashing.sha256(second)).stream().sorted().toList(),
                 result.units().stream().map(unit -> unit.sha256()).sorted().toList());
         assertEquals(result.units().stream().map(unit -> unit.path()).sorted().toList(),
                 result.units().stream().map(unit -> unit.path()).toList());
+    }
+
+    @Test
+    void indexesNestedAndMultiReleaseTypeNamesAgainstTheirArchive() throws Exception {
+        Path jar = temporary.resolve("dependency.jar");
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            add(output, "example/Outer$Inner.class", new byte[]{1});
+            add(output, "META-INF/versions/11/example/Versioned.class", new byte[]{2});
+        }
+
+        JavaDependencyClasspath.Result result = JavaDependencyClasspath.resolve(List.of(jar));
+
+        assertEquals(jar.toRealPath(), result.ownerOfType("example.Outer.Inner").path());
+        assertEquals(jar.toRealPath(), result.ownerOfType("example.Versioned").path());
     }
 
     @Test
@@ -50,12 +65,16 @@ class JavaDependencyClasspathTest {
     private Path jar(String name, String entryName, byte[] bytes) throws Exception {
         Path jar = temporary.resolve(name);
         try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
-            JarEntry entry = new JarEntry(entryName);
-            entry.setTime(0L);
-            output.putNextEntry(entry);
-            output.write(bytes);
-            output.closeEntry();
+            add(output, entryName, bytes);
         }
         return jar;
+    }
+
+    private static void add(JarOutputStream output, String entryName, byte[] bytes) throws Exception {
+        JarEntry entry = new JarEntry(entryName);
+        entry.setTime(0L);
+        output.putNextEntry(entry);
+        output.write(bytes);
+        output.closeEntry();
     }
 }
