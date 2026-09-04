@@ -31,18 +31,15 @@ class MavenDependencyResolverScriptTest {
         Files.writeString(fakeMaven, """
                 #!/usr/bin/env bash
                 set -euo pipefail
-                printf '%s\\n' "$*" > '%s'
+                printf '%%s\\n' "$*" > '%s'
                 output=''
                 for argument in "$@"; do
                   case "$argument" in
                     -Dmdep.outputFile=*) output="${argument#*=}" ;;
                   esac
                 done
-                printf '%s:%s:%s\\n' '%s' '%s' '%s' > "$output"
-                """.formatted(
-                        arguments,
-                        second, first, second,
-                        second, first, second));
+                printf '%%s:%%s:%%s\\n' '%s' '%s' '%s' > "$output"
+                """.formatted(arguments, second, first, second));
         Files.setPosixFilePermissions(fakeMaven,
                 PosixFilePermissions.fromString("rwxr-xr-x"));
 
@@ -70,15 +67,21 @@ class MavenDependencyResolverScriptTest {
         Path project = Files.createDirectories(temporary.resolve("project"));
         Files.writeString(project.resolve("pom.xml"),
                 "<project><modelVersion>4.0.0</modelVersion></project>");
+        Path bin = Files.createDirectories(temporary.resolve("bin"));
+        Path fakeMaven = bin.resolve("mvn");
+        Files.writeString(fakeMaven, "#!/usr/bin/env bash\nexit 99\n");
+        Files.setPosixFilePermissions(fakeMaven,
+                PosixFilePermissions.fromString("rwxr-xr-x"));
         Path output = temporary.resolve("dependencies.txt");
         ProcessBuilder process = new ProcessBuilder(
                 "bash", "scripts/resolve-maven-dependencies.sh",
                 project.toString(), output.toString());
+        process.environment().put("PATH", bin + ":" + process.environment().get("PATH"));
         process.environment().remove("MAVEN_DEPENDENCY_PLUGIN_VERSION");
         Process result = process.start();
         result.getInputStream().readAllBytes();
         result.getErrorStream().readAllBytes();
-        assertEquals(69, result.waitFor());
+        assertEquals(64, result.waitFor());
     }
 
     @Test
