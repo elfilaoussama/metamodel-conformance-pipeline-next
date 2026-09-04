@@ -145,7 +145,10 @@ final class JavacDependencyEvidenceObserver {
             Iterable<? extends JavaFileObject> sources = fileManager.getJavaFileObjectsFromPaths(files);
             List<String> options = new ArrayList<>(List.of(
                     "-proc:none", "-implicit:none", "--release",
-                    Integer.toString(JavaCompilerProfile.discover(root).release()), "-Xlint:none"));
+                    Integer.toString(JavaCompilerProfile.discover(
+                            root,
+                            JavaSourceSets.id(relativePath(root, files.get(0)))).release()),
+                    "-Xlint:none"));
             if (classpath != null && !classpath.isBlank()) {
                 options.add("-classpath");
                 options.add(classpath);
