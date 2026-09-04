@@ -60,6 +60,7 @@ final class JavacSourceSetContext implements AutoCloseable {
         String production = JavaSourceSets.productionSibling(sourceSet);
         List<Path> productionFiles = production == null
                 ? List.of() : filesBySourceSet.getOrDefault(production, List.of());
+        int javaRelease = JavaCompilerProfile.discover(root, sourceSet).release();
 
         Path isolatedClasses = null;
         if (dependencies.isEmpty() || !productionFiles.isEmpty()) {
@@ -96,7 +97,7 @@ final class JavacSourceSetContext implements AutoCloseable {
                         List.of(
                                 "-proc:none",
                                 "-implicit:none",
-                                "--release", "17",
+                                "--release", Integer.toString(javaRelease),
                                 "-classpath", productionClasspath,
                                 "-d", isolatedClasses.toString(),
                                 "-Xlint:none"),
