@@ -20,7 +20,11 @@ final class SpoonMethodBodyObserver {
         try {
             Launcher launcher = new Launcher();
             launcher.getEnvironment().setNoClasspath(true);
-            launcher.getEnvironment().setComplianceLevel(17);
+            String sourceSet = files.isEmpty() ? null : JavaSourceSets.id(
+                    root.relativize(files.get(0).toAbsolutePath().normalize())
+                            .toString().replace('\\', '/'));
+            launcher.getEnvironment().setComplianceLevel(
+                    JavaCompilerProfile.discover(root, sourceSet).release());
             launcher.getEnvironment().setCommentEnabled(false);
             files.forEach(file -> launcher.addInputResource(file.toString()));
             var model = launcher.buildModel();
