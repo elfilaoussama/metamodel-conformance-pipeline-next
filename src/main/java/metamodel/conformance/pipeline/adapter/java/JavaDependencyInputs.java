@@ -18,8 +18,7 @@ import java.util.Set;
  *
  * <p>The read-only {@link List} view is a migration boundary for existing Java observer APIs.
  * Iteration exposes the deterministic union used for provenance/fingerprinting only. Semantic
- * compilation must call {@link #pathsForSourceSet(String)} so module classpaths are never
- * flattened accidentally.</p>
+ * compilation must select the owning module so module classpaths are never flattened accidentally.</p>
  */
 public final class JavaDependencyInputs extends AbstractList<Path> implements RandomAccess {
     private final List<Path> globalArchives;
@@ -80,10 +79,15 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
     }
 
     public List<Path> pathsForSourceSet(String sourceSet) {
+        return pathsForModule(JavaSourceSets.moduleKey(sourceSet));
+    }
+
+    public List<Path> pathsForModule(String moduleKey) {
         if (!globalArchives.isEmpty() || archivesByModule.isEmpty()) {
             return globalArchives;
         }
-        return archivesByModule.getOrDefault(JavaSourceSets.moduleKey(sourceSet), List.of());
+        String canonical = canonicalModuleKeyUnchecked(moduleKey);
+        return archivesByModule.getOrDefault(canonical, List.of());
     }
 
     public List<Path> allPaths() {
@@ -126,7 +130,18 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
         return List.copyOf(canonical);
     }
 
+    private static String canonicalModuleKeyUnchecked(String value) {
+        try {
+            return canonicalModuleKey(value);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException(exception.getMessage(), exception);
+        }
+    }
+
     private static String canonicalModuleKey(String value) throws IOException {
+        if (value == null || value.isBlank()) {
+            throw new IOException("dependency manifest module must not be blank");
+        }
         String module = value.trim();
         if (".".equals(module)) {
             return module;
