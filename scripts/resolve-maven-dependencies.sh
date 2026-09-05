@@ -24,11 +24,17 @@ mapfile -d '' discovered_poms < <(
 poms=()
 for pom in "${discovered_poms[@]}"; do
   module_dir="$(dirname "${pom}")"
-  if [[ ! -d "${module_dir}/src" ]]; then
-    continue
+  main_root="${module_dir}/src/main/java"
+  test_root="${module_dir}/src/test/java"
+  owns_main=0
+  owns_test=0
+  if [[ -d "${main_root}" ]] && find "${main_root}" -type f -name '*.java' -print -quit | grep -q .; then
+    owns_main=1
   fi
-  if find "${module_dir}/src" -type f -name '*.java' \
-      -path "${module_dir}/src/*/java/*" -print -quit | grep -q .; then
+  if [[ -d "${test_root}" ]] && find "${test_root}" -type f -name '*.java' -print -quit | grep -q .; then
+    owns_test=1
+  fi
+  if [[ ${owns_main} -eq 1 || ${owns_test} -eq 1 ]]; then
     poms+=("${pom}")
   fi
 done
@@ -68,25 +74,29 @@ chmod u+rwx "${resolution_root}" "${resolution_root}/home" \
 readonly container_source="/workspace/source"
 readonly container_out="/workspace/out"
 
-resolve_module() {
+resolve_source_set() {
   local pom="$1"
   local index="$2"
-  local module_dir module_key container_pom classpath_file container_classpath classpath
+  local source_set_name="$3"
+  local include_scope="$4"
+  local module_dir module_key source_set_key container_pom classpath_file container_classpath classpath
 
   module_dir="$(dirname "${pom}")"
   module_key="$(realpath --relative-to="${source_root}" "${module_dir}")"
   if [[ "${module_key}" == "." ]]; then
     container_pom="${container_source}/pom.xml"
+    source_set_key="src/${source_set_name}/java"
   else
     if [[ "${module_key}" == /* || "${module_key}" == ../* || "${module_key}" == *'/../'* ]]; then
       echo "Maven module escaped source root: ${module_key}" >&2
       return 70
     fi
     container_pom="${container_source}/${module_key}/pom.xml"
+    source_set_key="${module_key}/src/${source_set_name}/java"
   fi
 
-  classpath_file="${resolution_root}/classpaths/${index}.txt"
-  container_classpath="${container_out}/classpaths/${index}.txt"
+  classpath_file="${resolution_root}/classpaths/${index}-${source_set_name}.txt"
+  container_classpath="${container_out}/classpaths/${index}-${source_set_name}.txt"
   rm -f -- "${classpath_file}"
 
   docker run --rm \
@@ -106,12 +116,12 @@ resolve_module() {
     mvn --batch-mode --no-transfer-progress -q \
       -f "${container_pom}" \
       -Dmaven.repo.local="${container_out}/repository" \
-      -DincludeScope=test \
+      -DincludeScope="${include_scope}" \
       -Dmdep.outputFile="${container_classpath}" \
       "${plugin_goal}"
 
   if [[ ! -f "${classpath_file}" ]]; then
-    echo "isolated Maven resolver did not produce a dependency classpath for module ${module_key}" >&2
+    echo "isolated Maven resolver did not produce a dependency classpath for ${source_set_key}" >&2
     return 70
   fi
 
@@ -147,12 +157,21 @@ resolve_module() {
     fi
     real="$(realpath -e -- "${host_path}")"
     if [[ -z "${seen[${real}]+x}" ]]; then
-      printf '%s\t%s\n' "${module_key}" "${real}" >> "${output_file}"
+      printf '%s\t%s\n' "${source_set_key}" "${real}" >> "${output_file}"
       seen[${real}]=1
     fi
   done
 }
 
 for index in "${!poms[@]}"; do
-  resolve_module "${poms[${index}]}" "${index}"
+  pom="${poms[${index}]}"
+  module_dir="$(dirname "${pom}")"
+  if [[ -d "${module_dir}/src/main/java" ]] \
+      && find "${module_dir}/src/main/java" -type f -name '*.java' -print -quit | grep -q .; then
+    resolve_source_set "${pom}" "${index}" main compile
+  fi
+  if [[ -d "${module_dir}/src/test/java" ]] \
+      && find "${module_dir}/src/test/java" -type f -name '*.java' -print -quit | grep -q .; then
+    resolve_source_set "${pom}" "${index}" test test
+  fi
 done
