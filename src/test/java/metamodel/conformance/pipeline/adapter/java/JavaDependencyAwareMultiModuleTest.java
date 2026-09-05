@@ -10,7 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import javax.tools.ToolProvider;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -100,7 +100,8 @@ class JavaDependencyAwareMultiModuleTest {
     }
 
     private Path dependencyJar(Path root, String methodName) throws Exception {
-        Path source = Files.createDirectories(root.resolve("source/dep"));
+        Path sourceRoot = root.resolve("source");
+        Path source = Files.createDirectories(sourceRoot.resolve("dep"));
         Path classes = Files.createDirectories(root.resolve("classes"));
         Path java = source.resolve("Parent.java");
         Files.writeString(java,
@@ -120,6 +121,18 @@ class JavaDependencyAwareMultiModuleTest {
             output.write(Files.readAllBytes(classes.resolve("dep/Parent.class")));
             output.closeEntry();
         }
+        deleteTree(sourceRoot);
         return jar;
+    }
+
+    private static void deleteTree(Path root) throws Exception {
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
     }
 }
