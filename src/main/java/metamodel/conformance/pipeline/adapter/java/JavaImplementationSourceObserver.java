@@ -36,17 +36,21 @@ import java.util.stream.Stream;
  */
 public final class JavaImplementationSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = SpoonJavaObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.3.1";
+    public static final String ADAPTER_VERSION = "1.3.2";
 
-    private final List<Path> dependencyArchives;
+    private final JavaDependencyInputs dependencyInputs;
 
     public JavaImplementationSourceObserver(List<Path> dependencyArchives) {
-        this.dependencyArchives = dependencyArchives == null ? List.of() : List.copyOf(dependencyArchives);
+        this(JavaDependencyInputs.global(dependencyArchives));
+    }
+
+    public JavaImplementationSourceObserver(JavaDependencyInputs dependencyInputs) {
+        this.dependencyInputs = dependencyInputs == null ? JavaDependencyInputs.none() : dependencyInputs;
     }
 
     @Override
     public Observation observe(Path sourceRoot, Set<String> externalParents) throws ObservationException {
-        Observation base = new SpoonJavaObserver(dependencyArchives).observe(sourceRoot, externalParents);
+        Observation base = new SpoonJavaObserver(dependencyInputs).observe(sourceRoot, externalParents);
         if (base.diagnostics().stream().anyMatch(item -> item.kind()
                 == metamodel.conformance.pipeline.model.DiagnosticKind.PARSE_ERROR)) {
             return upgrade(
@@ -58,7 +62,7 @@ public final class JavaImplementationSourceObserver implements SourceObserver {
             SpoonMethodBodyObserver.Result bodyResult = observeBodiesBySourceSet(root, files);
             SpoonAbstractionObserver.Result abstractionResult =
                     observeAbstractionByFile(root, files, base.classifiers(), base.members());
-            JavaDependencyClasspath.Result dependencies = JavaDependencyClasspath.resolve(dependencyArchives);
+            JavaDependencyClasspath.Result dependencies = JavaDependencyClasspath.resolve(dependencyInputs);
             JavacImplementationObserver.Result implementation = bodyResult.complete()
                     ? new JavacImplementationObserver().observe(
                             root,
