@@ -56,6 +56,8 @@ final class JavacSourceSetContext implements AutoCloseable {
                 ? JavaDependencyInputs.none() : dependencyInputs;
         List<Path> dependencies = inputs.pathsForSourceSet(sourceSet);
         String production = JavaSourceSets.productionSibling(sourceSet);
+        List<Path> productionDependencies = production == null
+                ? List.of() : inputs.pathsForSourceSet(production);
         List<Path> productionFiles = production == null
                 ? List.of() : filesBySourceSet.getOrDefault(production, List.of());
 
@@ -84,7 +86,7 @@ final class JavacSourceSetContext implements AutoCloseable {
                     collector, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
                 Iterable<? extends JavaFileObject> sources =
                         fileManager.getJavaFileObjectsFromPaths(productionFiles);
-                String productionClasspath = classpath(dependencies, isolatedClasses);
+                String productionClasspath = classpath(productionDependencies, isolatedClasses);
                 Boolean success = compiler.getTask(
                         null,
                         fileManager,
