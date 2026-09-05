@@ -28,19 +28,39 @@ cat > "$work/bin/docker" <<'DOCKER'
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_DOCKER_ARGUMENTS"
 out_mount=''
+workdir=''
+prefix='.'
 for argument in "$@"; do
   case "$argument" in
     type=bind,src=*,dst=/workspace/out)
       out_mount="${argument#type=bind,src=}"
       out_mount="${out_mount%%,dst=/workspace/out}" ;;
+    -w) capture_workdir=1 ;;
+    -Dmcp.source.prefix=*) prefix="${argument#*=}" ;;
+    -Dmcp.classpath.output=*) output="${argument#*=}" ;;
+    *)
+      if [[ "${capture_workdir:-0}" -eq 1 ]]; then
+        workdir="$argument"
+        capture_workdir=0
+      fi ;;
   esac
 done
 test -n "$out_mount"
+test -n "${output:-}"
 mkdir -p "$out_mount/result" "$out_mount/gradle/cache"
-printf jar > "$out_mount/gradle/cache/main.jar"
-printf jar > "$out_mount/gradle/cache/test.jar"
-printf 'src/main/java\t/workspace/out/gradle/cache/main.jar\nsrc/test/java\t/workspace/out/gradle/cache/main.jar\nsrc/test/java\t/workspace/out/gradle/cache/test.jar\n' \
-  > "$out_mount/result/classpath.tsv"
+index="$(basename "${output%.tsv}")"
+printf jar > "$out_mount/gradle/cache/${index}-main.jar"
+printf jar > "$out_mount/gradle/cache/${index}-test.jar"
+if [[ "$prefix" == "." ]]; then
+  main_key='src/main/java'
+  test_key='src/test/java'
+else
+  main_key="$prefix/src/main/java"
+  test_key="$prefix/src/test/java"
+fi
+host_output="$out_mount/${output#/workspace/out/}"
+printf '%s\t/workspace/out/gradle/cache/%s-main.jar\n%s\t/workspace/out/gradle/cache/%s-main.jar\n%s\t/workspace/out/gradle/cache/%s-test.jar\n' \
+  "$main_key" "$index" "$test_key" "$index" "$test_key" "$index" > "$host_output"
 DOCKER
 chmod +x "$work/bin/docker"
 
@@ -58,6 +78,24 @@ grep -q -- '--cap-drop=ALL' "$arguments"
 grep -q -- '--security-opt=no-new-privileges' "$arguments"
 grep -q -- 'bash /workspace/source/gradlew' "$arguments"
 grep -q -- '--init-script /workspace/mcp-init.gradle' "$arguments"
+
+nested="$work/nested-project"
+mkdir -p "$nested/module/src/main/java/app"
+printf 'plugins { id "java" }\n' > "$nested/module/build.gradle"
+printf 'rootProject.name="nested-fixture"\n' > "$nested/module/settings.gradle"
+printf 'package app; class Nested {}\n' > "$nested/module/src/main/java/app/Nested.java"
+printf '#!/usr/bin/env bash\nexit 99\n' > "$nested/module/gradlew"
+: > "$arguments"
+PATH="$work/bin:$PATH" \
+FAKE_DOCKER_ARGUMENTS="$arguments" \
+GRADLE_RESOLVER_IMAGE='local-test-gradle-image' \
+  "$repo_root/scripts/resolve-gradle-dependencies.sh" \
+  "$nested" "$work/nested.tsv"
+
+grep -q '^module/src/main/java' "$work/nested.tsv"
+grep -q -- '-w /workspace/source/module' "$arguments"
+grep -q -- 'bash /workspace/source/module/gradlew' "$arguments"
+grep -q -- '-Dmcp.source.prefix=module' "$arguments"
 
 dispatch_root="$work/dispatch"
 mkdir -p "$dispatch_root/scripts" "$dispatch_root/project"
