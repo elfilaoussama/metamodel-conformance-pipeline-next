@@ -83,6 +83,9 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
         if (!globalArchives.isEmpty() || archivesBySourceSet.isEmpty()) {
             return globalArchives;
         }
+        if (!JavaSourceSets.isConventional(sourceSet)) {
+            return List.of();
+        }
         String canonical = canonicalSourceSetKeyUnchecked(sourceSet);
         return archivesBySourceSet.getOrDefault(canonical, List.of());
     }
@@ -156,7 +159,7 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
 
     private static String canonicalSourceSetKey(String value) throws IOException {
         String canonical = canonicalRelativePath(value, "dependency manifest source set");
-        if (!JavaSourceSets.id(canonical).equals(canonical)) {
+        if (!JavaSourceSets.isConventional(canonical)) {
             throw new IOException(
                     "dependency manifest source set must identify src/<name>/java: " + value);
         }
