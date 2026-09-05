@@ -76,8 +76,8 @@ readonly container_init="/workspace/mcp-init.gradle"
 readonly init_script="${resolution_root}/mcp-init.gradle"
 
 cat > "${init_script}" <<'GRADLE'
-import org.gradle.api.GradleException
 import org.gradle.api.tasks.SourceSetContainer
+import java.util.regex.Pattern
 
 gradle.projectsEvaluated {
     def root = gradle.rootProject
@@ -98,14 +98,8 @@ gradle.projectsEvaluated {
                         project.plugins.hasPlugin('com.android.test') ||
                         project.plugins.hasPlugin('com.android.dynamic-feature')
                 if (android) {
-                    def conventional = [new File(project.projectDir, 'src/main/java'),
-                                        new File(project.projectDir, 'src/test/java')]
-                            .any { dir -> dir.isDirectory() && project.fileTree(dir)
-                                    .matching { include '**/*.java' }.files.size() > 0 }
-                    if (conventional) {
-                        throw new GradleException(
-                                'Android variant-dependent Java classpath is ambiguous for project ' + project.path)
-                    }
+                    // Android source sets are variant-dependent. Omit them rather than choosing
+                    // debug/release implicitly; other non-Android projects in the build may still resolve.
                     return
                 }
 
@@ -130,14 +124,17 @@ gradle.projectsEvaluated {
                         if (!(relative ==~ /(?:[^\/]+\/)*src\/(?:main|test)\/java/)) {
                             return
                         }
-                        def files = sourceSet.compileClasspath.files.toList()
-                                .sort { a, b -> a.path <=> b.path }
-                        files.each { entry ->
-                            if (!entry.isFile() || !entry.name.endsWith('.jar')) {
-                                throw new GradleException(
-                                        'non-JAR or unavailable classpath entry for ' + relative + ': ' + entry)
+                        // asPath preserves Gradle's semantic classpath order. Do not sort artifacts.
+                        def orderedEntries = sourceSet.compileClasspath.asPath
+                                .split(Pattern.quote(File.pathSeparator))
+                                .findAll { it != null && !it.isEmpty() }
+                                .collect { new File(it) }
+                        orderedEntries.each { entry ->
+                            // Project-output directories and other non-JAR entries are intentionally
+                            // omitted. Javac evidence remains fail-closed if those classes are required.
+                            if (entry.isFile() && entry.name.endsWith('.jar')) {
+                                output << relative + '\t' + entry.canonicalPath + System.lineSeparator()
                             }
-                            output << relative + '\t' + entry.canonicalPath + System.lineSeparator()
                         }
                     }
                 }
