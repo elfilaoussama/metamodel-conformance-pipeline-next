@@ -4,16 +4,27 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.RandomAccess;
+import java.util.Set;
 
-/** Immutable dependency archive inputs, either global or scoped to module roots. */
-public final class JavaDependencyInputs {
+/**
+ * Immutable dependency archive inputs, either global or scoped to module roots.
+ *
+ * <p>The read-only {@link List} view is a migration boundary for existing Java observer APIs.
+ * Iteration exposes the deterministic union used for provenance/fingerprinting only. Semantic
+ * compilation must call {@link #pathsForSourceSet(String)} so module classpaths are never
+ * flattened accidentally.</p>
+ */
+public final class JavaDependencyInputs extends AbstractList<Path> implements RandomAccess {
     private final List<Path> globalArchives;
     private final Map<String, List<Path>> archivesByModule;
+    private final List<Path> allArchives;
 
     private JavaDependencyInputs(List<Path> globalArchives, Map<String, List<Path>> archivesByModule) {
         this.globalArchives = canonicalPaths(globalArchives);
@@ -24,6 +35,14 @@ public final class JavaDependencyInputs {
         if (!this.globalArchives.isEmpty() && !this.archivesByModule.isEmpty()) {
             throw new IllegalArgumentException("global and module-scoped dependency inputs cannot be mixed");
         }
+        LinkedHashSet<Path> all = new LinkedHashSet<>();
+        if (!this.globalArchives.isEmpty()) {
+            all.addAll(this.globalArchives);
+        } else {
+            scoped.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> all.addAll(entry.getValue()));
+        }
+        this.allArchives = List.copyOf(all);
     }
 
     public static JavaDependencyInputs none() {
@@ -31,6 +50,9 @@ public final class JavaDependencyInputs {
     }
 
     public static JavaDependencyInputs global(List<Path> archives) {
+        if (archives instanceof JavaDependencyInputs inputs) {
+            return inputs;
+        }
         return new JavaDependencyInputs(archives == null ? List.of() : archives, Map.of());
     }
 
@@ -65,25 +87,30 @@ public final class JavaDependencyInputs {
     }
 
     public List<Path> allPaths() {
-        if (!globalArchives.isEmpty()) {
-            return globalArchives;
-        }
-        LinkedHashSet<Path> result = new LinkedHashSet<>();
-        archivesByModule.entrySet().stream().sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> result.addAll(entry.getValue()));
-        return List.copyOf(result);
+        return allArchives;
     }
 
     public boolean scoped() {
         return !archivesByModule.isEmpty();
     }
 
+    @Override
     public boolean isEmpty() {
-        return globalArchives.isEmpty() && archivesByModule.values().stream().allMatch(List::isEmpty);
+        return allArchives.isEmpty();
     }
 
     public Set<String> moduleKeys() {
         return archivesByModule.keySet();
+    }
+
+    @Override
+    public Path get(int index) {
+        return allArchives.get(index);
+    }
+
+    @Override
+    public int size() {
+        return allArchives.size();
     }
 
     private static List<Path> canonicalPaths(List<Path> paths) {
