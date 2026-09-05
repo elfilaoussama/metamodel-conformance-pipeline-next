@@ -18,7 +18,7 @@ import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-/** Validates and fingerprints an explicitly supplied Java dependency boundary. */
+/** Validates and fingerprints a Java dependency boundary while preserving source-set scope. */
 final class JavaDependencyClasspath {
     private static final String MULTI_RELEASE_PREFIX = "META-INF/versions/";
 
@@ -26,8 +26,9 @@ final class JavaDependencyClasspath {
     }
 
     static Result resolve(List<Path> requested) throws ObservationException {
+        JavaDependencyInputs inputs = JavaDependencyInputs.global(requested);
         Map<String, Entry> entriesByUnitPath = new LinkedHashMap<>();
-        for (Path candidate : requested == null ? List.<Path>of() : requested) {
+        for (Path candidate : inputs.allPaths()) {
             try {
                 Path normalized = candidate.toAbsolutePath().normalize();
                 if (Files.isSymbolicLink(normalized)
@@ -44,8 +45,6 @@ final class JavaDependencyClasspath {
                         Language.JAVA_ARCHIVE,
                         "dependencies/" + digest + "/" + real.getFileName(),
                         digest);
-                // Identical content/name supplied through multiple filesystem paths is one evidence unit.
-                // Keep the first occurrence so javac classpath precedence is never changed by canonicalization.
                 entriesByUnitPath.putIfAbsent(unit.path(), new Entry(real, unit, typeNames));
             } catch (ObservationException exception) {
                 throw exception;
@@ -55,7 +54,7 @@ final class JavaDependencyClasspath {
                         exception);
             }
         }
-        return new Result(new ArrayList<>(entriesByUnitPath.values()));
+        return new Result(new ArrayList<>(entriesByUnitPath.values()), inputs);
     }
 
     private static Set<String> inspectTypeNames(Path archive) throws Exception {
@@ -69,7 +68,6 @@ final class JavaDependencyClasspath {
                 String binaryName = logical.substring(0, logical.length() - ".class".length())
                         .replace('/', '.');
                 names.add(binaryName);
-                // TypeElement uses source-style qualification for member types whereas archives use '$'.
                 names.add(binaryName.replace('$', '.'));
             }
         }
@@ -106,20 +104,28 @@ final class JavaDependencyClasspath {
         }
     }
 
-    record Result(List<Entry> entries) {
+    record Result(List<Entry> entries, JavaDependencyInputs inputs) {
         Result {
             entries = List.copyOf(entries);
+            inputs = inputs == null ? JavaDependencyInputs.none() : inputs;
             if (entries.stream().map(entry -> entry.unit().path()).distinct().count() != entries.size()) {
                 throw new IllegalArgumentException("dependency archive identity collision");
             }
         }
 
-        /** Semantic classpath order: exactly the caller/build order, with identical units de-duplicated first-win. */
+        /**
+         * Compatibility view consumed by existing observers. If inputs are source-set scoped,
+         * the structured list object is deliberately retained so JavacSourceSetContext can
+         * select the owning module rather than flattening the union.
+         */
         List<Path> paths() {
+            return inputs;
+        }
+
+        List<Path> allPaths() {
             return entries.stream().map(Entry::path).toList();
         }
 
-        /** Canonical provenance order is independent of classpath precedence. */
         List<SourceUnit> units() {
             return entries.stream().map(Entry::unit)
                     .sorted(Comparator.comparing(SourceUnit::path)).toList();
@@ -128,6 +134,16 @@ final class JavaDependencyClasspath {
         Entry ownerOfType(String qualifiedName) {
             for (Entry entry : entries) {
                 if (entry.containsType(qualifiedName)) {
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        Entry ownerOfType(String sourceSet, String qualifiedName) {
+            Set<Path> allowed = Set.copyOf(inputs.pathsForSourceSet(sourceSet));
+            for (Entry entry : entries) {
+                if (allowed.contains(entry.path()) && entry.containsType(qualifiedName)) {
                     return entry;
                 }
             }
