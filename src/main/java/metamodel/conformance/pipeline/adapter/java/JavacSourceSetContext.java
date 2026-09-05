@@ -162,10 +162,11 @@ final class JavacSourceSetContext implements AutoCloseable {
     }
 
     private static String classpath(List<Path> dependencies, Path isolatedClasses) {
-        List<Path> entries = new ArrayList<>(dependencies);
+        List<Path> entries = new ArrayList<>();
         if (isolatedClasses != null) {
             entries.add(isolatedClasses);
         }
+        entries.addAll(dependencies);
         if (entries.isEmpty()) {
             return "";
         }
