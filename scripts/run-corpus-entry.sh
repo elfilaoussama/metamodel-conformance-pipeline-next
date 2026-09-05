@@ -45,7 +45,7 @@ verification_exit=99
 
 if [[ ${clone_exit} -eq 0 ]]; then
   java_files="$(find "${source_root}" -type f -name '*.java' | wc -l)"
-  bash ./scripts/resolve-maven-dependencies.sh "${source_root}" "${dependency_manifest}" >"${output_root}/dependency-resolution.log" 2>&1
+  bash ./scripts/resolve-java-dependencies.sh "${source_root}" "${dependency_manifest}" >"${output_root}/dependency-resolution.log" 2>&1
   dependency_resolution_exit=$?
   dependency_args=()
   if [[ ${dependency_resolution_exit} -eq 0 && -s "${dependency_manifest}" ]]; then
