@@ -4,6 +4,7 @@ import metamodel.conformance.pipeline.adapter.SourceObserver;
 import metamodel.conformance.pipeline.model.ClassifierAbstraction;
 import metamodel.conformance.pipeline.model.ClassifierKind;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
+import metamodel.conformance.pipeline.model.DiagnosticKind;
 import metamodel.conformance.pipeline.model.EvidenceKind;
 import metamodel.conformance.pipeline.model.Language;
 import metamodel.conformance.pipeline.model.MemberObservation;
@@ -97,6 +98,59 @@ class JavaDependencyAwareSourceSetIsolationTest {
 
         assertTrue(Files.exists(mainSource));
         assertTrue(Files.exists(testSource));
+    }
+
+    @Test
+    void missingTransitiveDependencyKeepsHierarchyEvidenceIncomplete() throws Exception {
+        Path source = source("src/main/java/app/Top.java", "Top");
+        Files.writeString(source, "package app;\npublic class Top extends dep.Child {}\n");
+        Files.writeString(temporary.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <properties><maven.compiler.release>17</maven.compiler.release></properties>
+                </project>
+                """);
+
+        Path missingClasses = Files.createDirectories(temporary.resolve("missing-classes"));
+        Path missingSource = Files.createDirectories(temporary.resolve("missing-src/missing")).resolve("Base.java");
+        Files.writeString(missingSource, "package missing; public class Base {}\n");
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "--release", "17", "-d", missingClasses.toString(), missingSource.toString()));
+
+        Path childClasses = Files.createDirectories(temporary.resolve("child-classes"));
+        Path childSource = Files.createDirectories(temporary.resolve("child-src/dep")).resolve("Child.java");
+        Files.writeString(childSource,
+                "package dep; public class Child extends missing.Base { public int value; }\n");
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "--release", "17",
+                "-classpath", missingClasses.toString(), "-d", childClasses.toString(), childSource.toString()));
+        Path childJar = temporary.resolve("child-only.jar");
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(childJar))) {
+            JarEntry entry = new JarEntry("dep/Child.class");
+            entry.setTime(0L);
+            output.putNextEntry(entry);
+            output.write(Files.readAllBytes(childClasses.resolve("dep/Child.class")));
+            output.closeEntry();
+        }
+
+        Path manifest = temporary.resolve("dependencies.tsv");
+        Files.writeString(manifest, "src/main/java\t" + childJar + "\n");
+        JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
+        String id = "cls_" + "5".repeat(64);
+        ClassifierObservation top = classifier(id, "app.Top", "src/main/java/app/Top.java");
+        Observation base = new Observation(
+                "12", "spoon-java", "test", List.of(), Set.of(),
+                List.of(new SourceUnit(Language.JAVA, top.sourcePath(), "c".repeat(64))),
+                List.of(top), List.of(), List.of(), List.of(),
+                List.of(new UnresolvedParent(id, "dep.Child", top.sourcePath(), 2)), List.of());
+        SourceObserver delegate = (sourceRoot, externalParents) -> base;
+
+        Observation observed = new JavaDependencyAwareSourceObserver(inputs, delegate)
+                .observe(temporary, Set.of());
+
+        assertTrue(!observed.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertTrue(!observed.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observed.diagnostics().stream()
+                .anyMatch(item -> item.kind() == DiagnosticKind.EVIDENCE_INCOMPLETE));
     }
 
     private Path source(String relative, String typeName) throws Exception {
