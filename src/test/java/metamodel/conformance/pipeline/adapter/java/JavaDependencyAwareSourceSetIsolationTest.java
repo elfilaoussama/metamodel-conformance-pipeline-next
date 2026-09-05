@@ -26,6 +26,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,11 +37,7 @@ class JavaDependencyAwareSourceSetIsolationTest {
     void sameModuleMainAndTestMayResolveSameFqnToDifferentBytecode() throws Exception {
         Path mainSource = source("src/main/java/app/MainChild.java", "MainChild");
         Path testSource = source("src/test/java/app/TestChild.java", "TestChild");
-        Files.writeString(temporary.resolve("pom.xml"), """
-                <project><modelVersion>4.0.0</modelVersion>
-                  <properties><maven.compiler.release>17</maven.compiler.release></properties>
-                </project>
-                """);
+        compilerPom();
 
         Path mainJar = dependencyJar(temporary.resolve("dependency-main"), "onlyMain");
         Path testJar = dependencyJar(temporary.resolve("dependency-test"), "onlyTest");
@@ -77,22 +74,20 @@ class JavaDependencyAwareSourceSetIsolationTest {
         assertTrue(observed.completeEvidence().contains(EvidenceKind.HIERARCHY));
         assertTrue(observed.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
 
-        Map<String, ClassifierObservation> classifiers = new HashMap<>();
-        observed.classifiers().forEach(item -> classifiers.put(item.id(), item));
+        Map<String, ClassifierObservation> classifiers = classifiersById(observed);
         ClassifierObservation main = classifiers.get(mainId);
         ClassifierObservation test = classifiers.get(testId);
         assertEquals(1, main.parentIds().size());
         assertEquals(1, test.parentIds().size());
         assertNotEquals(main.parentIds().get(0), test.parentIds().get(0));
 
-        Map<String, MemberObservation> members = new HashMap<>();
-        observed.members().forEach(item -> members.put(item.technicalKey(), item));
+        Map<String, MemberObservation> members = membersByKey(observed);
         Set<String> mainInherited = memberNames(main.inheritedMemberKeys(), members);
         Set<String> testInherited = memberNames(test.inheritedMemberKeys(), members);
         assertTrue(mainInherited.contains("onlyMain"), mainInherited::toString);
-        assertTrue(!mainInherited.contains("onlyTest"), mainInherited::toString);
+        assertFalse(mainInherited.contains("onlyTest"), mainInherited::toString);
         assertTrue(testInherited.contains("onlyTest"), testInherited::toString);
-        assertTrue(!testInherited.contains("onlyMain"), testInherited::toString);
+        assertFalse(testInherited.contains("onlyMain"), testInherited::toString);
         assertEquals(2, observed.classifiers().stream()
                 .filter(item -> item.qualifiedName().equals("dep.Parent")).count());
 
@@ -101,14 +96,150 @@ class JavaDependencyAwareSourceSetIsolationTest {
     }
 
     @Test
+    void auxiliarySetRecoversDependencyMembersInheritedThroughProductionSibling() throws Exception {
+        Path mainSource = temporary.resolve("src/main/java/app/Base.java");
+        Files.createDirectories(mainSource.getParent());
+        Files.writeString(mainSource,
+                "package app;\npublic class Base extends dep.Parent {}\n");
+        Path testSource = temporary.resolve("src/test/java/app/Child.java");
+        Files.createDirectories(testSource.getParent());
+        Files.writeString(testSource,
+                "package app;\npublic class Child extends Base {}\n");
+        compilerPom();
+
+        Path dependency = dependencyJar(temporary.resolve("dependency-shared"), "throughMain");
+        Path manifest = temporary.resolve("dependencies.tsv");
+        Files.writeString(manifest,
+                "src/main/java\t" + dependency + "\n"
+                        + "src/test/java\t" + dependency + "\n");
+        JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
+
+        String baseId = "cls_" + "3".repeat(64);
+        String childId = "cls_" + "4".repeat(64);
+        ClassifierObservation baseClassifier = classifier(
+                baseId, "app.Base", "src/main/java/app/Base.java");
+        ClassifierObservation childClassifier = new ClassifierObservation(
+                childId, "app.Child", "app", ClassifierKind.CLASS,
+                "src/test/java/app/Child.java", 2, 2,
+                List.of(baseId), List.of(), List.of(), ClassifierAbstraction.CONCRETE);
+        Observation base = new Observation(
+                "12", "spoon-java", "test", List.of(), Set.of(),
+                List.of(
+                        new SourceUnit(Language.JAVA, baseClassifier.sourcePath(), "d".repeat(64)),
+                        new SourceUnit(Language.JAVA, childClassifier.sourcePath(), "e".repeat(64))),
+                List.of(baseClassifier, childClassifier),
+                List.of(), List.of(), List.of(),
+                List.of(new UnresolvedParent(
+                        baseId, "dep.Parent", baseClassifier.sourcePath(), 2)),
+                List.of());
+        SourceObserver delegate = (sourceRoot, externalParents) -> base;
+
+        Observation observed = new JavaDependencyAwareSourceObserver(inputs, delegate)
+                .observe(temporary, Set.of());
+
+        assertTrue(observed.unresolvedParents().isEmpty(),
+                () -> observed.unresolvedParents().toString());
+        assertTrue(observed.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertTrue(observed.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        Map<String, ClassifierObservation> classifiers = classifiersById(observed);
+        Map<String, MemberObservation> members = membersByKey(observed);
+        assertTrue(memberNames(classifiers.get(baseId).inheritedMemberKeys(), members)
+                .contains("throughMain"));
+        assertTrue(memberNames(classifiers.get(childId).inheritedMemberKeys(), members)
+                .contains("throughMain"));
+        assertEquals(1, observed.classifiers().stream()
+                .filter(item -> item.qualifiedName().equals("dep.Parent")).count());
+    }
+
+    @Test
+    void auxiliarySetRejectsDifferentBytecodeForProductionDependency() throws Exception {
+        Path mainSource = temporary.resolve("src/main/java/app/Base.java");
+        Files.createDirectories(mainSource.getParent());
+        Files.writeString(mainSource,
+                "package app;\npublic class Base extends dep.Parent {}\n");
+        Path testSource = temporary.resolve("src/test/java/app/Child.java");
+        Files.createDirectories(testSource.getParent());
+        Files.writeString(testSource,
+                "package app;\npublic class Child extends Base {}\n");
+        compilerPom();
+
+        Path mainDependency = dependencyJar(temporary.resolve("dependency-production"), "productionOnly");
+        Path testDependency = dependencyJar(temporary.resolve("dependency-auxiliary"), "auxiliaryOnly");
+        Path manifest = temporary.resolve("dependencies.tsv");
+        Files.writeString(manifest,
+                "src/main/java\t" + mainDependency + "\n"
+                        + "src/test/java\t" + testDependency + "\n");
+        JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
+
+        String baseId = "cls_" + "6".repeat(64);
+        String childId = "cls_" + "7".repeat(64);
+        ClassifierObservation baseClassifier = classifier(
+                baseId, "app.Base", "src/main/java/app/Base.java");
+        ClassifierObservation childClassifier = new ClassifierObservation(
+                childId, "app.Child", "app", ClassifierKind.CLASS,
+                "src/test/java/app/Child.java", 2, 2,
+                List.of(baseId), List.of(), List.of(), ClassifierAbstraction.CONCRETE);
+        Observation base = new Observation(
+                "12", "spoon-java", "test", List.of(), Set.of(),
+                List.of(
+                        new SourceUnit(Language.JAVA, baseClassifier.sourcePath(), "f".repeat(64)),
+                        new SourceUnit(Language.JAVA, childClassifier.sourcePath(), "0".repeat(64))),
+                List.of(baseClassifier, childClassifier),
+                List.of(), List.of(), List.of(),
+                List.of(new UnresolvedParent(
+                        baseId, "dep.Parent", baseClassifier.sourcePath(), 2)),
+                List.of());
+        SourceObserver delegate = (sourceRoot, externalParents) -> base;
+
+        Observation observed = new JavaDependencyAwareSourceObserver(inputs, delegate)
+                .observe(temporary, Set.of());
+
+        assertTrue(observed.unresolvedParents().isEmpty());
+        assertFalse(observed.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertFalse(observed.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertTrue(observed.diagnostics().stream().anyMatch(item ->
+                item.kind() == DiagnosticKind.EVIDENCE_INCOMPLETE
+                        && item.message().contains("does not preserve production dependency bytecode")));
+    }
+
+    @Test
+    void productionSiblingCompilesWithProductionDependenciesNotAuxiliaryDependencies()
+            throws Exception {
+        Path mainSource = temporary.resolve("src/main/java/app/Base.java");
+        Files.createDirectories(mainSource.getParent());
+        Files.writeString(mainSource,
+                "package app; public class Base { dep.MainOnly dependency; }\n");
+        Path testSource = temporary.resolve("src/test/java/app/Child.java");
+        Files.createDirectories(testSource.getParent());
+        Files.writeString(testSource,
+                "package app; public class Child extends Base {}\n");
+        compilerPom();
+
+        Path mainDependency = typeJar(
+                temporary.resolve("main-dependency"), "dep", "MainOnly");
+        Path testDependency = emptyJar(temporary.resolve("test-dependency.jar"));
+        Path manifest = temporary.resolve("dependencies.tsv");
+        Files.writeString(manifest,
+                "src/main/java\t" + mainDependency + "\n"
+                        + "src/test/java\t" + testDependency + "\n");
+        JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
+        Map<String, List<Path>> files = Map.of(
+                "src/main/java", List.of(mainSource),
+                "src/test/java", List.of(testSource));
+
+        try (JavacSourceSetContext context = JavacSourceSetContext.prepare(
+                temporary, "src/test/java", files, inputs)) {
+            assertTrue(context.complete(), () -> context.diagnostics().toString());
+            assertTrue(context.classpath().contains(testDependency.toString()));
+            assertFalse(context.classpath().contains(mainDependency.toString()));
+        }
+    }
+
+    @Test
     void missingTransitiveDependencyKeepsHierarchyEvidenceIncomplete() throws Exception {
         Path source = source("src/main/java/app/Top.java", "Top");
         Files.writeString(source, "package app;\npublic class Top extends dep.Child {}\n");
-        Files.writeString(temporary.resolve("pom.xml"), """
-                <project><modelVersion>4.0.0</modelVersion>
-                  <properties><maven.compiler.release>17</maven.compiler.release></properties>
-                </project>
-                """);
+        compilerPom();
 
         Path missingClasses = Files.createDirectories(temporary.resolve("missing-classes"));
         Path missingSource = Files.createDirectories(temporary.resolve("missing-src/missing")).resolve("Base.java");
@@ -147,10 +278,18 @@ class JavaDependencyAwareSourceSetIsolationTest {
         Observation observed = new JavaDependencyAwareSourceObserver(inputs, delegate)
                 .observe(temporary, Set.of());
 
-        assertTrue(!observed.completeEvidence().contains(EvidenceKind.HIERARCHY));
-        assertTrue(!observed.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
+        assertFalse(observed.completeEvidence().contains(EvidenceKind.HIERARCHY));
+        assertFalse(observed.completeEvidence().contains(EvidenceKind.INHERITED_MEMBERS));
         assertTrue(observed.diagnostics().stream()
                 .anyMatch(item -> item.kind() == DiagnosticKind.EVIDENCE_INCOMPLETE));
+    }
+
+    private void compilerPom() throws Exception {
+        Files.writeString(temporary.resolve("pom.xml"), """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <properties><maven.compiler.release>17</maven.compiler.release></properties>
+                </project>
+                """);
     }
 
     private Path source(String relative, String typeName) throws Exception {
@@ -165,6 +304,18 @@ class JavaDependencyAwareSourceSetIsolationTest {
         return new ClassifierObservation(
                 id, name, "app", ClassifierKind.CLASS, path, 2, 2,
                 List.of(), List.of(), List.of(), ClassifierAbstraction.CONCRETE);
+    }
+
+    private static Map<String, ClassifierObservation> classifiersById(Observation observation) {
+        Map<String, ClassifierObservation> result = new HashMap<>();
+        observation.classifiers().forEach(item -> result.put(item.id(), item));
+        return result;
+    }
+
+    private static Map<String, MemberObservation> membersByKey(Observation observation) {
+        Map<String, MemberObservation> result = new HashMap<>();
+        observation.members().forEach(item -> result.put(item.technicalKey(), item));
+        return result;
     }
 
     private static Set<String> memberNames(
@@ -193,6 +344,33 @@ class JavaDependencyAwareSourceSetIsolationTest {
             output.putNextEntry(entry);
             output.write(Files.readAllBytes(classes.resolve("dep/Parent.class")));
             output.closeEntry();
+        }
+        return jar;
+    }
+
+    private Path typeJar(Path root, String packageName, String typeName) throws Exception {
+        Path source = Files.createDirectories(root.resolve("source").resolve(packageName.replace('.', '/')));
+        Path classes = Files.createDirectories(root.resolve("classes"));
+        Path java = source.resolve(typeName + ".java");
+        Files.writeString(java,
+                "package " + packageName + "; public class " + typeName + " {}\n");
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
+                null, null, null,
+                "--release", "17", "-d", classes.toString(), java.toString()));
+        Path jar = root.resolve("dependency.jar");
+        String entryName = packageName.replace('.', '/') + "/" + typeName + ".class";
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            JarEntry entry = new JarEntry(entryName);
+            entry.setTime(0L);
+            output.putNextEntry(entry);
+            output.write(Files.readAllBytes(classes.resolve(entryName)));
+            output.closeEntry();
+        }
+        return jar;
+    }
+
+    private static Path emptyJar(Path jar) throws Exception {
+        try (JarOutputStream ignored = new JarOutputStream(Files.newOutputStream(jar))) {
         }
         return jar;
     }
