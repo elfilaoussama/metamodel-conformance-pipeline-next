@@ -31,7 +31,7 @@ import java.util.stream.Stream;
 /** Adds dependency bytecode evidence under exact source-set classpaths. */
 public final class JavaDependencyAwareSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = JavaImplementationSourceObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.7.1";
+    public static final String ADAPTER_VERSION = "1.7.2";
 
     private final JavaDependencyInputs dependencyInputs;
     private final SourceObserver delegate;
@@ -96,8 +96,10 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 List<UnresolvedParent> directUnresolved =
                         unresolvedBySourceSet.getOrDefault(sourceSet, List.of());
                 String production = JavaSourceSets.productionSibling(sourceSet);
-                List<UnresolvedParent> productionUnresolved = production == null
-                        ? List.of() : unresolvedBySourceSet.getOrDefault(production, List.of());
+                boolean inheritsProduction = production != null
+                        && inheritsFromSourceSet(base.classifiers(), sourceSet, production);
+                List<UnresolvedParent> productionUnresolved = inheritsProduction
+                        ? unresolvedBySourceSet.getOrDefault(production, List.of()) : List.of();
                 if (directUnresolved.isEmpty() && productionUnresolved.isEmpty()) {
                     continue;
                 }
@@ -315,6 +317,42 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             throw new ObservationException(
                     "Java source-set dependency observation failed: " + failure.getMessage(), failure);
         }
+    }
+
+    private static boolean inheritsFromSourceSet(
+            List<ClassifierObservation> classifiers,
+            String sourceSet,
+            String ancestorSourceSet) {
+        Set<String> ancestorIds = classifiers.stream()
+                .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(ancestorSourceSet))
+                .map(ClassifierObservation::id)
+                .collect(java.util.stream.Collectors.toSet());
+        if (ancestorIds.isEmpty()) {
+            return false;
+        }
+        Map<String, ClassifierObservation> byId = new HashMap<>();
+        classifiers.forEach(item -> byId.put(item.id(), item));
+        for (ClassifierObservation classifier : classifiers) {
+            if (!JavaSourceSets.id(classifier.sourcePath()).equals(sourceSet)) {
+                continue;
+            }
+            java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>(classifier.parentIds());
+            Set<String> visited = new java.util.HashSet<>();
+            while (!pending.isEmpty()) {
+                String parentId = pending.removeFirst();
+                if (!visited.add(parentId)) {
+                    continue;
+                }
+                if (ancestorIds.contains(parentId)) {
+                    return true;
+                }
+                ClassifierObservation parent = byId.get(parentId);
+                if (parent != null) {
+                    pending.addAll(parent.parentIds());
+                }
+            }
+        }
+        return false;
     }
 
     private static void mergeSupport(
