@@ -116,7 +116,7 @@ final class JavaDependencyClasspath {
         /**
          * Compatibility view consumed by existing observers. If inputs are source-set scoped,
          * the structured list object is deliberately retained so JavacSourceSetContext can
-         * select the owning module rather than flattening the union.
+         * select the exact source-set classpath rather than flattening the union.
          */
         List<Path> paths() {
             return inputs;
