@@ -87,7 +87,7 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             modules.addAll(unresolvedByModule.keySet());
             for (String module : modules) {
                 List<UnresolvedParent> moduleUnresolved = unresolvedByModule.getOrDefault(module, List.of());
-                List<Path> moduleArchives = dependencyInputs.pathsForSourceSet(sourceSetForModule(module));
+                List<Path> moduleArchives = dependencyInputs.pathsForModule(module);
                 if (moduleArchives.isEmpty() || moduleUnresolved.isEmpty()) {
                     continue;
                 }
@@ -277,10 +277,6 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             result.computeIfAbsent(JavaSourceSets.moduleKey(sourceSet), ignored -> new ArrayList<>()).add(file);
         }
         return result;
-    }
-
-    private static String sourceSetForModule(String module) {
-        return ".".equals(module) ? "src/main/java" : module + "/src/main/java";
     }
 
     private static String unresolvedKey(UnresolvedParent unresolved) {
