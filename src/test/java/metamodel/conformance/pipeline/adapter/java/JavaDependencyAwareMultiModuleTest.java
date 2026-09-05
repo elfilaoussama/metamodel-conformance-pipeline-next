@@ -27,7 +27,7 @@ class JavaDependencyAwareMultiModuleTest {
     Path temporary;
 
     @Test
-    void sameQualifiedDependencyTypeRemainsIsolatedByOwningModule() throws Exception {
+    void sameQualifiedDependencyTypeRemainsIsolatedByOwningSourceSet() throws Exception {
         Path jarA = dependencyJar(temporary.resolve("dependency-a"), "onlyA");
         Path jarB = dependencyJar(temporary.resolve("dependency-b"), "onlyB");
         javaModule("module-a", "ChildA");
@@ -35,8 +35,8 @@ class JavaDependencyAwareMultiModuleTest {
 
         Path manifest = temporary.resolve("dependencies.tsv");
         Files.writeString(manifest,
-                "module-a\t" + jarA + "\n"
-                        + "module-b\t" + jarB + "\n");
+                "module-a/src/main/java\t" + jarA + "\n"
+                        + "module-b/src/main/java\t" + jarB + "\n");
         JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
 
         Observation observation = new JavaDependencyAwareSourceObserver(inputs)
