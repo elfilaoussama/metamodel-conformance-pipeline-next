@@ -38,7 +38,7 @@ trap 'rm -rf -- "${work_root}"' EXIT
 
 source_root="${work_root}/source"
 result_root="${output_root}/result"
-dependency_list="${work_root}/dependency-jars.txt"
+dependency_manifest="${work_root}/dependency-manifest.tsv"
 mkdir -p "${result_root}"
 
 clone_exit=0
@@ -53,6 +53,7 @@ fi
 java_files=0
 dependency_resolution_exit=99
 dependency_jar_count=0
+dependency_module_count=0
 analysis_exit=99
 verification_exit=99
 
@@ -60,19 +61,16 @@ if [[ ${clone_exit} -eq 0 ]]; then
   java_files="$(find "${source_root}" -type f -name '*.java' | wc -l)"
 
   bash ./scripts/resolve-maven-dependencies.sh \
-    "${source_root}" "${dependency_list}" \
+    "${source_root}" "${dependency_manifest}" \
     >"${output_root}/dependency-resolution.log" 2>&1
   dependency_resolution_exit=$?
 
   dependency_args=()
-  if [[ ${dependency_resolution_exit} -eq 0 && -f "${dependency_list}" ]]; then
-    while IFS= read -r dependency; do
-      if [[ -n "${dependency}" ]]; then
-        dependency_args+=(--dependency-jar "${dependency}")
-      fi
-    done <"${dependency_list}"
+  if [[ ${dependency_resolution_exit} -eq 0 && -s "${dependency_manifest}" ]]; then
+    dependency_args+=(--dependency-manifest "${dependency_manifest}")
+    dependency_jar_count="$(wc -l < "${dependency_manifest}")"
+    dependency_module_count="$(cut -f1 "${dependency_manifest}" | sort -u | wc -l)"
   fi
-  dependency_jar_count="$(( ${#dependency_args[@]} / 2 ))"
 
   java -jar "${pipeline_jar}" analyze \
     --source "${source_root}" \
@@ -95,6 +93,7 @@ if [[ -f "${result_root}/verification-capsule.json" ]]; then
     --argjson cloneExit "${clone_exit}" \
     --argjson dependencyResolutionExit "${dependency_resolution_exit}" \
     --argjson dependencyJars "${dependency_jar_count}" \
+    --argjson dependencyModules "${dependency_module_count}" \
     --argjson analysisExit "${analysis_exit}" \
     --argjson verificationExit "${verification_exit}" \
     --argjson javaFiles "${java_files}" \
@@ -103,6 +102,7 @@ if [[ -f "${result_root}/verification-capsule.json" ]]; then
       commit: $commit,
       javaFiles: $javaFiles,
       dependencyJars: $dependencyJars,
+      dependencyModules: $dependencyModules,
       cloneExit: $cloneExit,
       dependencyResolutionExit: $dependencyResolutionExit,
       analysisExit: $analysisExit,
@@ -126,6 +126,7 @@ else
     --argjson cloneExit "${clone_exit}" \
     --argjson dependencyResolutionExit "${dependency_resolution_exit}" \
     --argjson dependencyJars "${dependency_jar_count}" \
+    --argjson dependencyModules "${dependency_module_count}" \
     --argjson analysisExit "${analysis_exit}" \
     --argjson javaFiles "${java_files}" \
     '{
@@ -133,6 +134,7 @@ else
       commit: $commit,
       javaFiles: $javaFiles,
       dependencyJars: $dependencyJars,
+      dependencyModules: $dependencyModules,
       cloneExit: $cloneExit,
       dependencyResolutionExit: $dependencyResolutionExit,
       analysisExit: $analysisExit,
