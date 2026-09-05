@@ -9,6 +9,7 @@ import metamodel.conformance.pipeline.model.MemberKind;
 import metamodel.conformance.pipeline.model.MemberObservation;
 import metamodel.conformance.pipeline.model.Observation;
 import metamodel.conformance.pipeline.model.ObservationDiagnostic;
+import metamodel.conformance.pipeline.model.SourceUnit;
 import metamodel.conformance.pipeline.model.UnresolvedParent;
 
 import java.io.IOException;
@@ -29,7 +30,7 @@ import java.util.stream.Stream;
 /** Adds dependency-bytecode support evidence without changing source-observation semantics. */
 public final class JavaDependencyAwareSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = JavaImplementationSourceObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.5.0";
+    public static final String ADAPTER_VERSION = "1.5.1";
 
     private final JavaDependencyInputs dependencyInputs;
     private final SourceObserver delegate;
@@ -255,7 +256,7 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                     ADAPTER_VERSION,
                     base.externalParents(),
                     evidence,
-                    base.units(),
+                    mergeUnits(base.units(), allDependencies.units()),
                     classifiers,
                     members,
                     base.methodBodies(),
@@ -293,6 +294,20 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 .orElseGet(() -> base.units().stream()
                         .filter(unit -> unit.language() == metamodel.conformance.pipeline.model.Language.JAVA)
                         .map(unit -> unit.path()).sorted().findFirst().orElse("<unknown>.java"));
+    }
+
+    private static List<SourceUnit> mergeUnits(List<SourceUnit> base, List<SourceUnit> dependencies) {
+        Map<String, SourceUnit> byPath = new TreeMap<>();
+        for (SourceUnit unit : base) {
+            byPath.put(unit.path(), unit);
+        }
+        for (SourceUnit unit : dependencies) {
+            SourceUnit previous = byPath.putIfAbsent(unit.path(), unit);
+            if (previous != null && !previous.equals(unit)) {
+                throw new IllegalArgumentException("source-unit identity collision: " + unit.path());
+            }
+        }
+        return List.copyOf(byPath.values());
     }
 
     private static List<ObservationDiagnostic> mergeDiagnostics(
