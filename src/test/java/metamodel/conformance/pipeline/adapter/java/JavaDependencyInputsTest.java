@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -17,12 +18,9 @@ class JavaDependencyInputsTest {
 
     @Test
     void mapsArchivesToOwningSourceSetModuleWithoutFallbackGuessing() throws Exception {
-        Path rootJar = temporary.resolve("root.jar");
-        Path moduleJar = temporary.resolve("module.jar");
-        Path nestedJar = temporary.resolve("nested.jar");
-        Files.write(rootJar, new byte[]{1});
-        Files.write(moduleJar, new byte[]{2});
-        Files.write(nestedJar, new byte[]{3});
+        Path rootJar = Files.write(temporary.resolve("root.jar"), new byte[]{1}).toAbsolutePath().normalize();
+        Path moduleJar = Files.write(temporary.resolve("module.jar"), new byte[]{2}).toAbsolutePath().normalize();
+        Path nestedJar = Files.write(temporary.resolve("nested.jar"), new byte[]{3}).toAbsolutePath().normalize();
         Path manifest = temporary.resolve("dependencies.tsv");
         Files.writeString(manifest, String.join("\n",
                 ".\t" + rootJar,
@@ -38,6 +36,8 @@ class JavaDependencyInputsTest {
         assertEquals(List.of(nestedJar), inputs.pathsForSourceSet("module-b/sub/src/main/java"));
         assertTrue(inputs.pathsForSourceSet("unknown/src/main/java").isEmpty());
         assertEquals(List.of(rootJar, moduleJar, nestedJar), inputs.allPaths());
+        assertEquals(inputs.allPaths(), List.copyOf(inputs));
+        assertSame(inputs, JavaDependencyInputs.global(inputs));
     }
 
     @Test
