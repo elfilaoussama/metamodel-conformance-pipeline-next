@@ -28,10 +28,10 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 
-/** Adds dependency-bytecode support evidence without changing source-observation semantics. */
+/** Adds dependency bytecode evidence under exact source-set classpaths. */
 public final class JavaDependencyAwareSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = JavaImplementationSourceObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.6.0";
+    public static final String ADAPTER_VERSION = "1.7.0";
 
     private final JavaDependencyInputs dependencyInputs;
     private final SourceObserver delegate;
@@ -44,8 +44,11 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
         this(dependencyInputs, new JavaImplementationSourceObserver(dependencyInputs));
     }
 
-    JavaDependencyAwareSourceObserver(JavaDependencyInputs dependencyInputs, SourceObserver delegate) {
-        this.dependencyInputs = dependencyInputs == null ? JavaDependencyInputs.none() : dependencyInputs;
+    JavaDependencyAwareSourceObserver(
+            JavaDependencyInputs dependencyInputs,
+            SourceObserver delegate) {
+        this.dependencyInputs = dependencyInputs == null
+                ? JavaDependencyInputs.none() : dependencyInputs;
         this.delegate = delegate;
     }
 
@@ -56,25 +59,25 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 || base.diagnostics().stream().anyMatch(item -> item.kind() == DiagnosticKind.PARSE_ERROR)) {
             return base;
         }
+
         try {
             Path root = sourceRoot.toRealPath(LinkOption.NOFOLLOW_LINKS);
             List<Path> files = discoverJavaFiles(root);
-            Map<String, List<Path>> filesByModule = filesByModule(root, files);
+            Map<String, List<Path>> filesBySourceSet = filesBySourceSet(root, files);
             Map<String, ClassifierObservation> sourceById = new HashMap<>();
             base.classifiers().forEach(classifier -> sourceById.put(classifier.id(), classifier));
 
-            Map<String, List<UnresolvedParent>> unresolvedByModule = new TreeMap<>();
-            Map<String, String> sourceSetByUnresolvedKey = new HashMap<>();
+            Map<String, List<UnresolvedParent>> unresolvedBySourceSet = new TreeMap<>();
             for (UnresolvedParent unresolved : base.unresolvedParents()) {
                 ClassifierObservation owner = sourceById.get(unresolved.ownerId());
                 if (owner == null) {
                     throw new ObservationException(
-                            "unresolved parent references an unavailable source classifier: " + unresolved.ownerId());
+                            "unresolved parent references an unavailable source classifier: "
+                                    + unresolved.ownerId());
                 }
                 String sourceSet = JavaSourceSets.id(owner.sourcePath());
-                sourceSetByUnresolvedKey.put(unresolvedKey(unresolved), sourceSet);
-                unresolvedByModule.computeIfAbsent(
-                        JavaSourceSets.moduleKey(sourceSet), ignored -> new ArrayList<>()).add(unresolved);
+                unresolvedBySourceSet.computeIfAbsent(sourceSet, ignored -> new ArrayList<>())
+                        .add(unresolved);
             }
 
             Map<String, String> supportParentByUnresolvedKey = new HashMap<>();
@@ -86,139 +89,106 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             List<ObservationDiagnostic> diagnostics = new ArrayList<>();
             boolean dependencyEvidenceComplete = true;
 
-            Set<String> modules = new TreeSet<>();
-            modules.addAll(filesByModule.keySet());
-            modules.addAll(unresolvedByModule.keySet());
-            for (String module : modules) {
-                List<UnresolvedParent> moduleUnresolved = unresolvedByModule.getOrDefault(module, List.of());
-                if (moduleUnresolved.isEmpty()) {
+            Set<String> sourceSets = new TreeSet<>();
+            sourceSets.addAll(filesBySourceSet.keySet());
+            sourceSets.addAll(unresolvedBySourceSet.keySet());
+            for (String sourceSet : sourceSets) {
+                List<UnresolvedParent> unresolved = unresolvedBySourceSet.getOrDefault(sourceSet, List.of());
+                if (unresolved.isEmpty()) {
                     continue;
                 }
-                List<Path> moduleFiles = filesByModule.getOrDefault(module, List.of());
-                if (moduleFiles.isEmpty()) {
+                List<Path> sourceSetFiles = filesBySourceSet.getOrDefault(sourceSet, List.of());
+                if (sourceSetFiles.isEmpty()) {
                     dependencyEvidenceComplete = false;
-                    diagnostics.add(new ObservationDiagnostic(
-                            DiagnosticKind.EVIDENCE_INCOMPLETE,
-                            firstSourcePath(base, module),
-                            0,
-                            "dependency evidence has no Java source files for module " + module));
+                    diagnostics.add(incompleteDiagnostic(
+                            base, sourceSet,
+                            "dependency evidence has no Java source files for source set " + sourceSet));
                     continue;
                 }
 
-                Map<String, JavaDependencySymbols.TypeSymbol> symbolsByQualifiedName = new TreeMap<>();
-                Map<String, Set<String>> resolvedRootsBySourceSet = new HashMap<>();
-                Set<String> unresolvedSymbolRoots = new TreeSet<>();
-                boolean supportAmbiguous = false;
-                Set<String> sourceSets = moduleUnresolved.stream()
-                        .map(item -> sourceSetByUnresolvedKey.get(unresolvedKey(item)))
+                List<Path> archives = dependencyInputs.pathsForSourceSet(sourceSet);
+                if (archives.isEmpty()) {
+                    continue;
+                }
+                JavaDependencyClasspath.Result classpath = JavaDependencyClasspath.resolve(archives);
+                Set<String> roots = unresolved.stream()
+                        .map(UnresolvedParent::targetName)
+                        .filter(name -> classpath.ownerOfType(name) != null)
                         .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
-
-                for (String sourceSet : sourceSets) {
-                    List<Path> archives = dependencyInputs.pathsForSourceSet(sourceSet);
-                    if (archives.isEmpty()) {
-                        continue;
-                    }
-                    JavaDependencyClasspath.Result classpath = JavaDependencyClasspath.resolve(archives);
-                    Set<String> roots = moduleUnresolved.stream()
-                            .filter(item -> sourceSet.equals(
-                                    sourceSetByUnresolvedKey.get(unresolvedKey(item))))
-                            .map(UnresolvedParent::targetName)
-                            .filter(name -> classpath.ownerOfType(name) != null)
-                            .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
-                    if (roots.isEmpty()) {
-                        classpath.verifyUnchanged();
-                        continue;
-                    }
-
-                    JavaDependencySymbols.Result observedSymbols = JavaDependencySymbols.resolve(classpath, roots);
-                    Set<String> resolvedRoots = new TreeSet<>(roots);
-                    resolvedRoots.removeAll(observedSymbols.unresolvedRootTypes());
-                    resolvedRootsBySourceSet.put(sourceSet, Set.copyOf(resolvedRoots));
-                    unresolvedSymbolRoots.addAll(observedSymbols.unresolvedRootTypes());
-                    for (JavaDependencySymbols.TypeSymbol type : observedSymbols.types()) {
-                        JavaDependencySymbols.TypeSymbol previous =
-                                symbolsByQualifiedName.putIfAbsent(type.qualifiedName(), type);
-                        if (previous != null && !previous.equals(type)) {
-                            supportAmbiguous = true;
-                            diagnostics.add(new ObservationDiagnostic(
-                                    DiagnosticKind.EVIDENCE_INCOMPLETE,
-                                    firstSourcePath(base, module),
-                                    0,
-                                    "dependency type resolves to conflicting bytecode within module "
-                                            + module + ": " + type.qualifiedName()));
-                        }
-                    }
-                    for (String missing : observedSymbols.unresolvedRootTypes()) {
-                        diagnostics.add(new ObservationDiagnostic(
-                                DiagnosticKind.EVIDENCE_INCOMPLETE,
-                                firstSourcePath(base, module),
-                                0,
-                                "dependency bytecode root could not be materialized for source set "
-                                        + sourceSet + ": " + missing));
-                    }
+                if (roots.isEmpty()) {
                     classpath.verifyUnchanged();
-                }
-
-                if (supportAmbiguous) {
-                    dependencyEvidenceComplete = false;
-                    continue;
-                }
-                dependencyEvidenceComplete &= unresolvedSymbolRoots.isEmpty();
-                if (symbolsByQualifiedName.isEmpty()) {
                     continue;
                 }
 
-                JavaDependencySymbols.Result mergedSymbols = new JavaDependencySymbols.Result(
-                        List.copyOf(symbolsByQualifiedName.values()), Set.copyOf(unresolvedSymbolRoots));
-                JavaDependencyObservation.Result support = JavaDependencyObservation.materialize(mergedSymbols);
-                for (ClassifierObservation classifier : support.classifiers()) {
-                    ClassifierObservation previous = supportClassifiersById.putIfAbsent(classifier.id(), classifier);
-                    if (previous != null && !previous.equals(classifier)) {
-                        throw new ObservationException(
-                                "dependency support classifier identity collision: " + classifier.id());
-                    }
+                JavaDependencySymbols.Result symbols = JavaDependencySymbols.resolve(classpath, roots);
+                for (String missing : symbols.unresolvedRootTypes()) {
+                    diagnostics.add(incompleteDiagnostic(
+                            base,
+                            sourceSet,
+                            "dependency bytecode root could not be materialized for source set "
+                                    + sourceSet + ": " + missing));
                 }
-                for (MemberObservation member : support.members()) {
-                    MemberObservation previous = supportMembersByKey.putIfAbsent(member.technicalKey(), member);
-                    if (previous != null && !previous.equals(member)) {
-                        throw new ObservationException(
-                                "dependency support member identity collision: " + member.technicalKey());
-                    }
-                }
+                dependencyEvidenceComplete &= symbols.unresolvedRootTypes().isEmpty();
+                JavaDependencyObservation.Result support = JavaDependencyObservation.materialize(symbols);
+                mergeSupport(
+                        support, supportClassifiersById, supportMembersByKey);
 
-                for (UnresolvedParent unresolved : moduleUnresolved) {
-                    String sourceSet = sourceSetByUnresolvedKey.get(unresolvedKey(unresolved));
-                    if (!resolvedRootsBySourceSet.getOrDefault(sourceSet, Set.of())
-                            .contains(unresolved.targetName())) {
+                Set<String> resolvedRoots = new TreeSet<>(roots);
+                resolvedRoots.removeAll(symbols.unresolvedRootTypes());
+                for (UnresolvedParent item : unresolved) {
+                    if (!resolvedRoots.contains(item.targetName())) {
                         continue;
                     }
-                    String supportId = support.classifierId(unresolved.targetName());
+                    String supportId = support.classifierId(item.targetName());
                     if (supportId != null) {
-                        supportParentByUnresolvedKey.put(unresolvedKey(unresolved), supportId);
+                        supportParentByUnresolvedKey.put(unresolvedKey(item), supportId);
                     }
                 }
 
-                Set<String> modulePaths = moduleFiles.stream()
+                Set<String> scopedPaths = sourceSetFiles.stream()
                         .map(path -> relativePath(root, path))
                         .collect(java.util.stream.Collectors.toSet());
-                List<ClassifierObservation> moduleClassifiers = base.classifiers().stream()
-                        .filter(item -> modulePaths.contains(item.sourcePath())).toList();
-                List<MemberObservation> moduleMembers = base.members().stream()
-                        .filter(item -> modulePaths.contains(item.sourcePath())).toList();
+                List<ClassifierObservation> scopedClassifiers = base.classifiers().stream()
+                        .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
+                List<MemberObservation> scopedMembers = base.members().stream()
+                        .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
 
-                JavacDependencyEvidenceObserver.Result observed =
-                        new JavacDependencyEvidenceObserver().observe(
+                String production = JavaSourceSets.productionSibling(sourceSet);
+                List<ClassifierObservation> productionClassifiers = production == null
+                        ? List.of()
+                        : base.classifiers().stream()
+                                .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(production))
+                                .toList();
+                Set<String> productionPaths = productionClassifiers.stream()
+                        .map(ClassifierObservation::sourcePath)
+                        .collect(java.util.stream.Collectors.toSet());
+                List<MemberObservation> productionMembers = base.members().stream()
+                        .filter(item -> productionPaths.contains(item.sourcePath())).toList();
+
+                JavacDependencyEvidenceObserver.Result observed;
+                try (JavacSourceSetContext context = JavacSourceSetContext.prepare(
+                        root, sourceSet, filesBySourceSet, dependencyInputs)) {
+                    if (!context.complete()) {
+                        observed = JavacDependencyEvidenceObserver.Result.incomplete(context.diagnostics());
+                    } else {
+                        observed = JavacDependencyEvidenceObserver.observeSourceSet(
                                 root,
-                                moduleFiles,
-                                moduleClassifiers,
-                                moduleMembers,
-                                support,
-                                dependencyInputs);
+                                sourceSetFiles,
+                                scopedClassifiers,
+                                scopedMembers,
+                                productionClassifiers,
+                                productionMembers,
+                                support.classifiers(),
+                                support.members(),
+                                context.classpath());
+                    }
+                }
                 dependencyEvidenceComplete &= observed.complete();
                 diagnostics.addAll(observed.diagnostics());
                 inheritedByClassifier.putAll(observed.inheritedByClassifier());
                 overridesByMember.putAll(observed.overriddenMemberKeysByMember());
                 returnTypesByMember.putAll(observed.returnTypesByMember());
+                classpath.verifyUnchanged();
             }
 
             Map<String, List<String>> supportParentsBySourceClassifier = new HashMap<>();
@@ -234,48 +204,33 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 }
             }
 
-            List<ClassifierObservation> sourceClassifiers = base.classifiers().stream().map(classifier -> {
-                LinkedHashSet<String> parents = new LinkedHashSet<>(classifier.parentIds());
-                parents.addAll(supportParentsBySourceClassifier.getOrDefault(classifier.id(), List.of()));
-                List<String> inherited = inheritedByClassifier.containsKey(classifier.id())
-                        ? inheritedByClassifier.get(classifier.id())
-                        : classifier.inheritedMemberKeys();
-                return new ClassifierObservation(
-                        classifier.id(),
-                        classifier.qualifiedName(),
-                        classifier.packageName(),
-                        classifier.kind(),
-                        classifier.sourcePath(),
-                        classifier.startLine(),
-                        classifier.endLine(),
-                        parents.stream().sorted().toList(),
-                        classifier.declaredMemberKeys(),
-                        inherited,
-                        classifier.abstraction());
-            }).toList();
+            List<ClassifierObservation> sourceClassifiers = base.classifiers().stream()
+                    .map(classifier -> {
+                        LinkedHashSet<String> parents = new LinkedHashSet<>(classifier.parentIds());
+                        parents.addAll(supportParentsBySourceClassifier
+                                .getOrDefault(classifier.id(), List.of()));
+                        List<String> inherited = inheritedByClassifier.containsKey(classifier.id())
+                                ? inheritedByClassifier.get(classifier.id())
+                                : classifier.inheritedMemberKeys();
+                        return new ClassifierObservation(
+                                classifier.id(), classifier.qualifiedName(), classifier.packageName(),
+                                classifier.kind(), classifier.sourcePath(), classifier.startLine(),
+                                classifier.endLine(), parents.stream().sorted().toList(),
+                                classifier.declaredMemberKeys(), inherited, classifier.abstraction());
+                    }).toList();
 
             List<MemberObservation> sourceMembers = base.members().stream().map(member -> {
                 if (member.kind() != MemberKind.METHOD) {
                     return member;
                 }
-                String returnType = returnTypesByMember.getOrDefault(member.technicalKey(), member.returnType());
-                List<String> overridden = overridesByMember.getOrDefault(
-                        member.technicalKey(), member.overriddenMemberKeys());
                 return new MemberObservation(
-                        member.technicalKey(),
-                        member.observedIdentifier(),
-                        member.kind(),
-                        member.inheritability(),
-                        member.visibility(),
-                        member.memberName(),
-                        member.sourcePath(),
-                        member.startLine(),
-                        member.endLine(),
-                        member.parameterTypes(),
-                        member.abstraction(),
-                        member.scope(),
-                        returnType,
-                        overridden);
+                        member.technicalKey(), member.observedIdentifier(), member.kind(),
+                        member.inheritability(), member.visibility(), member.memberName(),
+                        member.sourcePath(), member.startLine(), member.endLine(),
+                        member.parameterTypes(), member.abstraction(), member.scope(),
+                        returnTypesByMember.getOrDefault(member.technicalKey(), member.returnType()),
+                        overridesByMember.getOrDefault(
+                                member.technicalKey(), member.overriddenMemberKeys()));
             }).toList();
 
             List<ClassifierObservation> classifiers = new ArrayList<>(sourceClassifiers);
@@ -289,10 +244,12 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             if (boundaryComplete) {
                 evidence.add(EvidenceKind.HIERARCHY);
                 evidence.add(EvidenceKind.INHERITED_MEMBERS);
-                if (!overridesByMember.isEmpty() || base.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS)) {
+                if (!overridesByMember.isEmpty()
+                        || base.completeEvidence().contains(EvidenceKind.OVERRIDE_RELATIONS)) {
                     evidence.add(EvidenceKind.OVERRIDE_RELATIONS);
                 }
-                if (!returnTypesByMember.isEmpty() || base.completeEvidence().contains(EvidenceKind.METHOD_RETURN_TYPES)) {
+                if (!returnTypesByMember.isEmpty()
+                        || base.completeEvidence().contains(EvidenceKind.METHOD_RETURN_TYPES)) {
                     evidence.add(EvidenceKind.METHOD_RETURN_TYPES);
                 }
             } else {
@@ -305,33 +262,59 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             JavaDependencyClasspath.Result allDependencies = JavaDependencyClasspath.resolve(dependencyInputs);
             allDependencies.verifyUnchanged();
             return new Observation(
-                    "13",
-                    ADAPTER_ID,
-                    ADAPTER_VERSION,
-                    base.externalParents(),
-                    evidence,
-                    mergeUnits(base.units(), allDependencies.units()),
-                    classifiers,
-                    members,
-                    base.methodBodies(),
-                    base.implementationBindings(),
-                    remainingUnresolved,
+                    "13", ADAPTER_ID, ADAPTER_VERSION, base.externalParents(), evidence,
+                    mergeUnits(base.units(), allDependencies.units()), classifiers, members,
+                    base.methodBodies(), base.implementationBindings(), remainingUnresolved,
                     mergeDiagnostics(base.diagnostics(), diagnostics));
         } catch (ObservationException exception) {
             throw exception;
         } catch (IOException | RuntimeException failure) {
             throw new ObservationException(
-                    "Java dependency-aware observation failed: " + failure.getMessage(), failure);
+                    "Java source-set dependency observation failed: " + failure.getMessage(), failure);
         }
     }
 
-    private static Map<String, List<Path>> filesByModule(Path root, List<Path> files) {
+    private static void mergeSupport(
+            JavaDependencyObservation.Result support,
+            Map<String, ClassifierObservation> classifiers,
+            Map<String, MemberObservation> members) throws ObservationException {
+        for (ClassifierObservation classifier : support.classifiers()) {
+            ClassifierObservation previous = classifiers.putIfAbsent(classifier.id(), classifier);
+            if (previous != null && !previous.equals(classifier)) {
+                throw new ObservationException(
+                        "dependency support classifier identity collision: " + classifier.id());
+            }
+        }
+        for (MemberObservation member : support.members()) {
+            MemberObservation previous = members.putIfAbsent(member.technicalKey(), member);
+            if (previous != null && !previous.equals(member)) {
+                throw new ObservationException(
+                        "dependency support member identity collision: " + member.technicalKey());
+            }
+        }
+    }
+
+    private static Map<String, List<Path>> filesBySourceSet(Path root, List<Path> files) {
         Map<String, List<Path>> result = new TreeMap<>();
         for (Path file : files) {
-            String sourceSet = JavaSourceSets.id(relativePath(root, file));
-            result.computeIfAbsent(JavaSourceSets.moduleKey(sourceSet), ignored -> new ArrayList<>()).add(file);
+            result.computeIfAbsent(
+                    JavaSourceSets.id(relativePath(root, file)), ignored -> new ArrayList<>()).add(file);
         }
         return result;
+    }
+
+    private static ObservationDiagnostic incompleteDiagnostic(
+            Observation base,
+            String sourceSet,
+            String message) {
+        String source = base.classifiers().stream()
+                .filter(item -> JavaSourceSets.id(item.sourcePath()).equals(sourceSet))
+                .map(ClassifierObservation::sourcePath)
+                .sorted().findFirst()
+                .orElseGet(() -> base.units().stream()
+                        .filter(unit -> unit.language() == metamodel.conformance.pipeline.model.Language.JAVA)
+                        .map(SourceUnit::path).sorted().findFirst().orElse("<unknown>.java"));
+        return new ObservationDiagnostic(DiagnosticKind.EVIDENCE_INCOMPLETE, source, 0, message);
     }
 
     private static String unresolvedKey(UnresolvedParent unresolved) {
@@ -339,18 +322,9 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 + unresolved.sourcePath() + "\0" + unresolved.line();
     }
 
-    private static String firstSourcePath(Observation base, String module) {
-        return base.classifiers().stream()
-                .filter(item -> JavaSourceSets.moduleKey(JavaSourceSets.id(item.sourcePath())).equals(module))
-                .map(ClassifierObservation::sourcePath)
-                .sorted()
-                .findFirst()
-                .orElseGet(() -> base.units().stream()
-                        .filter(unit -> unit.language() == metamodel.conformance.pipeline.model.Language.JAVA)
-                        .map(unit -> unit.path()).sorted().findFirst().orElse("<unknown>.java"));
-    }
-
-    private static List<SourceUnit> mergeUnits(List<SourceUnit> base, List<SourceUnit> dependencies) {
+    private static List<SourceUnit> mergeUnits(
+            List<SourceUnit> base,
+            List<SourceUnit> dependencies) {
         Map<String, SourceUnit> byPath = new TreeMap<>();
         for (SourceUnit unit : base) {
             byPath.put(unit.path(), unit);
@@ -377,16 +351,18 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 .toList();
     }
 
-    private static List<Path> discoverJavaFiles(Path root) throws IOException, ObservationException {
+    private static List<Path> discoverJavaFiles(Path root)
+            throws IOException, ObservationException {
         List<Path> files;
         try (Stream<Path> paths = Files.walk(root)) {
             files = paths.filter(path -> path.getFileName().toString().endsWith(".java"))
-                    .sorted(Comparator.comparing(path -> relativePath(root, path)))
-                    .toList();
+                    .sorted(Comparator.comparing(path -> relativePath(root, path))).toList();
         }
         for (Path file : files) {
-            if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-                throw new ObservationException("non-regular or symbolic-link Java source rejected: " + file);
+            if (Files.isSymbolicLink(file)
+                    || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                throw new ObservationException(
+                        "non-regular or symbolic-link Java source rejected: " + file);
             }
             Path real = file.toRealPath(LinkOption.NOFOLLOW_LINKS);
             if (!real.startsWith(root)) {
@@ -397,6 +373,7 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
     }
 
     private static String relativePath(Path root, Path path) {
-        return root.relativize(path.toAbsolutePath().normalize()).toString().replace('\\', '/');
+        return root.relativize(path.toAbsolutePath().normalize())
+                .toString().replace('\\', '/');
     }
 }
