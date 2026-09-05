@@ -25,12 +25,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /** Adds dependency-bytecode support evidence without changing source-observation semantics. */
 public final class JavaDependencyAwareSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = JavaImplementationSourceObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.5.1";
+    public static final String ADAPTER_VERSION = "1.6.0";
 
     private final JavaDependencyInputs dependencyInputs;
     private final SourceObserver delegate;
@@ -63,15 +64,17 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             base.classifiers().forEach(classifier -> sourceById.put(classifier.id(), classifier));
 
             Map<String, List<UnresolvedParent>> unresolvedByModule = new TreeMap<>();
+            Map<String, String> sourceSetByUnresolvedKey = new HashMap<>();
             for (UnresolvedParent unresolved : base.unresolvedParents()) {
                 ClassifierObservation owner = sourceById.get(unresolved.ownerId());
                 if (owner == null) {
                     throw new ObservationException(
                             "unresolved parent references an unavailable source classifier: " + unresolved.ownerId());
                 }
+                String sourceSet = JavaSourceSets.id(owner.sourcePath());
+                sourceSetByUnresolvedKey.put(unresolvedKey(unresolved), sourceSet);
                 unresolvedByModule.computeIfAbsent(
-                        JavaSourceSets.moduleKey(JavaSourceSets.id(owner.sourcePath())),
-                        ignored -> new ArrayList<>()).add(unresolved);
+                        JavaSourceSets.moduleKey(sourceSet), ignored -> new ArrayList<>()).add(unresolved);
             }
 
             Map<String, String> supportParentByUnresolvedKey = new HashMap<>();
@@ -83,34 +86,91 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             List<ObservationDiagnostic> diagnostics = new ArrayList<>();
             boolean dependencyEvidenceComplete = true;
 
-            Set<String> modules = new java.util.TreeSet<>();
+            Set<String> modules = new TreeSet<>();
             modules.addAll(filesByModule.keySet());
             modules.addAll(unresolvedByModule.keySet());
             for (String module : modules) {
                 List<UnresolvedParent> moduleUnresolved = unresolvedByModule.getOrDefault(module, List.of());
-                List<Path> moduleArchives = dependencyInputs.pathsForModule(module);
-                if (moduleArchives.isEmpty() || moduleUnresolved.isEmpty()) {
+                if (moduleUnresolved.isEmpty()) {
+                    continue;
+                }
+                List<Path> moduleFiles = filesByModule.getOrDefault(module, List.of());
+                if (moduleFiles.isEmpty()) {
+                    dependencyEvidenceComplete = false;
+                    diagnostics.add(new ObservationDiagnostic(
+                            DiagnosticKind.EVIDENCE_INCOMPLETE,
+                            firstSourcePath(base, module),
+                            0,
+                            "dependency evidence has no Java source files for module " + module));
                     continue;
                 }
 
-                JavaDependencyClasspath.Result moduleClasspath = JavaDependencyClasspath.resolve(moduleArchives);
-                Set<String> roots = moduleUnresolved.stream()
-                        .map(UnresolvedParent::targetName)
-                        .filter(name -> moduleClasspath.ownerOfType(name) != null)
-                        .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-                if (roots.isEmpty()) {
+                Map<String, JavaDependencySymbols.TypeSymbol> symbolsByQualifiedName = new TreeMap<>();
+                Map<String, Set<String>> resolvedRootsBySourceSet = new HashMap<>();
+                Set<String> unresolvedSymbolRoots = new TreeSet<>();
+                boolean supportAmbiguous = false;
+                Set<String> sourceSets = moduleUnresolved.stream()
+                        .map(item -> sourceSetByUnresolvedKey.get(unresolvedKey(item)))
+                        .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+
+                for (String sourceSet : sourceSets) {
+                    List<Path> archives = dependencyInputs.pathsForSourceSet(sourceSet);
+                    if (archives.isEmpty()) {
+                        continue;
+                    }
+                    JavaDependencyClasspath.Result classpath = JavaDependencyClasspath.resolve(archives);
+                    Set<String> roots = moduleUnresolved.stream()
+                            .filter(item -> sourceSet.equals(
+                                    sourceSetByUnresolvedKey.get(unresolvedKey(item))))
+                            .map(UnresolvedParent::targetName)
+                            .filter(name -> classpath.ownerOfType(name) != null)
+                            .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+                    if (roots.isEmpty()) {
+                        classpath.verifyUnchanged();
+                        continue;
+                    }
+
+                    JavaDependencySymbols.Result observedSymbols = JavaDependencySymbols.resolve(classpath, roots);
+                    Set<String> resolvedRoots = new TreeSet<>(roots);
+                    resolvedRoots.removeAll(observedSymbols.unresolvedRootTypes());
+                    resolvedRootsBySourceSet.put(sourceSet, Set.copyOf(resolvedRoots));
+                    unresolvedSymbolRoots.addAll(observedSymbols.unresolvedRootTypes());
+                    for (JavaDependencySymbols.TypeSymbol type : observedSymbols.types()) {
+                        JavaDependencySymbols.TypeSymbol previous =
+                                symbolsByQualifiedName.putIfAbsent(type.qualifiedName(), type);
+                        if (previous != null && !previous.equals(type)) {
+                            supportAmbiguous = true;
+                            diagnostics.add(new ObservationDiagnostic(
+                                    DiagnosticKind.EVIDENCE_INCOMPLETE,
+                                    firstSourcePath(base, module),
+                                    0,
+                                    "dependency type resolves to conflicting bytecode within module "
+                                            + module + ": " + type.qualifiedName()));
+                        }
+                    }
+                    for (String missing : observedSymbols.unresolvedRootTypes()) {
+                        diagnostics.add(new ObservationDiagnostic(
+                                DiagnosticKind.EVIDENCE_INCOMPLETE,
+                                firstSourcePath(base, module),
+                                0,
+                                "dependency bytecode root could not be materialized for source set "
+                                        + sourceSet + ": " + missing));
+                    }
+                    classpath.verifyUnchanged();
+                }
+
+                if (supportAmbiguous) {
+                    dependencyEvidenceComplete = false;
+                    continue;
+                }
+                dependencyEvidenceComplete &= unresolvedSymbolRoots.isEmpty();
+                if (symbolsByQualifiedName.isEmpty()) {
                     continue;
                 }
 
-                JavaDependencySymbols.Result symbols = JavaDependencySymbols.resolve(moduleClasspath, roots);
-                JavaDependencyObservation.Result support = JavaDependencyObservation.materialize(symbols);
-                symbols.unresolvedRootTypes().forEach(name -> diagnostics.add(new ObservationDiagnostic(
-                        DiagnosticKind.EVIDENCE_INCOMPLETE,
-                        firstSourcePath(base, module),
-                        0,
-                        "dependency bytecode root could not be materialized in module " + module + ": " + name)));
-                dependencyEvidenceComplete &= symbols.unresolvedRootTypes().isEmpty();
-
+                JavaDependencySymbols.Result mergedSymbols = new JavaDependencySymbols.Result(
+                        List.copyOf(symbolsByQualifiedName.values()), Set.copyOf(unresolvedSymbolRoots));
+                JavaDependencyObservation.Result support = JavaDependencyObservation.materialize(mergedSymbols);
                 for (ClassifierObservation classifier : support.classifiers()) {
                     ClassifierObservation previous = supportClassifiersById.putIfAbsent(classifier.id(), classifier);
                     if (previous != null && !previous.equals(classifier)) {
@@ -127,22 +187,17 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 }
 
                 for (UnresolvedParent unresolved : moduleUnresolved) {
+                    String sourceSet = sourceSetByUnresolvedKey.get(unresolvedKey(unresolved));
+                    if (!resolvedRootsBySourceSet.getOrDefault(sourceSet, Set.of())
+                            .contains(unresolved.targetName())) {
+                        continue;
+                    }
                     String supportId = support.classifierId(unresolved.targetName());
                     if (supportId != null) {
                         supportParentByUnresolvedKey.put(unresolvedKey(unresolved), supportId);
                     }
                 }
 
-                List<Path> moduleFiles = filesByModule.getOrDefault(module, List.of());
-                if (moduleFiles.isEmpty()) {
-                    dependencyEvidenceComplete = false;
-                    diagnostics.add(new ObservationDiagnostic(
-                            DiagnosticKind.EVIDENCE_INCOMPLETE,
-                            firstSourcePath(base, module),
-                            0,
-                            "dependency evidence has no Java source files for module " + module));
-                    continue;
-                }
                 Set<String> modulePaths = moduleFiles.stream()
                         .map(path -> relativePath(root, path))
                         .collect(java.util.stream.Collectors.toSet());
@@ -158,13 +213,12 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                                 moduleClassifiers,
                                 moduleMembers,
                                 support,
-                                moduleClasspath.paths());
+                                dependencyInputs);
                 dependencyEvidenceComplete &= observed.complete();
                 diagnostics.addAll(observed.diagnostics());
                 inheritedByClassifier.putAll(observed.inheritedByClassifier());
                 overridesByMember.putAll(observed.overriddenMemberKeysByMember());
                 returnTypesByMember.putAll(observed.returnTypesByMember());
-                moduleClasspath.verifyUnchanged();
             }
 
             Map<String, List<String>> supportParentsBySourceClassifier = new HashMap<>();
