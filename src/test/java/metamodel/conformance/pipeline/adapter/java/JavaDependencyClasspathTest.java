@@ -12,6 +12,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,6 +36,25 @@ class JavaDependencyClasspathTest {
                 result.units().stream().map(unit -> unit.sha256()).sorted().toList());
         assertEquals(result.units().stream().map(unit -> unit.path()).sorted().toList(),
                 result.units().stream().map(unit -> unit.path()).toList());
+    }
+
+    @Test
+    void retainsModuleScopeAfterFingerprintingInsteadOfFlatteningSameNamedTypes() throws Exception {
+        Path moduleA = jar("module-a.jar", "shared/Type.class", new byte[]{1});
+        Path moduleB = jar("module-b.jar", "shared/Type.class", new byte[]{2});
+        Path manifest = temporary.resolve("dependencies.tsv");
+        Files.writeString(manifest,
+                "module-a\t" + moduleA + "\nmodule-b\t" + moduleB + "\n");
+        JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
+
+        JavaDependencyClasspath.Result result = JavaDependencyClasspath.resolve(inputs);
+
+        JavaDependencyInputs retained = assertInstanceOf(JavaDependencyInputs.class, result.paths());
+        assertTrue(retained.scoped());
+        assertEquals(moduleA.toRealPath(),
+                result.ownerOfType("module-a/src/main/java", "shared.Type").path());
+        assertEquals(moduleB.toRealPath(),
+                result.ownerOfType("module-b/src/test/java", "shared.Type").path());
     }
 
     @Test
