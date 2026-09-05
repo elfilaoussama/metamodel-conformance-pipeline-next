@@ -17,13 +17,10 @@ class MavenDependencyResolverScriptTest {
     Path temporary;
 
     @Test
-    void resolvesEachModuleThroughLockedDownContainerWithoutFlatteningClasspaths() throws Exception {
-        Path project = Files.createDirectories(temporary.resolve("project"));
-        Files.writeString(project.resolve("pom.xml"),
-                "<project><modelVersion>4.0.0</modelVersion></project>");
-        Path module = Files.createDirectories(project.resolve("module-a"));
-        Files.writeString(module.resolve("pom.xml"),
-                "<project><modelVersion>4.0.0</modelVersion></project>");
+    void resolvesEachJavaOwningModuleWithoutFlatteningClasspaths() throws Exception {
+        Path project = mavenModule(temporary.resolve("project"), "RootType");
+        Path module = mavenModule(project.resolve("module-a"), "ModuleType");
+        assertTrue(Files.exists(module.resolve("pom.xml")));
 
         Path bin = Files.createDirectories(temporary.resolve("bin"));
         Path arguments = temporary.resolve("docker-arguments.txt");
@@ -90,10 +87,48 @@ class MavenDependencyResolverScriptTest {
     }
 
     @Test
-    void requiresExplicitResolverConfigurationForMavenProjects() throws Exception {
+    void ignoresAggregatorPomWithoutOwnedJavaSources() throws Exception {
         Path project = Files.createDirectories(temporary.resolve("project"));
         Files.writeString(project.resolve("pom.xml"),
                 "<project><modelVersion>4.0.0</modelVersion></project>");
+        mavenModule(project.resolve("module-a"), "ModuleType");
+        Path bin = Files.createDirectories(temporary.resolve("bin"));
+        Path arguments = temporary.resolve("docker-arguments.txt");
+        Path fakeDocker = bin.resolve("docker");
+        Files.writeString(fakeDocker, """
+                #!/usr/bin/env bash
+                set -euo pipefail
+                printf '%%s\\n' "$*" >> '%s'
+                output_mount=''
+                output=''
+                for argument in "$@"; do
+                  case "$argument" in
+                    type=bind,src=*,dst=/workspace/out)
+                      output_mount="${argument#type=bind,src=}"
+                      output_mount="${output_mount%%,dst=/workspace/out}" ;;
+                    -Dmdep.outputFile=*) output="${argument#*=}" ;;
+                  esac
+                done
+                relative="${output#/workspace/out/}"
+                mkdir -p "$output_mount/$(dirname "$relative")" "$output_mount/repository"
+                printf x > "$output_mount/repository/only.jar"
+                printf '/workspace/out/repository/only.jar\\n' > "$output_mount/$relative"
+                """.formatted(arguments));
+        Files.setPosixFilePermissions(fakeDocker,
+                PosixFilePermissions.fromString("rwxr-xr-x"));
+        Path output = temporary.resolve("dependencies.tsv");
+
+        Process result = resolver(project, output, bin).start();
+        result.getInputStream().readAllBytes();
+        assertEquals(0, result.waitFor());
+        assertEquals(1, Files.readAllLines(arguments).size());
+        assertTrue(Files.readString(arguments).contains("/workspace/source/module-a/pom.xml"));
+        assertEquals("module-a", Files.readString(output).split("\\t", 2)[0]);
+    }
+
+    @Test
+    void requiresExplicitResolverConfigurationForMavenProjects() throws Exception {
+        Path project = mavenModule(temporary.resolve("project"), "Type");
         Path output = temporary.resolve("dependencies.tsv");
         ProcessBuilder process = new ProcessBuilder(
                 "bash", "scripts/resolve-maven-dependencies.sh",
@@ -108,9 +143,7 @@ class MavenDependencyResolverScriptTest {
 
     @Test
     void rejectsResolverOutputOutsideIsolatedMounts() throws Exception {
-        Path project = Files.createDirectories(temporary.resolve("project"));
-        Files.writeString(project.resolve("pom.xml"),
-                "<project><modelVersion>4.0.0</modelVersion></project>");
+        Path project = mavenModule(temporary.resolve("project"), "Type");
         Path bin = Files.createDirectories(temporary.resolve("bin"));
         Path fakeDocker = bin.resolve("docker");
         Files.writeString(fakeDocker, """
@@ -140,6 +173,16 @@ class MavenDependencyResolverScriptTest {
 
         assertEquals(70, result.waitFor());
         assertEquals(0, Files.size(output));
+    }
+
+    private Path mavenModule(Path directory, String typeName) throws Exception {
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve("pom.xml"),
+                "<project><modelVersion>4.0.0</modelVersion></project>");
+        Path source = Files.createDirectories(directory.resolve("src/main/java/example"));
+        Files.writeString(source.resolve(typeName + ".java"),
+                "package example; public class " + typeName + " {}\n");
+        return directory;
     }
 
     private ProcessBuilder resolver(Path project, Path output, Path bin) {
