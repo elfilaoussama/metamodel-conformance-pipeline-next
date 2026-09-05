@@ -28,6 +28,12 @@ for report in "${reports[@]}"; do
   repository=$(jq -r '.repository' "$report")
   outcome=$(jq -r '.toolOutcome' "$report")
   verification_exit=$(jq -r '.verificationExit' "$report")
+  dependency_resolution_exit=$(jq -r '.dependencyResolutionExit // 99' "$report")
+  if [[ "$dependency_resolution_exit" != 0 ]]; then
+    printf '%s: dependency resolution failed with exit=%s\n' \
+      "$repository" "$dependency_resolution_exit" >&2
+    failures=$((failures + 1))
+  fi
   if [[ "$outcome" != ANALYZED || "$verification_exit" != 0 ]]; then
     printf '%s: expected ANALYZED/replayable capsule, got %s verificationExit=%s\n' \
       "$repository" "$outcome" "$verification_exit" >&2
