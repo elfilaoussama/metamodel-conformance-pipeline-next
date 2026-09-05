@@ -140,11 +140,12 @@ public final class PipelineCli {
                   analyze --source <dir> --output <dir> [--language <java|python|cpp>]
                           [--external-parent <qualified-name>]...
                           [--dependency-jar <path>]...
-                          [--dependency-manifest <module-to-jar.tsv>]
+                          [--dependency-manifest <source-set-to-jar.tsv>]
                   verify-capsule --capsule <verification-capsule.json>
 
-                Java dependency inputs may be global JARs or one module-scoped manifest, but not both.
-                Manifest rows are: canonical-module-relative-path<TAB>absolute-or-resolved-jar-path.
+                Java dependency inputs may be global JARs or one source-set-scoped manifest, but not both.
+                Manifest rows are: canonical-source-set-relative-path<TAB>absolute-or-resolved-jar-path.
+                A source-set key identifies src/<name>/java, optionally below a module-relative prefix.
                 Java remains the default source language. Python observes lexical class hierarchy
                 and source declaration ownership conservatively. C++ uses Clang under a fixed
                 C++17 source-only profile and currently claims only class/struct direct hierarchy.
