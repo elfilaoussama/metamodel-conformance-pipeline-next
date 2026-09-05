@@ -19,13 +19,25 @@ final class JavaSourceSets {
         return ROOT;
     }
 
+    static boolean isConventional(String sourceSet) {
+        if (sourceSet == null || ROOT.equals(sourceSet)) {
+            return false;
+        }
+        String[] segments = sourceSet.split("/");
+        return segments.length >= 3
+                && "src".equals(segments[segments.length - 3])
+                && !segments[segments.length - 2].isBlank()
+                && "java".equals(segments[segments.length - 1])
+                && id(sourceSet).equals(sourceSet);
+    }
+
     static String productionSibling(String sourceSet) {
-        if (ROOT.equals(sourceSet)) {
+        if (!isConventional(sourceSet)) {
             return null;
         }
         String[] segments = sourceSet.split("/");
         int sourceIndex = segments.length - 3;
-        if (sourceIndex < 0 || "main".equals(segments[sourceIndex + 1])) {
+        if ("main".equals(segments[sourceIndex + 1])) {
             return null;
         }
         segments[sourceIndex + 1] = "main";
@@ -38,7 +50,7 @@ final class JavaSourceSets {
     }
 
     static String moduleKey(String sourceSet) {
-        if (sourceSet == null || ROOT.equals(sourceSet) || sourceSet.startsWith("src/")) {
+        if (!isConventional(sourceSet) || sourceSet.startsWith("src/")) {
             return ".";
         }
         int marker = sourceSet.lastIndexOf("/src/");
