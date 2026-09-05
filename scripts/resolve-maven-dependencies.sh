@@ -16,10 +16,22 @@ source_root="$(cd "${source_root}" && pwd -P)"
 mkdir -p "$(dirname "${output_file}")"
 : > "${output_file}"
 
-mapfile -d '' poms < <(
+mapfile -d '' discovered_poms < <(
   find "${source_root}" -type f -name pom.xml \
     -not -path '*/.git/*' -not -path '*/target/*' -print0 | sort -z
 )
+
+poms=()
+for pom in "${discovered_poms[@]}"; do
+  module_dir="$(dirname "${pom}")"
+  if [[ ! -d "${module_dir}/src" ]]; then
+    continue
+  fi
+  if find "${module_dir}/src" -type f -name '*.java' \
+      -path "${module_dir}/src/*/java/*" -print -quit | grep -q .; then
+    poms+=("${pom}")
+  fi
+done
 if [[ ${#poms[@]} -eq 0 ]]; then
   exit 0
 fi
