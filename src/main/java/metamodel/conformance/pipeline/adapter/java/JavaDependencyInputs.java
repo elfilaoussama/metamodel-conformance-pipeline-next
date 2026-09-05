@@ -16,14 +16,18 @@ public final class JavaDependencyInputs {
     private final Map<String, List<Path>> archivesByModule;
 
     private JavaDependencyInputs(List<Path> globalArchives, Map<String, List<Path>> archivesByModule) {
-        this.globalArchives = List.copyOf(globalArchives);
+        this.globalArchives = canonicalPaths(globalArchives);
         LinkedHashMap<String, List<Path>> scoped = new LinkedHashMap<>();
         archivesByModule.entrySet().stream().sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> scoped.put(entry.getKey(), List.copyOf(entry.getValue())));
+                .forEach(entry -> scoped.put(entry.getKey(), canonicalPaths(entry.getValue())));
         this.archivesByModule = Map.copyOf(scoped);
         if (!this.globalArchives.isEmpty() && !this.archivesByModule.isEmpty()) {
             throw new IllegalArgumentException("global and module-scoped dependency inputs cannot be mixed");
         }
+    }
+
+    public static JavaDependencyInputs none() {
+        return new JavaDependencyInputs(List.of(), Map.of());
     }
 
     public static JavaDependencyInputs global(List<Path> archives) {
@@ -50,20 +54,17 @@ public final class JavaDependencyInputs {
             Path archive = Path.of(fields[1]);
             byModule.computeIfAbsent(module, ignored -> new ArrayList<>()).add(archive);
         }
-        LinkedHashMap<String, List<Path>> canonical = new LinkedHashMap<>();
-        byModule.forEach((module, archives) -> canonical.put(
-                module, new ArrayList<>(new LinkedHashSet<>(archives))));
-        return new JavaDependencyInputs(List.of(), canonical);
+        return new JavaDependencyInputs(List.of(), byModule);
     }
 
-    List<Path> pathsForSourceSet(String sourceSet) {
+    public List<Path> pathsForSourceSet(String sourceSet) {
         if (!globalArchives.isEmpty() || archivesByModule.isEmpty()) {
             return globalArchives;
         }
         return archivesByModule.getOrDefault(JavaSourceSets.moduleKey(sourceSet), List.of());
     }
 
-    List<Path> allPaths() {
+    public List<Path> allPaths() {
         if (!globalArchives.isEmpty()) {
             return globalArchives;
         }
@@ -73,8 +74,29 @@ public final class JavaDependencyInputs {
         return List.copyOf(result);
     }
 
-    boolean scoped() {
+    public boolean scoped() {
         return !archivesByModule.isEmpty();
+    }
+
+    public boolean isEmpty() {
+        return globalArchives.isEmpty() && archivesByModule.values().stream().allMatch(List::isEmpty);
+    }
+
+    public Set<String> moduleKeys() {
+        return archivesByModule.keySet();
+    }
+
+    private static List<Path> canonicalPaths(List<Path> paths) {
+        LinkedHashSet<Path> canonical = new LinkedHashSet<>();
+        if (paths != null) {
+            for (Path path : paths) {
+                if (path == null) {
+                    throw new IllegalArgumentException("dependency archive path must not be null");
+                }
+                canonical.add(path.toAbsolutePath().normalize());
+            }
+        }
+        return List.copyOf(canonical);
     }
 
     private static String canonicalModuleKey(String value) throws IOException {
