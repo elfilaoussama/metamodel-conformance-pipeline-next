@@ -1,7 +1,8 @@
 package metamodel.conformance.pipeline.adapter;
 
 import metamodel.conformance.pipeline.adapter.cpp.ClangCppObserver;
-import metamodel.conformance.pipeline.adapter.java.JavaImplementationSourceObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaDependencyAwareSourceObserver;
+import metamodel.conformance.pipeline.adapter.java.JavaDependencyInputs;
 import metamodel.conformance.pipeline.adapter.python.PythonAstObserver;
 import metamodel.conformance.pipeline.model.Language;
 
@@ -28,10 +29,15 @@ public final class SourceObserverFactory {
     }
 
     public static SourceObserver create(Language language, List<Path> dependencyArchives) {
+        return create(language, JavaDependencyInputs.global(dependencyArchives));
+    }
+
+    public static SourceObserver create(Language language, JavaDependencyInputs dependencyInputs) {
         Objects.requireNonNull(language, "language");
-        List<Path> dependencies = dependencyArchives == null ? List.of() : List.copyOf(dependencyArchives);
+        JavaDependencyInputs dependencies = dependencyInputs == null
+                ? JavaDependencyInputs.none() : dependencyInputs;
         return switch (language) {
-            case JAVA -> new JavaImplementationSourceObserver(dependencies);
+            case JAVA -> new JavaDependencyAwareSourceObserver(dependencies);
             case PYTHON -> {
                 rejectJavaDependencies(dependencies, "Python");
                 yield new Schema12SourceObserver(new PythonAstObserver());
@@ -45,9 +51,9 @@ public final class SourceObserverFactory {
         };
     }
 
-    private static void rejectJavaDependencies(List<Path> dependencies, String language) {
+    private static void rejectJavaDependencies(JavaDependencyInputs dependencies, String language) {
         if (!dependencies.isEmpty()) {
-            throw new IllegalArgumentException("--dependency-jar is not supported for " + language + " sources");
+            throw new IllegalArgumentException("Java dependency inputs are not supported for " + language + " sources");
         }
     }
 }

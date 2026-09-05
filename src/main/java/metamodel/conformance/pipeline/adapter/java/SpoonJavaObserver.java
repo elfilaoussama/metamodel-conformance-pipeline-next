@@ -223,13 +223,13 @@ public final class SpoonJavaObserver implements SourceObserver {
 
     private static BuildResult buildTypes(Path root, List<Path> files) {
         try {
-            return new BuildResult(modelTypes(buildModel(files)), List.of());
+            return new BuildResult(modelTypes(buildModel(root, files)), List.of());
         } catch (SpoonException failure) {
             List<CtType<?>> isolated = new ArrayList<>();
             List<ObservationDiagnostic> diagnostics = new ArrayList<>();
             for (Path file : files) {
                 try {
-                    isolated.addAll(modelTypes(buildModel(List.of(file))));
+                    isolated.addAll(modelTypes(buildModel(root, List.of(file))));
                 } catch (SpoonException isolatedFailure) {
                     diagnostics.add(parseDiagnostic(root, file, isolatedFailure));
                 }
@@ -272,10 +272,16 @@ public final class SpoonJavaObserver implements SourceObserver {
                 text);
     }
 
-    private static CtModel buildModel(List<Path> files) {
+    private static CtModel buildModel(Path root, List<Path> files) {
+        int complianceLevel = files.stream()
+                .map(path -> JavaSourceSets.id(relativePath(root, path)))
+                .distinct()
+                .mapToInt(sourceSet -> JavaCompilerProfile.discover(root, sourceSet).release())
+                .max()
+                .orElseGet(() -> JavaCompilerProfile.discover(root).release());
         Launcher launcher = new Launcher();
         launcher.getEnvironment().setNoClasspath(true);
-        launcher.getEnvironment().setComplianceLevel(17);
+        launcher.getEnvironment().setComplianceLevel(complianceLevel);
         launcher.getEnvironment().setCommentEnabled(false);
         files.forEach(file -> launcher.addInputResource(file.toString()));
         return launcher.buildModel();

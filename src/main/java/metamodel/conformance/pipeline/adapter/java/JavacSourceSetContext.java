@@ -18,18 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Reconstructs the conventional javac compilation context for one source set without
- * merging source sets into a single source namespace.
- *
- * <p>Auxiliary sets such as {@code src/test/java} may depend on their production sibling,
- * but production and auxiliary sources can legitimately contain the same qualified name.
- * Compiling the source files together would therefore destroy the path/source-set identity
- * preserved by the canonical observation. Instead, this helper compiles the production
- * sibling to an isolated temporary class directory and places only those binaries on the
- * auxiliary set's classpath. Local auxiliary sources consequently retain normal javac
- * source-over-classpath precedence.</p>
- */
+/** Reconstructs one javac source-set context without merging module dependency classpaths. */
 final class JavacSourceSetContext implements AutoCloseable {
     private final boolean complete;
     private final String productionSourceSet;
@@ -55,8 +44,17 @@ final class JavacSourceSetContext implements AutoCloseable {
             String sourceSet,
             Map<String, List<Path>> filesBySourceSet,
             List<Path> dependencyArchives) throws IOException {
-        List<Path> dependencies = dependencyArchives == null
-                ? List.of() : List.copyOf(dependencyArchives);
+        return prepare(root, sourceSet, filesBySourceSet, JavaDependencyInputs.global(dependencyArchives));
+    }
+
+    static JavacSourceSetContext prepare(
+            Path root,
+            String sourceSet,
+            Map<String, List<Path>> filesBySourceSet,
+            JavaDependencyInputs dependencyInputs) throws IOException {
+        JavaDependencyInputs inputs = dependencyInputs == null
+                ? JavaDependencyInputs.none() : dependencyInputs;
+        List<Path> dependencies = inputs.pathsForSourceSet(sourceSet);
         String production = JavaSourceSets.productionSibling(sourceSet);
         List<Path> productionFiles = production == null
                 ? List.of() : filesBySourceSet.getOrDefault(production, List.of());
@@ -67,6 +65,7 @@ final class JavacSourceSetContext implements AutoCloseable {
         }
 
         if (!productionFiles.isEmpty()) {
+            int productionRelease = JavaCompilerProfile.discover(root, production).release();
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
             if (compiler == null) {
                 return new JavacSourceSetContext(
@@ -85,10 +84,7 @@ final class JavacSourceSetContext implements AutoCloseable {
                     collector, java.util.Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8)) {
                 Iterable<? extends JavaFileObject> sources =
                         fileManager.getJavaFileObjectsFromPaths(productionFiles);
-                String productionClasspath = dependencies.isEmpty()
-                        ? isolatedClasses.toString()
-                        : dependencies.stream().map(Path::toString)
-                                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+                String productionClasspath = classpath(dependencies, isolatedClasses);
                 Boolean success = compiler.getTask(
                         null,
                         fileManager,
@@ -96,7 +92,7 @@ final class JavacSourceSetContext implements AutoCloseable {
                         List.of(
                                 "-proc:none",
                                 "-implicit:none",
-                                "--release", "17",
+                                "--release", Integer.toString(productionRelease),
                                 "-classpath", productionClasspath,
                                 "-d", isolatedClasses.toString(),
                                 "-Xlint:none"),
@@ -120,7 +116,7 @@ final class JavacSourceSetContext implements AutoCloseable {
                     return new JavacSourceSetContext(
                             false,
                             production,
-                            classpath(dependencies, isolatedClasses),
+                            productionClasspath,
                             diagnostics,
                             isolatedClasses);
                 }
@@ -169,7 +165,7 @@ final class JavacSourceSetContext implements AutoCloseable {
             entries.add(isolatedClasses);
         }
         if (entries.isEmpty()) {
-            throw new IllegalStateException("javac source-set context has no isolated classpath");
+            return "";
         }
         return entries.stream().map(Path::toString)
                 .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));

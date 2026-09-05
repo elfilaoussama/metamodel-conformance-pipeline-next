@@ -4,6 +4,7 @@ import metamodel.conformance.pipeline.ConformancePipeline;
 import metamodel.conformance.pipeline.PipelineResult;
 import metamodel.conformance.pipeline.adapter.SourceObserver;
 import metamodel.conformance.pipeline.adapter.SourceObserverFactory;
+import metamodel.conformance.pipeline.adapter.java.JavaDependencyInputs;
 import metamodel.conformance.pipeline.capsule.CapsuleVerification;
 import metamodel.conformance.pipeline.capsule.CapsuleVerifier;
 import metamodel.conformance.pipeline.model.ClassifierObservation;
@@ -60,13 +61,21 @@ public final class PipelineCli {
         ParsedOptions options = ParsedOptions.parse(
                 args,
                 Set.of("source", "output"),
-                Set.of("language"),
+                Set.of("language", "dependency-manifest"),
                 Set.of("external-parent", "dependency-jar"));
         Path source = Path.of(options.one("source"));
         Path output = Path.of(options.one("output"));
         List<Path> dependencyArchives = options.many("dependency-jar").stream().map(Path::of).toList();
+        String dependencyManifest = options.optional("dependency-manifest");
+        if (dependencyManifest != null && !dependencyArchives.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "--dependency-manifest and --dependency-jar cannot be combined");
+        }
+        JavaDependencyInputs dependencyInputs = dependencyManifest == null
+                ? JavaDependencyInputs.global(dependencyArchives)
+                : JavaDependencyInputs.fromManifest(Path.of(dependencyManifest));
         Language language = SourceObserverFactory.parseLanguage(options.optional("language"));
-        SourceObserver observer = SourceObserverFactory.create(language, dependencyArchives);
+        SourceObserver observer = SourceObserverFactory.create(language, dependencyInputs);
         PipelineResult result = new ConformancePipeline(observer)
                 .analyze(source, output, new HashSet<>(options.many("external-parent")));
         result.decisions().forEach(decision ->
@@ -129,9 +138,13 @@ public final class PipelineCli {
         System.out.println("""
                 Usage:
                   analyze --source <dir> --output <dir> [--language <java|python|cpp>]
-                          [--external-parent <qualified-name>]... [--dependency-jar <path>]...
+                          [--external-parent <qualified-name>]...
+                          [--dependency-jar <path>]...
+                          [--dependency-manifest <module-to-jar.tsv>]
                   verify-capsule --capsule <verification-capsule.json>
 
+                Java dependency inputs may be global JARs or one module-scoped manifest, but not both.
+                Manifest rows are: canonical-module-relative-path<TAB>absolute-or-resolved-jar-path.
                 Java remains the default source language. Python observes lexical class hierarchy
                 and source declaration ownership conservatively. C++ uses Clang under a fixed
                 C++17 source-only profile and currently claims only class/struct direct hierarchy.

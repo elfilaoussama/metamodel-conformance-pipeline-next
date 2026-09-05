@@ -27,6 +27,9 @@ jobs:
   analyze:
     needs: build-tool
     runs-on: ubuntu-latest
+    env:
+      MAVEN_DEPENDENCY_PLUGIN_VERSION: "3.11.0"
+      MAVEN_RESOLVER_IMAGE: "maven:3.9.16-eclipse-temurin-17"
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -124,6 +127,9 @@ jobs:
             {
               repositories: length,
               javaFiles: (map(.javaFiles) | add),
+              dependencyJars: (map(.dependencyJars // 0) | add),
+              repositoriesWithResolvedDependencies: ([.[] | select((.dependencyResolutionExit // 99) == 0 and (.dependencyJars // 0) > 0)] | length),
+              dependencyResolutionFailures: ([.[] | select((.dependencyResolutionExit // 0) != 0)] | length),
               analyzedRepositories: ([.[] | select(.toolOutcome == "ANALYZED")] | length),
               totalWitnesses: ([.[] | .decisions[] | .witnessCount] | add // 0),
               diagnostics: (

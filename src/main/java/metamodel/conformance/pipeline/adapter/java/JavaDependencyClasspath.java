@@ -10,17 +10,25 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-/** Validates and fingerprints an explicitly supplied Java dependency boundary. */
+/** Validates and fingerprints a Java dependency boundary while preserving source-set scope. */
 final class JavaDependencyClasspath {
+    private static final String MULTI_RELEASE_PREFIX = "META-INF/versions/";
+
     private JavaDependencyClasspath() {
     }
 
     static Result resolve(List<Path> requested) throws ObservationException {
-        List<Entry> entries = new ArrayList<>();
-        for (Path candidate : requested == null ? List.<Path>of() : requested) {
+        JavaDependencyInputs inputs = JavaDependencyInputs.global(requested);
+        Map<String, Entry> entriesByUnitPath = new LinkedHashMap<>();
+        for (Path candidate : inputs.allPaths()) {
             try {
                 Path normalized = candidate.toAbsolutePath().normalize();
                 if (Files.isSymbolicLink(normalized)
@@ -31,14 +39,13 @@ final class JavaDependencyClasspath {
                     throw new ObservationException("dependency archive must be a .jar file: " + candidate);
                 }
                 Path real = normalized.toRealPath(LinkOption.NOFOLLOW_LINKS);
-                try (JarFile ignored = new JarFile(real.toFile(), true)) {
-                    // Opening with verification enabled rejects malformed ZIP/JAR containers.
-                }
+                Set<String> typeNames = inspectTypeNames(real);
                 String digest = Hashing.sha256(real);
-                entries.add(new Entry(real, new SourceUnit(
+                SourceUnit unit = new SourceUnit(
                         Language.JAVA_ARCHIVE,
                         "dependencies/" + digest + "/" + real.getFileName(),
-                        digest)));
+                        digest);
+                entriesByUnitPath.putIfAbsent(unit.path(), new Entry(real, unit, typeNames));
             } catch (ObservationException exception) {
                 throw exception;
             } catch (Exception exception) {
@@ -47,29 +54,100 @@ final class JavaDependencyClasspath {
                         exception);
             }
         }
-        List<Entry> canonical = entries.stream()
-                .sorted(Comparator.comparing(entry -> entry.unit().path()))
-                .distinct().toList();
-        if (canonical.stream().map(entry -> entry.unit().path()).distinct().count() != canonical.size()) {
-            throw new ObservationException("dependency archive identity collision");
+        return new Result(new ArrayList<>(entriesByUnitPath.values()), inputs);
+    }
+
+    private static Set<String> inspectTypeNames(Path archive) throws Exception {
+        Set<String> names = new TreeSet<>();
+        try (JarFile jar = new JarFile(archive.toFile(), true)) {
+            for (JarEntry entry : jar.stream().filter(item -> !item.isDirectory()).toList()) {
+                String logical = logicalClassEntry(entry.getName());
+                if (logical == null) {
+                    continue;
+                }
+                String binaryName = logical.substring(0, logical.length() - ".class".length())
+                        .replace('/', '.');
+                names.add(binaryName);
+                names.add(binaryName.replace('$', '.'));
+            }
         }
-        return new Result(canonical);
+        return Set.copyOf(names);
     }
 
-    record Entry(Path path, SourceUnit unit) {
+    private static String logicalClassEntry(String name) {
+        if (name == null || !name.endsWith(".class")) {
+            return null;
+        }
+        String logical = name;
+        if (logical.startsWith(MULTI_RELEASE_PREFIX)) {
+            String remainder = logical.substring(MULTI_RELEASE_PREFIX.length());
+            int separator = remainder.indexOf('/');
+            if (separator <= 0 || !remainder.substring(0, separator).chars().allMatch(Character::isDigit)) {
+                return null;
+            }
+            logical = remainder.substring(separator + 1);
+        }
+        if (logical.equals("module-info.class") || logical.endsWith("/module-info.class")
+                || logical.equals("package-info.class") || logical.endsWith("/package-info.class")) {
+            return null;
+        }
+        return logical;
     }
 
-    record Result(List<Entry> entries) {
+    record Entry(Path path, SourceUnit unit, Set<String> typeNames) {
+        Entry {
+            typeNames = Set.copyOf(typeNames);
+        }
+
+        boolean containsType(String qualifiedName) {
+            return qualifiedName != null && typeNames.contains(qualifiedName);
+        }
+    }
+
+    record Result(List<Entry> entries, JavaDependencyInputs inputs) {
         Result {
             entries = List.copyOf(entries);
+            inputs = inputs == null ? JavaDependencyInputs.none() : inputs;
+            if (entries.stream().map(entry -> entry.unit().path()).distinct().count() != entries.size()) {
+                throw new IllegalArgumentException("dependency archive identity collision");
+            }
         }
 
+        /**
+         * Compatibility view consumed by existing observers. If inputs are source-set scoped,
+         * the structured list object is deliberately retained so JavacSourceSetContext can
+         * select the owning module rather than flattening the union.
+         */
         List<Path> paths() {
+            return inputs;
+        }
+
+        List<Path> allPaths() {
             return entries.stream().map(Entry::path).toList();
         }
 
         List<SourceUnit> units() {
-            return entries.stream().map(Entry::unit).toList();
+            return entries.stream().map(Entry::unit)
+                    .sorted(Comparator.comparing(SourceUnit::path)).toList();
+        }
+
+        Entry ownerOfType(String qualifiedName) {
+            for (Entry entry : entries) {
+                if (entry.containsType(qualifiedName)) {
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        Entry ownerOfType(String sourceSet, String qualifiedName) {
+            Set<Path> allowed = Set.copyOf(inputs.pathsForSourceSet(sourceSet));
+            for (Entry entry : entries) {
+                if (allowed.contains(entry.path()) && entry.containsType(qualifiedName)) {
+                    return entry;
+                }
+            }
+            return null;
         }
 
         void verifyUnchanged() throws ObservationException {
