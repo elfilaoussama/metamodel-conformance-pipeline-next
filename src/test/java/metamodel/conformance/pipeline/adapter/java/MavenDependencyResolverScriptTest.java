@@ -54,7 +54,7 @@ class MavenDependencyResolverScriptTest {
                   "$output_mount/repository/$index"
                 printf x > "$output_mount/repository/shared/shared.jar"
                 printf y > "$output_mount/repository/$index/module.jar"
-                printf '/workspace/out/repository/%s/module.jar:/workspace/out/repository/shared/shared.jar:/workspace/out/repository/%s/module.jar\\n' \
+                printf '/workspace/out/repository/%%s/module.jar:/workspace/out/repository/shared/shared.jar:/workspace/out/repository/%%s/module.jar\\n' \
                   "$index" "$index" > "$host_output"
                 """.formatted(arguments));
         Files.setPosixFilePermissions(fakeDocker,
