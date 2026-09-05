@@ -31,7 +31,7 @@ import java.util.stream.Stream;
 /** Adds dependency bytecode evidence under exact source-set classpaths. */
 public final class JavaDependencyAwareSourceObserver implements SourceObserver {
     public static final String ADAPTER_ID = JavaImplementationSourceObserver.ADAPTER_ID;
-    public static final String ADAPTER_VERSION = "1.7.0";
+    public static final String ADAPTER_VERSION = "1.7.1";
 
     private final JavaDependencyInputs dependencyInputs;
     private final SourceObserver delegate;
@@ -93,10 +93,15 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
             sourceSets.addAll(filesBySourceSet.keySet());
             sourceSets.addAll(unresolvedBySourceSet.keySet());
             for (String sourceSet : sourceSets) {
-                List<UnresolvedParent> unresolved = unresolvedBySourceSet.getOrDefault(sourceSet, List.of());
-                if (unresolved.isEmpty()) {
+                List<UnresolvedParent> directUnresolved =
+                        unresolvedBySourceSet.getOrDefault(sourceSet, List.of());
+                String production = JavaSourceSets.productionSibling(sourceSet);
+                List<UnresolvedParent> productionUnresolved = production == null
+                        ? List.of() : unresolvedBySourceSet.getOrDefault(production, List.of());
+                if (directUnresolved.isEmpty() && productionUnresolved.isEmpty()) {
                     continue;
                 }
+
                 List<Path> sourceSetFiles = filesBySourceSet.getOrDefault(sourceSet, List.of());
                 if (sourceSetFiles.isEmpty()) {
                     dependencyEvidenceComplete = false;
@@ -108,14 +113,48 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
 
                 List<Path> archives = dependencyInputs.pathsForSourceSet(sourceSet);
                 if (archives.isEmpty()) {
+                    dependencyEvidenceComplete = false;
+                    diagnostics.add(incompleteDiagnostic(
+                            base, sourceSet,
+                            "dependency evidence has no dependency classpath for source set " + sourceSet));
                     continue;
                 }
                 JavaDependencyClasspath.Result classpath = JavaDependencyClasspath.resolve(archives);
-                Set<String> roots = unresolved.stream()
+                Set<String> roots = directUnresolved.stream()
                         .map(UnresolvedParent::targetName)
                         .filter(name -> classpath.ownerOfType(name) != null)
                         .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+
+                boolean productionCompatible = true;
+                if (!productionUnresolved.isEmpty()) {
+                    JavaDependencyClasspath.Result productionClasspath = JavaDependencyClasspath.resolve(
+                            dependencyInputs.pathsForSourceSet(production));
+                    Set<String> productionTargets = productionUnresolved.stream()
+                            .map(UnresolvedParent::targetName)
+                            .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+                    for (String target : productionTargets) {
+                        JavaDependencyClasspath.Entry productionOwner = productionClasspath.ownerOfType(target);
+                        if (productionOwner == null) {
+                            continue;
+                        }
+                        JavaDependencyClasspath.Entry auxiliaryOwner = classpath.ownerOfType(target);
+                        if (auxiliaryOwner == null
+                                || !auxiliaryOwner.unit().sha256().equals(productionOwner.unit().sha256())) {
+                            productionCompatible = false;
+                            diagnostics.add(incompleteDiagnostic(
+                                    base,
+                                    sourceSet,
+                                    "auxiliary source set does not preserve production dependency bytecode for "
+                                            + target));
+                        } else {
+                            roots.add(target);
+                        }
+                    }
+                    productionClasspath.verifyUnchanged();
+                }
+
                 if (roots.isEmpty()) {
+                    dependencyEvidenceComplete &= productionCompatible;
                     classpath.verifyUnchanged();
                     continue;
                 }
@@ -129,13 +168,13 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                                     + sourceSet + ": " + missing));
                 }
                 dependencyEvidenceComplete &= symbols.unresolvedRootTypes().isEmpty();
+                dependencyEvidenceComplete &= productionCompatible;
                 JavaDependencyObservation.Result support = JavaDependencyObservation.materialize(symbols);
-                mergeSupport(
-                        support, supportClassifiersById, supportMembersByKey);
+                mergeSupport(support, supportClassifiersById, supportMembersByKey);
 
                 Set<String> resolvedRoots = new TreeSet<>(roots);
                 resolvedRoots.removeAll(symbols.unresolvedRootTypes());
-                for (UnresolvedParent item : unresolved) {
+                for (UnresolvedParent item : directUnresolved) {
                     if (!resolvedRoots.contains(item.targetName())) {
                         continue;
                     }
@@ -143,6 +182,11 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                     if (supportId != null) {
                         supportParentByUnresolvedKey.put(unresolvedKey(item), supportId);
                     }
+                }
+
+                if (!productionCompatible) {
+                    classpath.verifyUnchanged();
+                    continue;
                 }
 
                 Set<String> scopedPaths = sourceSetFiles.stream()
@@ -153,7 +197,6 @@ public final class JavaDependencyAwareSourceObserver implements SourceObserver {
                 List<MemberObservation> scopedMembers = base.members().stream()
                         .filter(item -> scopedPaths.contains(item.sourcePath())).toList();
 
-                String production = JavaSourceSets.productionSibling(sourceSet);
                 List<ClassifierObservation> productionClassifiers = production == null
                         ? List.of()
                         : base.classifiers().stream()
