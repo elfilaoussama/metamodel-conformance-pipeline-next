@@ -12,27 +12,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.RandomAccess;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
- * Immutable dependency archive inputs, either global or scoped to module roots.
+ * Immutable dependency archive inputs, either global or scoped to exact Java source sets.
  *
  * <p>The read-only {@link List} view is a migration boundary for existing Java observer APIs.
  * Iteration exposes the deterministic union used for provenance/fingerprinting only. Semantic
- * compilation must select the owning module so module classpaths are never flattened accidentally.</p>
+ * compilation must select the exact source set so compile and test classpaths are not flattened.</p>
  */
 public final class JavaDependencyInputs extends AbstractList<Path> implements RandomAccess {
     private final List<Path> globalArchives;
-    private final Map<String, List<Path>> archivesByModule;
+    private final Map<String, List<Path>> archivesBySourceSet;
     private final List<Path> allArchives;
 
-    private JavaDependencyInputs(List<Path> globalArchives, Map<String, List<Path>> archivesByModule) {
+    private JavaDependencyInputs(List<Path> globalArchives, Map<String, List<Path>> archivesBySourceSet) {
         this.globalArchives = canonicalPaths(globalArchives);
         LinkedHashMap<String, List<Path>> scoped = new LinkedHashMap<>();
-        archivesByModule.entrySet().stream().sorted(Map.Entry.comparingByKey())
+        archivesBySourceSet.entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> scoped.put(entry.getKey(), canonicalPaths(entry.getValue())));
-        this.archivesByModule = Map.copyOf(scoped);
-        if (!this.globalArchives.isEmpty() && !this.archivesByModule.isEmpty()) {
-            throw new IllegalArgumentException("global and module-scoped dependency inputs cannot be mixed");
+        this.archivesBySourceSet = Map.copyOf(scoped);
+        if (!this.globalArchives.isEmpty() && !this.archivesBySourceSet.isEmpty()) {
+            throw new IllegalArgumentException("global and source-set-scoped dependency inputs cannot be mixed");
         }
         LinkedHashSet<Path> all = new LinkedHashSet<>();
         if (!this.globalArchives.isEmpty()) {
@@ -60,7 +61,7 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
                 || !Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("dependency manifest is not a regular file: " + manifest);
         }
-        LinkedHashMap<String, List<Path>> byModule = new LinkedHashMap<>();
+        LinkedHashMap<String, List<Path>> bySourceSet = new LinkedHashMap<>();
         int lineNumber = 0;
         for (String line : Files.readAllLines(manifest)) {
             lineNumber++;
@@ -71,23 +72,32 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
             if (fields.length != 2 || fields[0].isBlank() || fields[1].isBlank()) {
                 throw new IOException("invalid dependency manifest line " + lineNumber);
             }
-            String module = canonicalModuleKey(fields[0]);
+            String sourceSet = canonicalSourceSetKey(fields[0]);
             Path archive = Path.of(fields[1]);
-            byModule.computeIfAbsent(module, ignored -> new ArrayList<>()).add(archive);
+            bySourceSet.computeIfAbsent(sourceSet, ignored -> new ArrayList<>()).add(archive);
         }
-        return new JavaDependencyInputs(List.of(), byModule);
+        return new JavaDependencyInputs(List.of(), bySourceSet);
     }
 
     public List<Path> pathsForSourceSet(String sourceSet) {
-        return pathsForModule(JavaSourceSets.moduleKey(sourceSet));
-    }
-
-    public List<Path> pathsForModule(String moduleKey) {
-        if (!globalArchives.isEmpty() || archivesByModule.isEmpty()) {
+        if (!globalArchives.isEmpty() || archivesBySourceSet.isEmpty()) {
             return globalArchives;
         }
-        String canonical = canonicalModuleKeyUnchecked(moduleKey);
-        return archivesByModule.getOrDefault(canonical, List.of());
+        String canonical = canonicalSourceSetKeyUnchecked(sourceSet);
+        return archivesBySourceSet.getOrDefault(canonical, List.of());
+    }
+
+    /** Deterministic union used only for module-level support materialization/provenance. */
+    public List<Path> pathsForModule(String moduleKey) {
+        if (!globalArchives.isEmpty() || archivesBySourceSet.isEmpty()) {
+            return globalArchives;
+        }
+        String canonicalModule = canonicalModuleKeyUnchecked(moduleKey);
+        LinkedHashSet<Path> result = new LinkedHashSet<>();
+        archivesBySourceSet.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .filter(entry -> JavaSourceSets.moduleKey(entry.getKey()).equals(canonicalModule))
+                .forEach(entry -> result.addAll(entry.getValue()));
+        return List.copyOf(result);
     }
 
     public List<Path> allPaths() {
@@ -95,7 +105,7 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
     }
 
     public boolean scoped() {
-        return !archivesByModule.isEmpty();
+        return !archivesBySourceSet.isEmpty();
     }
 
     @Override
@@ -103,8 +113,14 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
         return allArchives.isEmpty();
     }
 
+    public Set<String> sourceSetKeys() {
+        return archivesBySourceSet.keySet();
+    }
+
     public Set<String> moduleKeys() {
-        return archivesByModule.keySet();
+        TreeSet<String> modules = new TreeSet<>();
+        archivesBySourceSet.keySet().forEach(sourceSet -> modules.add(JavaSourceSets.moduleKey(sourceSet)));
+        return Set.copyOf(modules);
     }
 
     @Override
@@ -130,6 +146,23 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
         return List.copyOf(canonical);
     }
 
+    private static String canonicalSourceSetKeyUnchecked(String value) {
+        try {
+            return canonicalSourceSetKey(value);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException(exception.getMessage(), exception);
+        }
+    }
+
+    private static String canonicalSourceSetKey(String value) throws IOException {
+        String canonical = canonicalRelativePath(value, "dependency manifest source set");
+        if (!JavaSourceSets.id(canonical).equals(canonical)) {
+            throw new IOException(
+                    "dependency manifest source set must identify src/<name>/java: " + value);
+        }
+        return canonical;
+    }
+
     private static String canonicalModuleKeyUnchecked(String value) {
         try {
             return canonicalModuleKey(value);
@@ -140,23 +173,28 @@ public final class JavaDependencyInputs extends AbstractList<Path> implements Ra
 
     private static String canonicalModuleKey(String value) throws IOException {
         if (value == null || value.isBlank()) {
-            throw new IOException("dependency manifest module must not be blank");
+            throw new IOException("dependency module must not be blank");
         }
-        String module = value.trim();
-        if (".".equals(module)) {
-            return module;
+        if (".".equals(value.trim())) {
+            return ".";
         }
-        if (module.startsWith("/") || module.endsWith("/") || module.contains("\\")
-                || module.matches("^[A-Za-z]:.*")) {
-            throw new IOException(
-                    "dependency manifest module must be a canonical relative path: " + value);
+        return canonicalRelativePath(value, "dependency module");
+    }
+
+    private static String canonicalRelativePath(String value, String label) throws IOException {
+        if (value == null || value.isBlank()) {
+            throw new IOException(label + " must not be blank");
         }
-        for (String segment : module.split("/", -1)) {
+        String path = value.trim();
+        if (path.startsWith("/") || path.endsWith("/") || path.contains("\\")
+                || path.matches("^[A-Za-z]:.*")) {
+            throw new IOException(label + " must be a canonical relative path: " + value);
+        }
+        for (String segment : path.split("/", -1)) {
             if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
-                throw new IOException(
-                        "dependency manifest module must be a canonical relative path: " + value);
+                throw new IOException(label + " must be a canonical relative path: " + value);
             }
         }
-        return module;
+        return path;
     }
 }
