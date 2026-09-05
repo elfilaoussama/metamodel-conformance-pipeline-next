@@ -17,7 +17,7 @@ class JavaDependencyInputsTest {
     Path temporary;
 
     @Test
-    void mapsArchivesToOwningSourceSetModuleWithoutFallbackGuessing() throws Exception {
+    void mapsArchivesToOwningModuleWithoutFallbackGuessing() throws Exception {
         Path rootJar = Files.write(temporary.resolve("root.jar"), new byte[]{1}).toAbsolutePath().normalize();
         Path moduleJar = Files.write(temporary.resolve("module.jar"), new byte[]{2}).toAbsolutePath().normalize();
         Path nestedJar = Files.write(temporary.resolve("nested.jar"), new byte[]{3}).toAbsolutePath().normalize();
@@ -31,10 +31,11 @@ class JavaDependencyInputsTest {
         JavaDependencyInputs inputs = JavaDependencyInputs.fromManifest(manifest);
 
         assertTrue(inputs.scoped());
-        assertEquals(List.of(rootJar), inputs.pathsForSourceSet("src/main/java"));
+        assertEquals(List.of(rootJar), inputs.pathsForModule("."));
+        assertEquals(List.of(moduleJar), inputs.pathsForModule("module-a"));
+        assertEquals(List.of(nestedJar), inputs.pathsForModule("module-b/sub"));
         assertEquals(List.of(moduleJar), inputs.pathsForSourceSet("module-a/src/test/java"));
-        assertEquals(List.of(nestedJar), inputs.pathsForSourceSet("module-b/sub/src/main/java"));
-        assertTrue(inputs.pathsForSourceSet("unknown/src/main/java").isEmpty());
+        assertTrue(inputs.pathsForModule("unknown").isEmpty());
         assertEquals(List.of(rootJar, moduleJar, nestedJar), inputs.allPaths());
         assertEquals(inputs.allPaths(), List.copyOf(inputs));
         assertSame(inputs, JavaDependencyInputs.global(inputs));
@@ -45,5 +46,7 @@ class JavaDependencyInputsTest {
         Path manifest = temporary.resolve("dependencies.tsv");
         Files.writeString(manifest, "../module\t/tmp/dependency.jar\n");
         assertThrows(Exception.class, () -> JavaDependencyInputs.fromManifest(manifest));
+        assertThrows(IllegalArgumentException.class, () ->
+                JavaDependencyInputs.none().pathsForModule("../module"));
     }
 }
